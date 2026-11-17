@@ -1,0 +1,252 @@
+//! Desktop integrations done through standard command line tools, so the app needs no extra native
+//! libraries: Secret Service keyring (`secret-tool`), notifications (`notify-send`), opening files
+//! (`xdg-open`), clipboard (`wl-copy`/`xclip`/`xsel`), file chooser (`zenity`/`kdialog`).
+
+use client_core::error::Result;
+use client_core::secrets::{FileSecretStore, SecretStore};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::sync::Arc;
+
+/// Tokens in the user's keyring (GNOME Keyring, KWallet via the Secret Service API).
+pub struct KeyringStore;
+
+impl KeyringStore {
+    /// True when `secret-tool` exists and a store/lookup/clear round trip works.
+    pub fn works() -> bool {
+        let s = KeyringStore;
+        let probe = format!("probe-{}", std::process::id());
+        if s.set(&probe, "ok").is_err() {
+            return false;
+        }
+        let ok = matches!(s.get(&probe), Ok(Some(v)) if v == "ok");
+        let _ = s.delete(&probe);
+        ok
+    }
+}
+
+impl SecretStore for KeyringStore {
+    fn get(&self, key: &str) -> Result<Option<String>> {
+        let out = Command::new("secret-tool").args(["lookup", "service", "atomic-chat", "key", key]).stderr(Stdio::null()).output();
+        match out {
+            Ok(o) if o.status.success() && !o.stdout.is_empty() => Ok(Some(String::from_utf8_lossy(&o.stdout).to_string())),
+            _ => Ok(None),
+        }
+    }
+    fn set(&self, key: &str, value: &str) -> Result<()> {
+        let mut child = Command::new("secret-tool")
+            .args(["store", "--label=Atomic Chat", "service", "atomic-chat", "key", key])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| client_core::ClientError::Local(format!("keyring unavailable: {e}")))?;
+        if let Some(mut si) = child.stdin.take() {
+            let _ = si.write_all(value.as_bytes());
+        }
+        let st = child.wait().map_err(|e| client_core::ClientError::Local(e.to_string()))?;
+        if st.success() {
+            Ok(())
+        } else {
+            Err(client_core::ClientError::Local("keyring refused the secret".into()))
+        }
+    }
+    fn delete(&self, key: &str) -> Result<()> {
+        let _ = Command::new("secret-tool").args(["clear", "service", "atomic-chat", "key", key]).stderr(Stdio::null()).status();
+        Ok(())
+    }
+}
+
+/// Windows Credential Manager through the `keyring` crate.
+#[cfg(windows)]
+pub struct WindowsStore;
+
+#[cfg(windows)]
+impl SecretStore for WindowsStore {
+    fn get(&self, key: &str) -> Result<Option<String>> {
+        let e = keyring::Entry::new("atomic-chat", key).map_err(|e| client_core::ClientError::Local(e.to_string()))?;
+        match e.get_password() {
+            Ok(v) => Ok(Some(v)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(e) => Err(client_core::ClientError::Local(e.to_string())),
+        }
+    }
+    fn set(&self, key: &str, value: &str) -> Result<()> {
+        keyring::Entry::new("atomic-chat", key).and_then(|e| e.set_password(value)).map_err(|e| client_core::ClientError::Local(e.to_string()))
+    }
+    fn delete(&self, key: &str) -> Result<()> {
+        let _ = keyring::Entry::new("atomic-chat", key).and_then(|e| e.delete_credential());
+        Ok(())
+    }
+}
+
+/// Keyring when it works (Credential Manager on Windows, Secret Service elsewhere), otherwise a 0600 file in the app
+/// data dir (documented in DECISIONS.md).
+pub fn desktop_secrets(data_dir: &Path) -> Arc<dyn SecretStore> {
+    #[cfg(windows)]
+    {
+        let probe = format!("probe-{}", std::process::id());
+        let w = WindowsStore;
+        if w.set(&probe, "ok").is_ok() && matches!(w.get(&probe), Ok(Some(v)) if v == "ok") {
+            let _ = w.delete(&probe);
+            return Arc::new(WindowsStore);
+        }
+    }
+    if cfg!(not(windows)) && std::env::var("ATOMIC_NO_KEYRING").is_err() && KeyringStore::works() {
+        Arc::new(KeyringStore)
+    } else {
+        Arc::new(FileSecretStore::new(data_dir.join("client").join("secrets.json")))
+    }
+}
+
+pub fn notify(title: &str, body: &str) {
+    #[cfg(windows)]
+    {
+        // A balloon from a short PowerShell script; best effort.
+        let esc = |t: &str| t.replace('\'', "''");
+        let script = format!(
+            "Add-Type -AssemblyName System.Windows.Forms; $n = New-Object System.Windows.Forms.NotifyIcon; $n.Icon = [System.Drawing.SystemIcons]::Information; $n.Visible = $true; $n.ShowBalloonTip(5000, '{}', '{}', 'Info'); Start-Sleep -Seconds 6; $n.Dispose()",
+            esc(title),
+            esc(body)
+        );
+        let _ = Command::new("powershell").args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &script]).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+        return;
+    }
+    #[cfg(not(windows))]
+    let _ = Command::new("notify-send").args(["--app-name=Atomic Chat", "--icon=mail-unread", title, body]).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+}
+
+/// The system "open" command: xdg-open on Linux, `cmd /C start` on Windows.
+fn opener(target: &std::ffi::OsStr) {
+    #[cfg(windows)]
+    let _ = Command::new("cmd").args(["/C", "start", ""]).arg(target).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+    #[cfg(not(windows))]
+    let _ = Command::new("xdg-open").arg(target).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+}
+
+pub fn open_path(p: &Path) {
+    opener(p.as_os_str());
+}
+
+pub fn open_url(u: &str) {
+    if u.starts_with("http://") || u.starts_with("https://") || u.starts_with("mailto:") {
+        opener(std::ffi::OsStr::new(u));
+    }
+}
+
+pub fn copy_text(t: &str) -> bool {
+    #[cfg(windows)]
+    if let Ok(mut ch) = Command::new("clip").stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
+        if let Some(mut si) = ch.stdin.take() {
+            let _ = si.write_all(t.as_bytes());
+        }
+        return true;
+    }
+    for (bin, args) in [("wl-copy", vec![]), ("xclip", vec!["-selection", "clipboard"]), ("xsel", vec!["--clipboard", "--input"])] {
+        if let Ok(mut ch) = Command::new(bin).args(&args).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
+            if let Some(mut si) = ch.stdin.take() {
+                let _ = si.write_all(t.as_bytes());
+            }
+            return true;
+        }
+    }
+    false
+}
+
+/// Native file chooser through zenity or kdialog; None when cancelled or neither is installed.
+pub fn pick_file() -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        let script = "Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.OpenFileDialog; if ($d.ShowDialog() -eq 'OK') { $d.FileName }";
+        if let Ok(o) = Command::new("powershell").args(["-NoProfile", "-Command", script]).stderr(Stdio::null()).output() {
+            let p = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            return if p.is_empty() { None } else { Some(PathBuf::from(p)) };
+        }
+        return None;
+    }
+    #[cfg(not(windows))]
+    for (bin, args) in [("zenity", vec!["--file-selection", "--title=Choose a file to send"]), ("kdialog", vec!["--getopenfilename", "."])] {
+        if let Ok(o) = Command::new(bin).args(&args).stderr(Stdio::null()).output() {
+            if o.status.success() {
+                let p = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                if !p.is_empty() {
+                    return Some(PathBuf::from(p));
+                }
+            }
+            return None;
+        }
+    }
+    None
+}
+
+/// Start-on-login via an XDG autostart entry.
+pub fn set_autostart(on: bool, minimised: bool) {
+    #[cfg(windows)]
+    {
+        const KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+        if on {
+            let exe = std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default();
+            let val = format!("\"{exe}\"{}", if minimised { " --minimised" } else { "" });
+            let _ = Command::new("reg").args(["add", KEY, "/v", "AtomicChat", "/t", "REG_SZ", "/d", &val, "/f"]).stdout(Stdio::null()).stderr(Stdio::null()).status();
+        } else {
+            let _ = Command::new("reg").args(["delete", KEY, "/v", "AtomicChat", "/f"]).stdout(Stdio::null()).stderr(Stdio::null()).status();
+        }
+        return;
+    }
+    #[cfg(not(windows))]
+    set_autostart_xdg(on, minimised);
+}
+
+#[cfg(not(windows))]
+fn set_autostart_xdg(on: bool, minimised: bool) {
+    let Some(home) = std::env::var_os("HOME") else { return };
+    let dir = PathBuf::from(home).join(".config/autostart");
+    let f = dir.join("atomic-chat.desktop");
+    if !on {
+        let _ = std::fs::remove_file(f);
+        return;
+    }
+    let exe = std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_else(|_| "atomic-chat".into());
+    let _ = std::fs::create_dir_all(&dir);
+    let _ = std::fs::write(f, format!("[Desktop Entry]\nType=Application\nName=Atomic Chat\nExec={exe}{}\nX-GNOME-Autostart-enabled=true\n", if minimised { " --minimised" } else { "" }));
+}
+
+/// Image on the clipboard as a PNG file (F-02 paste), through wl-paste, xclip or PowerShell. None when there is no image.
+pub fn clipboard_image(dir: &Path) -> Option<PathBuf> {
+    let out = dir.join(format!("pasted-{}.png", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)));
+    #[cfg(windows)]
+    {
+        let script = format!("Add-Type -AssemblyName System.Windows.Forms; $i = [System.Windows.Forms.Clipboard]::GetImage(); if ($i) {{ $i.Save('{}'); 'ok' }}", out.display());
+        let o = Command::new("powershell").args(["-NoProfile", "-Command", &script]).stderr(Stdio::null()).output().ok()?;
+        return if String::from_utf8_lossy(&o.stdout).contains("ok") && out.is_file() { Some(out) } else { None };
+    }
+    #[cfg(not(windows))]
+    for (bin, args) in [("wl-paste", vec!["--type", "image/png"]), ("xclip", vec!["-selection", "clipboard", "-t", "image/png", "-o"])] {
+        if let Ok(o) = Command::new(bin).args(&args).stderr(Stdio::null()).output() {
+            if o.status.success() && o.stdout.starts_with(&[0x89, b'P', b'N', b'G']) {
+                std::fs::write(&out, &o.stdout).ok()?;
+                return Some(out);
+            }
+        }
+    }
+    #[allow(unreachable_code)]
+    None
+}
+
+/// Plays an audio file (voice message) with whatever player is installed; returns the child so it can be stopped.
+pub fn play_audio(p: &Path) -> Option<std::process::Child> {
+    #[cfg(windows)]
+    {
+        let script = format!("(New-Object Media.SoundPlayer '{}').PlaySync()", p.display());
+        return Command::new("powershell").args(["-NoProfile", "-Command", &script]).stdout(Stdio::null()).stderr(Stdio::null()).spawn().ok();
+    }
+    #[cfg(not(windows))]
+    for (bin, args) in [("ffplay", vec!["-nodisp", "-autoexit", "-loglevel", "quiet"]), ("mpv", vec!["--no-video", "--really-quiet"]), ("paplay", vec![]), ("aplay", vec!["-q"])] {
+        if let Ok(ch) = Command::new(bin).args(&args).arg(p).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
+            return Some(ch);
+        }
+    }
+    #[allow(unreachable_code)]
+    None
+}

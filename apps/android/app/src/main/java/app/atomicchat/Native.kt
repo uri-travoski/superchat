@@ -1,0 +1,199 @@
+package app.atomicchat
+
+import android.Manifest
+import android.app.Activity
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.media.MediaPlayer
+import android.media.MediaRecorder
+import android.net.Uri
+import android.os.Build
+import android.provider.OpenableColumns
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
+import java.io.File
+import java.security.KeyStore
+import java.util.TimeZone
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
+
+/**
+ * Bridge between the Rust app (libatomic_android.so) and Android. Rust calls the @JvmStatic methods through JNI
+ * (notifications, audio, Keystore); Kotlin calls the `external` functions to hand data to Rust.
+ */
+object Native {
+    init {
+        System.loadLibrary("atomic_android")
+    }
+
+    @JvmStatic external fun init()
+    @JvmStatic external fun nativeOpenConversation(convId: String)
+    @JvmStatic external fun nativeFontScale(scale: Float)
+    @JvmStatic external fun nativeWake(dataDir: String)
+    @JvmStatic external fun nativeTzOffset(secs: Int)
+    @JvmStatic external fun nativeShare(text: String, files: String)
+
+    private lateinit var app: Context
+    private var ready = false
+
+    /** True while the Activity is on screen: notifications are then not needed. */
+    @Volatile var visible = false
+
+    @Synchronized
+    fun ensure(ctx: Context) {
+        if (ready) return
+        app = ctx.applicationContext
+        init()
+        ready = true
+    }
+
+    fun pushTimeZone() {
+        nativeTzOffset(TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 1000)
+    }
+
+    // ---- N-01: local notification for a new message (called from Rust) ------------------------------------------
+
+    @JvmStatic fun notifyMessage(title: String, body: String, convId: String) {
+        if (visible) return
+        val nm = app.getSystemService(NotificationManager::class.java)
+        if (Build.VERSION.SDK_INT >= 26) {
+            nm.createNotificationChannel(NotificationChannel("messages", "Messages", NotificationManager.IMPORTANCE_HIGH))
+        }
+        val open = PendingIntent.getActivity(
+            app, convId.hashCode(),
+            Intent(app, MainActivity::class.java).putExtra("conv_id", convId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        nm.notify(
+            convId.hashCode(),
+            android.app.Notification.Builder(app, "messages")
+                .setContentTitle(title)
+                .setContentText(body)
+                .setSmallIcon(android.R.drawable.stat_notify_chat)
+                .setContentIntent(open)
+                .setAutoCancel(true)
+                .build()
+        )
+    }
+
+    // ---- X-02: secrets encrypted with a Keystore key ---------------------------------------------------------------
+
+    private const val KEY_ALIAS = "atomic_chat_secrets"
+
+    private fun key(): SecretKey {
+        val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (ks.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
+        val g = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        g.init(
+            KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .build()
+        )
+        return g.generateKey()
+    }
+
+    @JvmStatic fun encrypt(plain: String): String? = try {
+        val c = Cipher.getInstance("AES/GCM/NoPadding")
+        c.init(Cipher.ENCRYPT_MODE, key())
+        Base64.encodeToString(c.iv + c.doFinal(plain.toByteArray()), Base64.NO_WRAP)
+    } catch (e: Exception) { null }
+
+    @JvmStatic fun decrypt(text: String): String? = try {
+        val raw = Base64.decode(text, Base64.NO_WRAP)
+        val c = Cipher.getInstance("AES/GCM/NoPadding")
+        c.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, raw.copyOfRange(0, 12)))
+        String(c.doFinal(raw, 12, raw.size - 12))
+    } catch (e: Exception) { null }
+
+    // ---- M-30: voice messages ---------------------------------------------------------------------------------------
+
+    private var player: MediaPlayer? = null
+    private var recorder: MediaRecorder? = null
+    private var recordPath: String? = null
+    var activity: Activity? = null
+
+    @JvmStatic fun play(path: String): String {
+        stop()
+        return try {
+            val p = MediaPlayer()
+            p.setDataSource(path)
+            p.setOnCompletionListener { stop() }
+            p.prepare()
+            p.start()
+            player = p
+            "ok"
+        } catch (e: Exception) { "" }
+    }
+
+    @JvmStatic fun stop() {
+        player?.let { try { it.stop() } catch (_: Exception) {}; it.release() }
+        player = null
+    }
+
+    @JvmStatic fun isPlaying(): Boolean = try { player?.isPlaying == true } catch (_: Exception) { false }
+
+    @JvmStatic fun recordStart(): Boolean {
+        if (app.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            activity?.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 2)
+            return false
+        }
+        return try {
+            val f = File(app.cacheDir, "voice-message-${System.currentTimeMillis() / 1000}.m4a")
+            val r = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(app) else @Suppress("DEPRECATION") MediaRecorder()
+            r.setAudioSource(MediaRecorder.AudioSource.MIC)
+            r.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            r.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            r.setAudioSamplingRate(16000)
+            r.setAudioEncodingBitRate(32000)
+            r.setOutputFile(f.absolutePath)
+            r.prepare()
+            r.start()
+            recorder = r
+            recordPath = f.absolutePath
+            true
+        } catch (e: Exception) { recorder?.release(); recorder = null; false }
+    }
+
+    @JvmStatic fun recordStop(): String? {
+        val r = recorder ?: return null
+        recorder = null
+        return try {
+            r.stop(); r.release()
+            recordPath
+        } catch (e: Exception) { try { r.release() } catch (_: Exception) {}; null }
+    }
+
+    // ---- E-06: share target ---------------------------------------------------------------------------------------------
+
+    fun handleShare(ctx: Context, i: Intent?) {
+        if (i == null) return
+        if (i.action != Intent.ACTION_SEND && i.action != Intent.ACTION_SEND_MULTIPLE) return
+        val text = i.getStringExtra(Intent.EXTRA_TEXT) ?: ""
+        val uris = ArrayList<Uri>()
+        if (i.action == Intent.ACTION_SEND) {
+            (if (Build.VERSION.SDK_INT >= 33) i.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java) else @Suppress("DEPRECATION") i.getParcelableExtra<Uri>(Intent.EXTRA_STREAM))?.let { uris.add(it) }
+        } else {
+            (if (Build.VERSION.SDK_INT >= 33) i.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java) else @Suppress("DEPRECATION") i.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM))?.let { uris.addAll(it) }
+        }
+        val dir = File(ctx.cacheDir, "shared").apply { mkdirs() }
+        val paths = uris.mapNotNull { copyUri(ctx, it, dir) }
+        nativeShare(text, paths.joinToString("\n"))
+    }
+
+    private fun copyUri(ctx: Context, u: Uri, dir: File): String? = try {
+        var name = "shared-${System.currentTimeMillis()}"
+        ctx.contentResolver.query(u, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) name = it.getString(0) ?: name }
+        val out = File(dir, name.replace('/', '_'))
+        ctx.contentResolver.openInputStream(u)?.use { input -> out.outputStream().use { input.copyTo(it) } }
+        out.absolutePath
+    } catch (e: Exception) { null }
+}

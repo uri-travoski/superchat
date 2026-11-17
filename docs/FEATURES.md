@@ -1,0 +1,28 @@
+# What Atomic Chat does today (version 1.0.0, Phases 1 and 2)
+
+* Self-hosted team chat. One small server (Docker), apps for Linux and Android (Windows later), an admin web panel, and a command-line client.
+* **Accounts are created by admins only.** There is no sign-up. New people get a one-time login link (works once, expires in 7 days).
+* **Private by design:** channels and group chats are members-only and invisible to everyone else; only admins create them. Direct messages and
+  "notes to self" are created on demand.
+* **Messages:** edit (channels and notes always; direct chats until the other person replies), delete (leaves "Message deleted"), reactions,
+  typing indicators, unread counts that follow you between devices, search across only the chats you can see, history by date.
+* **Works offline:** messages you send without a connection wait in a queue and go out when you are back; the app opens instantly from its cache.
+* **Files:** up to 100 MB each (configurable). Stored in your own S3, Cloudflare R2, Backblaze B2, MinIO or Google Drive, not on the server's disk.
+  Admins can move everything to another storage with a check afterwards.
+* **Admin control:** disabling someone signs them out of every device immediately and wipes the app's local data. "Clear history" backs the
+  person up first, then removes only their own copy of chats; other people keep theirs. If the backup cannot be written, nothing is deleted.
+* **Reach it anywhere:** works with a domain, a bare IP address, or a Cloudflare Tunnel.
+* **Text size:** Regular and Large, and it follows the Android system font size.
+
+Not included: end-to-end encryption (the server can read messages), voice/video, public sign-up, custom emoji, screen-reader support.
+See `STATUS.md` for what is partly built.
+
+## Phase 2
+
+* Threads (panel and a Threads list with unread), pins, bookmarks bar, files tab, forward, copy a link to a message, drafts that follow you between devices.
+* Search with filter chips (from, in, has link/file/reaction, before, after), people, files and channels in the results, recent searches.
+* Favourites, sections, mute for a time, notify level per conversation, sort, unread only, hide muted, mark as unread, quick switcher (Ctrl+K), back and forward (Alt+Left/Right).
+* Rich messages: bold, italic, strike, code, code blocks, lists, quotes, links, @mentions with autocomplete, emoji picker, reactions with counts, inline pictures.
+* Settings: theme and accent, text size (Regular/Large/Extra large), zoom (Ctrl + / - / 0), compact, reduce motion, 12/24 hour, status, profile, devices, privacy (when your admin enables it).
+* Admin: chat viewer, bulk delete with backup, encrypted backups, selective restore, restore onto a new server.
+* Not built yet: voice/video clips, drag and drop, Android share target, tray icon, Android Keystore, push registration on the device.

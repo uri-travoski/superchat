@@ -1,0 +1,576 @@
+//! Admin API (role owner or admin): users, conversations, sessions, storage, backups, files.
+
+use crate::auth::*;
+use crate::backup;
+use crate::db::now_ms;
+use crate::emit::Emitter;
+use crate::error::{AppError, AppResult};
+use crate::queries::*;
+use crate::routes::chat::upsert_for_members;
+use crate::state::St;
+use crate::storage::build_storage;
+use crate::users::*;
+use axum::extract::{Path, State};
+use axum::http::request::Parts;
+use axum::Json;
+use proto::*;
+use rusqlite::{params, Connection, OptionalExtension};
+
+type J<T> = AppResult<Json<T>>;
+
+fn public_base(st: &St, parts: &Parts) -> String {
+    if let Some(u) = &st.cfg.public_url {
+        return u.clone();
+    }
+    let h = |n: &str| parts.headers.get(n).and_then(|v| v.to_str().ok()).map(|s| s.split(',').next().unwrap_or("").trim().to_string());
+    let host = h("x-forwarded-host").or_else(|| h("host")).unwrap_or_else(|| "localhost".into());
+    let scheme = h("x-forwarded-proto").unwrap_or_else(|| "http".into());
+    format!("{scheme}://{host}")
+}
+
+fn create_link(conn: &Connection, base: &str, user_id: &str) -> AppResult<LoginLink> {
+    let token = make_link_token();
+    let now = now_ms();
+    let exp = now + 7 * 24 * 3600 * 1000;
+    // Only one live link per user.
+    conn.execute("DELETE FROM login_links WHERE user_id=?1 AND used_ms IS NULL", [user_id])?;
+    conn.execute(
+        "INSERT INTO login_links(token_hash,user_id,created_ms,expires_ms) VALUES(?1,?2,?3,?4)",
+        params![sha256_hex(&token), user_id, now, exp],
+    )?;
+    Ok(LoginLink { link: rules::make_login_link(base, &token), token, expires_ms: exp })
+}
+
+fn target_user(conn: &Connection, actor: &Auth, id: &str) -> AppResult<UserRow> {
+    let u = get_user(conn, id)?;
+    if u.role == Role::Owner && actor.role != Role::Owner {
+        return Err(AppError::forbidden("only the owner can manage the owner account"));
+    }
+    Ok(u)
+}
+
+pub async fn list_users(State(st): State<St>, Admin(_a): Admin) -> J<Vec<AdminUser>> {
+    let hub = st.hub.clone();
+    Ok(Json(
+        st.db
+            .call(move |c| {
+                let mut stmt = c.prepare(&format!("SELECT {USER_COLS} FROM users ORDER BY deleted, display_name COLLATE NOCASE"))?;
+                let rows = stmt.query_map([], user_row)?.collect::<Result<Vec<_>, _>>()?;
+                rows.iter().map(|r| admin_user(c, &hub, r)).collect()
+            })
+            .await?,
+    ))
+}
+
+pub async fn create_user_route(State(st): State<St>, Admin(a): Admin, parts: Parts, Json(req): Json<CreateUserRequest>) -> J<CreateUserResponse> {
+    let role = req.role.unwrap_or(Role::Member);
+    if role == Role::Owner {
+        return Err(AppError::validation("there is exactly one owner"));
+    }
+    if role == Role::Admin && a.role != Role::Owner {
+        return Err(AppError::forbidden("only the owner can create admins"));
+    }
+    let has_pw = req.password.as_ref().map(|p| !p.is_empty()).unwrap_or(false);
+    let pw = match &req.password {
+        Some(p) if !p.is_empty() => {
+            validate_password(p)?;
+            p.clone()
+        }
+        _ => random_token("", 24),
+    };
+    let want_link = req.create_login_link.unwrap_or(!has_pw);
+    let hash = hash_pw_async(pw).await?;
+    let base = public_base(&st, &parts);
+    let hub = st.hub.clone();
+    Ok(Json(
+        st.db
+            .call(move |c| {
+                let tx = c.transaction()?;
+                let mut em = Emitter::new();
+                let row = create_user(
+                    &tx,
+                    &hub,
+                    NewUser {
+                        username: req.username.trim().to_string(),
+                        display_name: req.display_name.clone(),
+                        password_hash: hash,
+                        password_set: has_pw,
+                        role,
+                        email: req.email.clone(),
+                    },
+                    &mut em,
+                )?;
+                let link = if want_link { Some(create_link(&tx, &base, &row.id)?) } else { None };
+                tx.commit()?;
+                em.flush(&hub);
+                Ok(CreateUserResponse { user: admin_user(c, &hub, &row)?, login_link: link })
+            })
+            .await?,
+    ))
+}
+
+pub async fn get_user_route(State(st): State<St>, Admin(a): Admin, Path(id): Path<String>) -> J<AdminUser> {
+    let hub = st.hub.clone();
+    Ok(Json(st.db.call(move |c| admin_user(c, &hub, &target_user(c, &a, &id)?)).await?))
+}
+
+pub async fn update_user(State(st): State<St>, Admin(a): Admin, Path(id): Path<String>, Json(req): Json<UpdateUserRequest>) -> J<AdminUser> {
+    let hub = st.hub.clone();
+    Ok(Json(
+        st.db
+            .call(move |c| {
+                let u = target_user(c, &a, &id)?;
+                if u.deleted {
+                    return Err(AppError::validation("account was deleted"));
+                }
+                let tx = c.transaction()?;
+                if let Some(n) = &req.display_name {
+                    let n = n.trim();
+                    if n.is_empty() || n.chars().count() > 80 {
+                        return Err(AppError::validation("display name must be 1-80 characters"));
+                    }
+                    tx.execute("UPDATE users SET display_name=?2 WHERE id=?1", params![id, n])?;
+                }
+                if let Some(e) = &req.email {
+                    tx.execute("UPDATE users SET email=?2 WHERE id=?1", params![id, e])?;
+                }
+                if let Some(r) = req.role {
+                    if a.role != Role::Owner {
+                        return Err(AppError::forbidden("only the owner can change roles"));
+                    }
+                    if r == Role::Owner || u.role == Role::Owner {
+                        return Err(AppError::validation("the owner role cannot be changed"));
+                    }
+                    tx.execute("UPDATE users SET role=?2 WHERE id=?1", params![id, r.as_str()])?;
+                }
+                if let Some(p) = req.privacy_controls_enabled {
+                    tx.execute("UPDATE users SET privacy_controls_enabled=?2 WHERE id=?1", params![id, p as i64])?;
+                    if !p {
+                        tx.execute("UPDATE users SET hide_last_active=0 WHERE id=?1", [&id])?;
+                    }
+                }
+                if let Some(d) = req.disabled {
+                    if d && (id == a.user_id || u.role == Role::Owner) {
+                        return Err(AppError::validation("this account cannot be disabled"));
+                    }
+                    tx.execute("UPDATE users SET disabled=?2 WHERE id=?1", params![id, d as i64])?;
+                    if d {
+                        // Immediate kick: all sessions end, live sockets are closed with account_disabled.
+                        revoke_sessions(&tx, &hub, &id, "account_disabled", None)?;
+                    }
+                }
+                let mut em = Emitter::new();
+                announce_user(&tx, &hub, &id, &mut em)?;
+                let row = get_user(&tx, &id)?;
+                if !row.disabled {
+                    em.emit(&tx, &id, EventData::MeUpdate { me: to_me(&row, &hub) })?;
+                }
+                tx.commit()?;
+                em.flush(&hub);
+                crate::routes::ws::broadcast_presence_hub(c, &hub, &id)?;
+                admin_user(c, &hub, &get_user(c, &id)?)
+            })
+            .await?,
+    ))
+}
+
+pub async fn reset_password(State(st): State<St>, Admin(a): Admin, parts: Parts, Path(id): Path<String>, Json(req): Json<ResetPasswordRequest>) -> J<ResetPasswordResponse> {
+    let given = match &req.new_password {
+        Some(p) if !p.is_empty() => {
+            validate_password(p)?;
+            Some(p.clone())
+        }
+        _ => None,
+    };
+    let hash = hash_pw_async(given.clone().unwrap_or_else(|| random_token("", 24))).await?;
+    let base = public_base(&st, &parts);
+    let hub = st.hub.clone();
+    Ok(Json(
+        st.db
+            .call(move |c| {
+                let u = target_user(c, &a, &id)?;
+                if u.deleted {
+                    return Err(AppError::validation("account was deleted"));
+                }
+                c.execute(
+                    "UPDATE users SET password_hash=?2, password_set=?3 WHERE id=?1",
+                    params![id, hash, given.is_some() as i64],
+                )?;
+                // Forced sign-out: every device gets password_reset and wipes local data.
+                revoke_sessions(c, &hub, &id, "password_reset", None)?;
+                let link = if given.is_none() { Some(create_link(c, &base, &id)?) } else { None };
+                Ok(ResetPasswordResponse { login_link: link })
+            })
+            .await?,
+    ))
+}
+
+pub async fn new_login_link(State(st): State<St>, Admin(a): Admin, parts: Parts, Path(id): Path<String>) -> J<LoginLink> {
+    let base = public_base(&st, &parts);
+    Ok(Json(
+        st.db
+            .call(move |c| {
+                let u = target_user(c, &a, &id)?;
+                if u.deleted || u.disabled {
+                    return Err(AppError::validation("account is disabled or deleted"));
+                }
+                create_link(c, &base, &id)
+            })
+            .await?,
+    ))
+}
+
+pub async fn revoke_user_sessions(State(st): State<St>, Admin(a): Admin, Path(id): Path<String>) -> J<serde_json::Value> {
+    let hub = st.hub.clone();
+    let n = st
+        .db
+        .call(move |c| {
+            target_user(c, &a, &id)?;
+            revoke_sessions(c, &hub, &id, "session_revoked", None)
+        })
+        .await?;
+    Ok(Json(serde_json::json!({"revoked": n})))
+}
+
+pub async fn clear_history_route(State(st): State<St>, Admin(a): Admin, Path(id): Path<String>) -> J<ClearHistoryResponse> {
+    let id2 = id.clone();
+    st.db.call(move |c| target_user(c, &a, &id2).map(|_| ())).await?;
+    Ok(Json(backup::clear_history(&st, &id).await?))
+}
+
+pub async fn delete_user_route(State(st): State<St>, Admin(a): Admin, Path(id): Path<String>) -> J<ClearHistoryResponse> {
+    let (id2, a2) = (id.clone(), a.clone());
+    let u = st.db.call(move |c| target_user(c, &a2, &id2)).await?;
+    if id == a.user_id || u.role == Role::Owner {
+        return Err(AppError::validation("this account cannot be deleted"));
+    }
+    if u.deleted {
+        return Err(AppError::validation("account already deleted"));
+    }
+    Ok(Json(backup::delete_user(&st, &id).await?))
+}
+
+pub async fn backup_user_route(State(st): State<St>, Admin(a): Admin, Path(id): Path<String>) -> J<BackupInfo> {
+    let id2 = id.clone();
+    st.db.call(move |c| target_user(c, &a, &id2).map(|_| ())).await?;
+    Ok(Json(backup::backup_user(&st, &id, "manual").await?.info))
+}
+
+pub async fn delete_range(State(st): State<St>, Admin(a): Admin, Path(id): Path<String>, Json(req): Json<DateRangeDeleteRequest>) -> J<ClearHistoryResponse> {
+    // "Delete before date" = everything strictly older than `before_ms`.
+    let (from_ms, to_ms) = match req.before_ms {
+        Some(b) => (0, b - 1),
+        None => (req.from_ms, req.to_ms),
+    };
+    if to_ms < from_ms {
+        return Err(AppError::validation("the end date is before the start date"));
+    }
+    let id2 = id.clone();
+    st.db.call(move |c| target_user(c, &a, &id2).map(|_| ())).await?;
+    let (b, out) = backup::hide_with_backup(
+        &st,
+        backup::HideRequest {
+            user_id: id,
+            range: Some((from_ms, to_ms)),
+            conversation_id: req.conversation_id.clone(),
+            also_others: req.also_other_copies,
+            message_ids: None,
+        },
+        "date_range_delete",
+    )
+    .await?;
+    Ok(Json(ClearHistoryResponse {
+        backup_id: b.info.id,
+        backup_key: b.info.key,
+        messages_hidden: out.messages_hidden,
+        attachments_moved: out.attachments_moved,
+        sessions_revoked: 0,
+    }))
+}
+
+pub async fn list_backups(State(st): State<St>, Admin(_a): Admin) -> J<Vec<BackupInfo>> {
+    Ok(Json(
+        st.db
+            .call(|c| {
+                let mut s = c.prepare("SELECT id,kind,user_id,created_ms,reason,key,size,attachments FROM backups ORDER BY created_ms DESC")?;
+                let v = s
+                    .query_map([], |r| {
+                        Ok(BackupInfo { id: r.get(0)?, kind: r.get(1)?, user_id: r.get(2)?, created_ms: r.get(3)?, reason: r.get(4)?, key: r.get(5)?, size: r.get(6)?, attachments: r.get(7)?, encrypted: false })
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(v.into_iter().map(|mut b: BackupInfo| { b.encrypted = b.key.ends_with(".age"); b }).collect())
+            })
+            .await?,
+    ))
+}
+
+pub async fn all_sessions(State(st): State<St>, Admin(a): Admin) -> J<Vec<SessionInfo>> {
+    Ok(Json(
+        st.db
+            .call(move |c| {
+                let mut s = c.prepare(
+                    "SELECT s.id,s.user_id,u.username,s.device_name,s.client_version,s.ip,s.created_ms,s.last_seen_ms,s.revoked FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.revoked=0 ORDER BY s.last_seen_ms DESC LIMIT 500",
+                )?;
+                let v = s
+                    .query_map([], |r| {
+                        let id: String = r.get(0)?;
+                        Ok(SessionInfo {
+                            current: id == a.session_id,
+                            id,
+                            user_id: r.get(1)?,
+                            username: r.get(2)?,
+                            device_name: r.get(3)?,
+                            client_version: r.get(4)?,
+                            ip: r.get(5)?,
+                            created_ms: r.get(6)?,
+                            last_seen_ms: r.get(7)?,
+                            revoked: r.get::<_, i64>(8)? != 0,
+                        })
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(v)
+            })
+            .await?,
+    ))
+}
+
+// ---------------------------------------------------------------- conversations
+
+pub async fn list_conversations(State(st): State<St>, Admin(_a): Admin) -> J<Vec<AdminConversation>> {
+    Ok(Json(
+        st.db
+            .call(|c| {
+                let ids: Vec<String> = {
+                    let mut s = c.prepare("SELECT id FROM conversations WHERE kind IN ('channel','group_dm') ORDER BY COALESCE(last_ts, created_ms) DESC")?;
+                    let v = s.query_map([], |r| r.get(0))?.collect::<Result<Vec<String>, _>>()?;
+                    v
+                };
+                ids.into_iter()
+                    .map(|id| {
+                        let conversation = load_conversation(c, &id)?;
+                        let message_count: i64 = c.query_row("SELECT COUNT(*) FROM messages WHERE conv_id=?1", [&id], |r| r.get(0))?;
+                        Ok(AdminConversation { conversation, message_count })
+                    })
+                    .collect()
+            })
+            .await?,
+    ))
+}
+
+pub async fn add_members(State(st): State<St>, Admin(_a): Admin, Path(id): Path<String>, Json(req): Json<MembersRequest>) -> J<Conversation> {
+    let hub = st.hub.clone();
+    Ok(Json(
+        st.db
+            .call(move |c| {
+                let cr = conv_row(c, &id)?;
+                if !matches!(cr.kind, ConversationKind::Channel | ConversationKind::GroupDm) {
+                    return Err(AppError::validation("members can only be managed on channels and group DMs"));
+                }
+                let tx = c.transaction()?;
+                for uid in &req.user_ids {
+                    let u = get_user(&tx, uid)?;
+                    if u.disabled || u.deleted {
+                        return Err(AppError::validation("cannot add a disabled user"));
+                    }
+                    tx.execute(
+                        "INSERT OR IGNORE INTO members(conv_id,user_id,role,joined_ms) VALUES(?1,?2,'member',?3)",
+                        params![id, uid, now_ms()],
+                    )?;
+                }
+                let mut em = Emitter::new();
+                upsert_for_members(&tx, &mut em, &id)?;
+                tx.commit()?;
+                em.flush(&hub);
+                load_conversation(c, &id)
+            })
+            .await?,
+    ))
+}
+
+pub async fn remove_member(State(st): State<St>, Admin(_a): Admin, Path((id, uid)): Path<(String, String)>) -> J<Conversation> {
+    let hub = st.hub.clone();
+    Ok(Json(
+        st.db
+            .call(move |c| {
+                let cr = conv_row(c, &id)?;
+                if !matches!(cr.kind, ConversationKind::Channel | ConversationKind::GroupDm) {
+                    return Err(AppError::validation("members can only be managed on channels and group DMs"));
+                }
+                let tx = c.transaction()?;
+                let n = tx.execute("DELETE FROM members WHERE conv_id=?1 AND user_id=?2", params![id, uid])?;
+                let mut em = Emitter::new();
+                if n > 0 {
+                    em.emit(&tx, &uid, EventData::ConversationRemove { conv_id: id.clone() })?;
+                    upsert_for_members(&tx, &mut em, &id)?;
+                }
+                tx.commit()?;
+                em.flush(&hub);
+                load_conversation(c, &id)
+            })
+            .await?,
+    ))
+}
+
+pub async fn delete_conversation(State(st): State<St>, Admin(_a): Admin, Path(id): Path<String>) -> J<serde_json::Value> {
+    let hub = st.hub.clone();
+    let keys: Vec<String> = st
+        .db
+        .call(move |c| {
+            let cr = conv_row(c, &id)?;
+            if !matches!(cr.kind, ConversationKind::Channel | ConversationKind::GroupDm) {
+                return Err(AppError::validation("only channels and group DMs can be deleted"));
+            }
+            let tx = c.transaction()?;
+            let members = member_ids(&tx, &id)?;
+            let mut keys = vec![];
+            let mids: Vec<String> = {
+                let mut s = tx.prepare("SELECT id FROM messages WHERE conv_id=?1")?;
+                let v = s.query_map([&id], |r| r.get(0))?.collect::<Result<Vec<String>, _>>()?;
+                v
+            };
+            for m in &mids {
+                keys.extend(crate::routes::chat::release_attachments(&tx, m)?);
+                tx.execute("DELETE FROM reactions WHERE message_id=?1", [m])?;
+                tx.execute("DELETE FROM message_edits WHERE message_id=?1", [m])?;
+                tx.execute("DELETE FROM message_hidden WHERE message_id=?1", [m])?;
+            }
+            tx.execute("DELETE FROM messages WHERE conv_id=?1", [&id])?;
+            tx.execute("DELETE FROM members WHERE conv_id=?1", [&id])?;
+            tx.execute("DELETE FROM read_state WHERE conv_id=?1", [&id])?;
+            tx.execute("DELETE FROM conversations WHERE id=?1", [&id])?;
+            let mut em = Emitter::new();
+            for m in members {
+                em.emit(&tx, &m, EventData::ConversationRemove { conv_id: id.clone() })?;
+            }
+            tx.commit()?;
+            em.flush(&hub);
+            Ok(keys)
+        })
+        .await?;
+    let storage = st.storage();
+    for k in keys {
+        let _ = storage.delete(&k).await;
+    }
+    Ok(Json(serde_json::json!({"ok": true})))
+}
+
+/// F-07: admin removes a file; the message shows "File removed".
+pub async fn remove_file(State(st): State<St>, Admin(_a): Admin, Path(id): Path<String>) -> J<serde_json::Value> {
+    let hub = st.hub.clone();
+    let id2 = id.clone();
+    let key: String = st
+        .db
+        .call(move |c| {
+            let key: String = c
+                .query_row("SELECT storage_key FROM attachments WHERE id=?1 AND removed=0", [&id2], |r| r.get(0))
+                .optional()?
+                .ok_or_else(|| AppError::not_found("file not found"))?;
+            let tx = c.transaction()?;
+            tx.execute("UPDATE attachments SET removed=1 WHERE id=?1", [&id2])?;
+            let mut users: Vec<String> = vec![];
+            {
+                let mut s = tx.prepare(
+                    "SELECT DISTINCT mem.user_id FROM message_attachments ma JOIN messages m ON m.id=ma.message_id JOIN members mem ON mem.conv_id=m.conv_id WHERE ma.attachment_id=?1",
+                )?;
+                for r in s.query_map([&id2], |r| r.get::<_, String>(0))? {
+                    users.push(r?);
+                }
+            }
+            let mut em = Emitter::new();
+            for u in users {
+                em.emit(&tx, &u, EventData::AttachmentRemoved { attachment_id: id2.clone() })?;
+            }
+            tx.commit()?;
+            em.flush(&hub);
+            Ok(key)
+        })
+        .await?;
+    let _ = st.storage().delete(&key).await;
+    Ok(Json(serde_json::json!({"ok": true})))
+}
+
+// ---------------------------------------------------------------- storage
+
+pub async fn get_storage(State(st): State<St>, Admin(_a): Admin) -> J<StorageInfo> {
+    let (attachments, bytes): (i64, i64) = st
+        .db
+        .call(|c| Ok(c.query_row("SELECT COUNT(*), COALESCE(SUM(size),0) FROM attachments WHERE removed=0", [], |r| Ok((r.get(0)?, r.get(1)?)))?))
+        .await?;
+    Ok(Json(StorageInfo { config: st.storage_config().masked(), attachments, bytes }))
+}
+
+pub async fn test_storage(State(st): State<St>, Admin(_a): Admin, Json(cfg): Json<StorageConfig>) -> J<StorageTestResponse> {
+    let cfg = cfg.unmask_from(&st.storage_config());
+    let res = match build_storage(&cfg, &st.cfg.data_dir) {
+        Ok(s) => s.check().await,
+        Err(e) => Err(e),
+    };
+    Ok(Json(match res {
+        Ok(m) => StorageTestResponse { ok: true, message: m },
+        Err(e) => StorageTestResponse { ok: false, message: e.message },
+    }))
+}
+
+/// Initial choice / change of backend; refused when files exist (use migrate then).
+pub async fn put_storage(State(st): State<St>, Admin(a): Admin, Json(cfg): Json<StorageConfig>) -> J<StorageInfo> {
+    if a.role != Role::Owner {
+        return Err(AppError::forbidden("only the owner can change server-wide settings"));
+    }
+    let cfg = cfg.unmask_from(&st.storage_config());
+    let n: i64 = st.db.call(|c| Ok(c.query_row("SELECT COUNT(*) FROM attachments", [], |r| r.get(0))?)).await?;
+    if n > 0 && cfg != st.storage_config() {
+        return Err(AppError::conflict("files already exist; use 'move all files to another storage' instead"));
+    }
+    let storage = build_storage(&cfg, &st.cfg.data_dir)?;
+    storage.check().await?;
+    crate::admin::set_storage(&st, cfg, storage).await?;
+    get_storage(State(st), Admin(a)).await
+}
+
+pub async fn migrate_storage(State(st): State<St>, Admin(a): Admin, Json(req): Json<StorageMigrateRequest>) -> J<JobStatus> {
+    if a.role != Role::Owner {
+        return Err(AppError::forbidden("only the owner can change server-wide settings"));
+    }
+    let target = req.target.unmask_from(&st.storage_config());
+    let id = crate::admin::start_migration(&st, target, req.delete_source).await?;
+    job(State(st), Admin(a), Path(id)).await
+}
+
+pub async fn verify_storage(State(st): State<St>, Admin(a): Admin, Json(req): Json<StorageVerifyRequest>) -> J<JobStatus> {
+    let id = crate::admin::start_verify(&st, req.deep).await?;
+    job(State(st), Admin(a), Path(id)).await
+}
+
+pub async fn job(State(st): State<St>, Admin(_a): Admin, Path(id): Path<String>) -> J<JobStatus> {
+    st.jobs
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&id)
+        .cloned()
+        .map(Json)
+        .ok_or_else(|| AppError::not_found("job not found"))
+}
+
+pub async fn overview(State(st): State<St>, Admin(_a): Admin) -> J<serde_json::Value> {
+    let online = st.hub.online_count();
+    let v = st
+        .db
+        .call(|c| {
+            let q = |sql: &str| -> AppResult<i64> { Ok(c.query_row(sql, [], |r| r.get(0))?) };
+            Ok(serde_json::json!({
+                "users": q("SELECT COUNT(*) FROM users WHERE deleted=0")?,
+                "disabled_users": q("SELECT COUNT(*) FROM users WHERE deleted=0 AND disabled=1")?,
+                "conversations": q("SELECT COUNT(*) FROM conversations WHERE kind IN ('channel','group_dm','dm')")?,
+                "messages": q("SELECT COUNT(*) FROM messages")?,
+                "attachments": q("SELECT COUNT(*) FROM attachments WHERE removed=0")?,
+                "attachment_bytes": q("SELECT COALESCE(SUM(size),0) FROM attachments WHERE removed=0")?,
+                "sessions": q("SELECT COUNT(*) FROM sessions WHERE revoked=0")?,
+            }))
+        })
+        .await?;
+    let mut v = v;
+    v["online"] = online.into();
+    v["server_version"] = VERSION.into();
+    v["storage"] = st.storage_config().kind().into();
+    Ok(Json(v))
+}

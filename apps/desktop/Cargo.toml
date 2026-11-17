@@ -1,0 +1,51 @@
+[package]
+name = "atomic-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Atomic Chat UI (Slint) for Linux, Windows and, via apps/android, Android"
+
+[lib]
+name = "atomic_ui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "atomic-chat"
+path = "src/main.rs"
+
+[dependencies]
+proto.workspace = true
+client-core.workspace = true
+tokio.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+image = { version = "0.25", default-features = false, features = ["png"] }
+slint = { version = "1.19", default-features = false, features = ["std", "compat-1-2", "renderer-femtovg", "renderer-software", "accessibility", "image-default-formats"] }
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+slint = { version = "1.19", default-features = false, features = ["std", "compat-1-2", "renderer-femtovg", "renderer-software", "accessibility", "image-default-formats", "backend-default", "system-tray", "unstable-winit-030"] }
+
+[target.'cfg(windows)'.dependencies]
+keyring = { version = "3", default-features = false, features = ["windows-native"] }
+
+
+[build-dependencies]
+slint-build = "1.19"
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+
+[package.metadata.deb]
+copyright = "2026, Atomic Chat contributors (MIT)"
+name = "atomic-chat"
+maintainer = "Atomic Chat contributors <admin@example.com>"
+section = "net"
+priority = "optional"
+depends = "$auto, libc6"
+extended-description = "Self-hosted Slack-style team chat client. Connects to your own Atomic Chat server."
+assets = [
+  ["../../target/release/atomic-chat", "usr/bin/", "755"],
+  ["../../packaging/linux/atomic-chat.desktop", "usr/share/applications/", "644"],
+  ["../../assets/icon/atomic-chat-256.png", "usr/share/icons/hicolor/256x256/apps/atomic-chat.png", "644"],
+  ["../../assets/icon/atomic-chat-48.png", "usr/share/icons/hicolor/48x48/apps/atomic-chat.png", "644"],
+]

@@ -1,0 +1,24 @@
+[package]
+name = "atomic-android"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Android entry point: Slint on android-activity + JNI hooks for the Kotlin shell"
+
+[lib]
+name = "atomic_android"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+slint = { version = "1.19", default-features = false, features = ["std", "compat-1-2", "renderer-femtovg", "accessibility"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+atomic-desktop = { path = "../desktop" }
+client-core.workspace = true
+proto.workspace = true
+tokio.workspace = true
+serde_json.workspace = true
+jni = "0.21"
+log = "0.4"
+android_logger = "0.14"
+slint = { version = "1.19", default-features = false, features = ["std", "compat-1-2", "renderer-femtovg", "accessibility", "backend-android-activity-06"] }

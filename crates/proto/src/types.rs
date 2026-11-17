@@ -1,0 +1,636 @@
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
+/// Milliseconds since the Unix epoch, UTC.
+pub type Ts = i64;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Role {
+    Owner,
+    Admin,
+    Member,
+}
+
+impl Role {
+    pub fn is_admin(self) -> bool {
+        matches!(self, Role::Owner | Role::Admin)
+    }
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Role::Owner => "owner",
+            Role::Admin => "admin",
+            Role::Member => "member",
+        }
+    }
+    pub fn parse(s: &str) -> Option<Role> {
+        match s {
+            "owner" => Some(Role::Owner),
+            "admin" => Some(Role::Admin),
+            "member" => Some(Role::Member),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ConversationKind {
+    Dm,
+    /// Notes to self.
+    #[serde(rename = "self")]
+    SelfNote,
+    GroupDm,
+    /// Private channel. There are no public channels.
+    Channel,
+}
+
+impl ConversationKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ConversationKind::Dm => "dm",
+            ConversationKind::SelfNote => "self",
+            ConversationKind::GroupDm => "group_dm",
+            ConversationKind::Channel => "channel",
+        }
+    }
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "dm" => Some(Self::Dm),
+            "self" => Some(Self::SelfNote),
+            "group_dm" => Some(Self::GroupDm),
+            "channel" => Some(Self::Channel),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Presence {
+    Online,
+    Away,
+    Dnd,
+    Offline,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct User {
+    pub id: String,
+    pub username: String,
+    pub display_name: String,
+    pub role: Role,
+    /// Attachment id of the profile photo; clients show initials when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<String>,
+    #[serde(default)]
+    pub disabled: bool,
+    #[serde(default)]
+    pub is_bot: bool,
+    /// Never present when the user has chosen to hide it (SV-12).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_active_ms: Option<Ts>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub presence: Option<Presence>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Me {
+    pub user: User,
+    /// True when an admin enabled the Privacy screen for this user (SV-12).
+    pub privacy_controls_enabled: bool,
+    pub hide_last_active: bool,
+    /// What the user chose: "auto" (online while connected), "away" or "dnd".
+    pub presence_pref: String,
+    /// False for accounts created with a one-time link that have not set a password yet.
+    pub password_set: bool,
+    pub email: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Member {
+    pub user_id: String,
+    /// "owner" or "member" (conversation-local role).
+    pub role: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Conversation {
+    pub id: String,
+    pub kind: ConversationKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub topic: Option<String>,
+    #[serde(default)]
+    pub archived: bool,
+    pub created_ms: Ts,
+    pub members: Vec<Member>,
+    /// Highest message sequence number in this conversation.
+    pub last_seq: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_message_ts: Option<Ts>,
+}
+
+/// A conversation plus the calling user's own state in it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ConversationSummary {
+    #[serde(flatten)]
+    pub conversation: Conversation,
+    pub last_read_seq: i64,
+    pub marked_unread: bool,
+    pub unread: i64,
+    pub mentions: i64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MessageKind {
+    Text,
+    File,
+    System,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Attachment {
+    pub id: String,
+    pub name: String,
+    pub content_type: String,
+    pub size: i64,
+    /// True when an admin removed the file; clients show "File removed".
+    #[serde(default)]
+    pub removed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ReactionSummary {
+    pub emoji: String,
+    pub user_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Message {
+    pub id: String,
+    pub conv_id: String,
+    /// Conversation-local, gapless, increasing.
+    pub seq: i64,
+    pub sender_id: String,
+    /// Client-generated id for idempotent sends (only echoed to the sender's devices).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    /// Plain text in the small markup (see docs/API.md). Empty for tombstones.
+    pub body: String,
+    pub kind: MessageKind,
+    pub ts: Ts,
+    /// 1 for a never edited message.
+    pub version: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edited_ms: Option<Ts>,
+    /// Tombstone: shown as "Message deleted".
+    #[serde(default)]
+    pub deleted: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_root: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply_to: Option<String>,
+    /// Structured @mentions (user ids).
+    #[serde(default)]
+    pub mentions: Vec<String>,
+    #[serde(default)]
+    pub attachments: Vec<Attachment>,
+    #[serde(default)]
+    pub reactions: Vec<ReactionSummary>,
+    /// Delivered to at least one recipient device.
+    #[serde(default)]
+    pub delivered: bool,
+    /// M-20: set when this message was forwarded from another conversation (attribution).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forwarded: Option<ForwardInfo>,
+    /// SV-17: interactive form sent by a bot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub form: Option<crate::automation::Form>,
+    /// Users who already submitted the form.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub responded: Vec<String>,
+}
+
+/// Attribution of a forwarded message (M-20).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ForwardInfo {
+    pub sender_id: String,
+    pub conv_id: String,
+    pub message_id: String,
+    pub ts: Ts,
+}
+
+impl Message {
+    pub fn is_edited(&self) -> bool {
+        self.version > 1 && !self.deleted
+    }
+}
+
+// ---------------------------------------------------------------- meta & auth
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ServerMeta {
+    pub name: String,
+    pub api_version: u32,
+    pub min_client_version: String,
+    pub server_version: String,
+    /// True until the first owner account has been created.
+    pub setup_required: bool,
+    pub max_upload_bytes: u64,
+    pub ai_search_enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ntfy_url: Option<String>,
+    #[serde(default)]
+    pub fcm_enabled: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct LoginRequest {
+    pub username: String,
+    pub password: String,
+    #[serde(default)]
+    pub device_name: String,
+    #[serde(default)]
+    pub client_version: String,
+}
+
+/// Sign in with the one-time token from an admin-created login link.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct LinkLoginRequest {
+    pub token: String,
+    #[serde(default)]
+    pub device_name: String,
+    #[serde(default)]
+    pub client_version: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct TokenPair {
+    pub access_token: String,
+    pub refresh_token: String,
+    /// Seconds until `access_token` expires.
+    pub expires_in: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct LoginResponse {
+    #[serde(flatten)]
+    pub tokens: TokenPair,
+    pub session_id: String,
+    pub me: Me,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct RefreshRequest {
+    pub refresh_token: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ChangePasswordRequest {
+    #[serde(default)]
+    pub current_password: Option<String>,
+    pub new_password: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+pub struct UpdateMeRequest {
+    pub display_name: Option<String>,
+    /// "auto", "away" or "dnd".
+    pub presence_pref: Option<String>,
+    /// Only honoured when `privacy_controls_enabled` is on for the user.
+    pub hide_last_active: Option<bool>,
+    /// Attachment id of an uploaded image; empty string clears it.
+    pub avatar: Option<String>,
+}
+
+// ---------------------------------------------------------------- sync
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Bootstrap {
+    /// Start `events` / the WebSocket from this cursor after applying the snapshot.
+    pub cursor: i64,
+    pub server_time: Ts,
+    pub me: Me,
+    pub users: Vec<User>,
+    pub conversations: Vec<ConversationSummary>,
+    /// Latest messages per conversation (conversation id -> ascending by seq).
+    pub messages: BTreeMap<String, Vec<Message>>,
+    /// Per conversation: true when older messages exist on the server.
+    pub has_more: BTreeMap<String, bool>,
+    /// Per-conversation favourites, sections, mute and notification level (NV-01..NV-07, N-03).
+    #[serde(default)]
+    pub prefs: Vec<ConvPref>,
+    #[serde(default)]
+    pub sections: Vec<Section>,
+    /// User groups (`@design-team`), M-18.
+    #[serde(default)]
+    pub groups: Vec<UserGroup>,
+    /// Synced drafts (M-22).
+    #[serde(default)]
+    pub drafts: Vec<DraftItem>,
+    /// Threads the user follows, newest activity first (M-06, M-07).
+    #[serde(default)]
+    pub threads: Vec<ThreadSummary>,
+    /// Pins and bookmarks per conversation (SV-09).
+    #[serde(default)]
+    pub pins: BTreeMap<String, Vec<Pin>>,
+    #[serde(default)]
+    pub bookmarks: BTreeMap<String, Vec<Bookmark>>,
+}
+
+/// A pinned message (C-09). At most 100 per conversation.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Pin {
+    pub conv_id: String,
+    pub message_id: String,
+    pub pinned_by: String,
+    pub ts: Ts,
+}
+
+/// A channel bookmark (C-07): a link or a file shortcut shown above the timeline.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Bookmark {
+    pub id: String,
+    pub conv_id: String,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attachment_id: Option<String>,
+    pub position: i64,
+    pub created_by: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct BookmarkRequest {
+    pub title: String,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub attachment_id: Option<String>,
+    #[serde(default)]
+    pub position: Option<i64>,
+}
+
+/// A user group (`@handle`) that expands to member mentions when a message is sent (M-18).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct UserGroup {
+    pub id: String,
+    pub handle: String,
+    pub name: String,
+    pub member_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct UserGroupRequest {
+    pub handle: Option<String>,
+    pub name: Option<String>,
+    pub member_ids: Option<Vec<String>>,
+}
+
+/// Per-user state of one conversation (synced across devices).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ConvPref {
+    pub conv_id: String,
+    #[serde(default)]
+    pub favourite: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub section_id: Option<String>,
+    /// Muted until this time (UTC ms); `-1` means forever. Absent: not muted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mute_until_ms: Option<Ts>,
+    /// "all", "mentions" or "nothing" (N-03).
+    pub notify: String,
+}
+
+impl ConvPref {
+    pub fn default_for(conv_id: &str) -> ConvPref {
+        ConvPref { conv_id: conv_id.to_string(), favourite: false, section_id: None, mute_until_ms: None, notify: "all".into() }
+    }
+    pub fn is_muted(&self, now: Ts) -> bool {
+        matches!(self.mute_until_ms, Some(-1)) || self.mute_until_ms.map(|t| t > now).unwrap_or(false)
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+pub struct ConvPrefRequest {
+    pub favourite: Option<bool>,
+    /// Empty string removes the conversation from its section.
+    pub section_id: Option<String>,
+    /// `0` unmutes, `-1` mutes forever, otherwise mute until that time.
+    pub mute_until_ms: Option<Ts>,
+    pub notify: Option<String>,
+}
+
+/// A custom sidebar section (NV-04).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Section {
+    pub id: String,
+    pub name: String,
+    pub position: i64,
+    #[serde(default)]
+    pub collapsed: bool,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+pub struct SectionRequest {
+    pub name: Option<String>,
+    pub position: Option<i64>,
+    pub collapsed: Option<bool>,
+}
+
+/// A thread the user follows (M-06).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ThreadSummary {
+    pub conv_id: String,
+    pub root: Message,
+    pub reply_count: i64,
+    pub last_reply_ts: Ts,
+    pub unread: i64,
+    pub following: bool,
+    pub participants: Vec<String>,
+}
+
+/// A thread root plus its replies (M-05).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ThreadView {
+    pub summary: ThreadSummary,
+    pub replies: Vec<Message>,
+}
+
+/// A draft, per conversation or per thread (M-22). An empty body means "no draft".
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct DraftItem {
+    pub conv_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_root: Option<String>,
+    pub body: String,
+    pub updated_ms: Ts,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct DraftRequest {
+    #[serde(default)]
+    pub thread_root: Option<String>,
+    pub body: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ForwardRequest {
+    pub conv_ids: Vec<String>,
+    /// Optional note posted with the forwarded message.
+    #[serde(default)]
+    pub comment: Option<String>,
+}
+
+/// A push registration (SV-13). `kind` is "fcm", "ntfy" or "apns".
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct PushRegistration {
+    #[serde(default)]
+    pub id: String,
+    pub kind: String,
+    /// FCM / APNs device token, or the ntfy topic.
+    pub target: String,
+    /// ntfy server URL (falls back to the server's configured one).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ntfy_url: Option<String>,
+    #[serde(default)]
+    pub device_name: String,
+    #[serde(default)]
+    pub created_ms: Ts,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct HistoryResponse {
+    pub messages: Vec<Message>,
+    pub has_more_before: bool,
+    pub has_more_after: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CreateConversation {
+    /// `channel` or `group_dm` (admins only).
+    pub kind: ConversationKind,
+    pub name: String,
+    #[serde(default)]
+    pub topic: Option<String>,
+    #[serde(default)]
+    pub members: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+pub struct UpdateConversation {
+    pub name: Option<String>,
+    pub topic: Option<String>,
+    pub archived: Option<bool>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CreateDm {
+    pub user_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SendMessage {
+    /// Idempotency key generated by the client; retries never duplicate.
+    pub client_id: String,
+    pub body: String,
+    #[serde(default)]
+    pub thread_root: Option<String>,
+    #[serde(default)]
+    pub reply_to: Option<String>,
+    #[serde(default)]
+    pub mentions: Vec<String>,
+    #[serde(default)]
+    pub attachment_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct EditMessage {
+    pub body: String,
+    #[serde(default)]
+    pub mentions: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ReactRequest {
+    pub emoji: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct MarkReadRequest {
+    /// Mark everything up to and including this sequence number as read.
+    pub seq: i64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct UploadResponse {
+    pub attachment: Attachment,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct SearchHit {
+    pub message: Message,
+    /// Snippet with matches wrapped in `[[` and `]]`.
+    pub snippet: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct SearchResponse {
+    pub hits: Vec<SearchHit>,
+    pub people: Vec<User>,
+    /// Attachments whose file name matches (SR-03).
+    #[serde(default)]
+    pub files: Vec<FileHit>,
+    /// Channels and group DMs of the caller whose name matches (SR-05).
+    #[serde(default)]
+    pub channels: Vec<ConversationSummary>,
+}
+
+/// A file in the Files browser / file search (F-05, SR-03).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct FileHit {
+    pub attachment: Attachment,
+    pub message_id: String,
+    pub conv_id: String,
+    pub sender_id: String,
+    pub ts: Ts,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct SessionInfo {
+    pub id: String,
+    pub user_id: String,
+    #[serde(default)]
+    pub username: String,
+    pub device_name: String,
+    pub client_version: String,
+    pub ip: String,
+    pub created_ms: Ts,
+    pub last_seen_ms: Ts,
+    pub current: bool,
+    pub revoked: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct EventsResponse {
+    pub events: Vec<crate::events::Event>,
+    /// Cursor to continue from (the last returned event, or the request cursor if none).
+    pub cursor: i64,
+    pub has_more: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SetupRequest {
+    pub username: String,
+    pub display_name: String,
+    pub password: String,
+    #[serde(default)]
+    pub email: Option<String>,
+    #[serde(default)]
+    pub storage: Option<crate::admin::StorageConfig>,
+}

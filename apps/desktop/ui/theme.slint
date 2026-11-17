@@ -1,0 +1,152 @@
+import { Palette } from "std-widgets.slint";
+
+export struct ConvItem {
+    id: string,
+    title: string,
+    initials: string,
+    color: color,
+    unread: int,
+    mentions: int,
+    preview: string,
+    stamp: string,
+    kind: string,
+    favourite: bool,
+    muted: bool,
+    archived: bool,
+    header: string, // non-empty on the first row of a section
+}
+
+export struct BlockItem {
+    kind: int, // 0 paragraph/list, 1 code, 2 quote
+    text: string,
+    styled: styled-text,
+}
+
+export struct ReactItem {
+    emoji: string,
+    count: int,
+    mine: bool,
+    img: image,
+    has-img: bool,
+}
+
+// A picker emoji; `img` is the colour picture (the text renderers draw colour fonts as outlines).
+export struct EmojiItem {
+    ch: string,
+    img: image,
+    has-img: bool,
+}
+
+export struct FormOptionItem {
+    value: string,
+    label: string,
+    on: bool,
+}
+
+export struct FormFieldItem {
+    id: string,
+    kind: int, // 0 text, 1 multiline, 2 boolean, 3 select, 4 multi select
+    label: string,
+    placeholder: string,
+    required: bool,
+    text: string,
+    flag: bool,
+    options: [FormOptionItem],
+}
+
+export struct FormButtonItem {
+    id: string,
+    label: string,
+    style: string, // primary, danger or empty
+    modal: bool,
+}
+
+export struct FileItem {
+    id: string,
+    name: string,
+    size: string,
+    kind: int, // 0 other, 1 image, 2 video, 3 audio
+    img: image,
+    has-img: bool,
+    removed: bool,
+}
+
+export struct MsgItem {
+    id: string,
+    sender: string,
+    initials: string,
+    color: color,
+    time: string,
+    mine: bool,
+    edited: bool,
+    deleted: bool,
+    can-edit: bool,
+    state: int, // 0 sent, 1 sending, 2 failed, 3 delivered
+    day: string,
+    blocks: [BlockItem],
+    files: [FileItem],
+    reactions: [ReactItem],
+    replies: int,
+    pinned: bool,
+    forwarded: string,
+    quote: string,
+    divider: bool,
+    can-pin: bool,
+    is-app: bool,
+    has-form: bool,
+    form-title: string,
+    form-desc: string,
+    form-fields: bool,
+    form-buttons: [FormButtonItem],
+    responded: bool,
+}
+
+export struct PersonItem {
+    id: string,
+    name: string,
+    initials: string,
+    color: color,
+    sub: string,
+}
+
+// One row of a generic list: search results, threads, files, pins, sessions, quick switcher.
+export struct RowItem {
+    kind: int, // search: 0 message, 1 file, 2 person, 3 channel
+    id: string,
+    conv: string,
+    title: string,
+    sub: string,
+    text: string,
+    badge: int,
+    flag: bool,
+    initials: string,
+    color: color,
+    header: string,
+}
+
+export struct BookmarkItem {
+    id: string,
+    title: string,
+    url: string,
+}
+
+export global Theme {
+    // Text size multiplier (Regular 1.0, Large 1.15, XL 1.3) times zoom times the Android system scale.
+    in-out property <float> scale: 1.0;
+    in-out property <bool> compact: false;
+    in-out property <int> accent-index: 0;
+    in-out property <bool> reduce-motion: false;
+    out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+    out property <color> accent: [#0dbd8b, #0467dd, #7b61ff, #e8590c][accent-index];
+    out property <color> on-accent: #ffffff;
+    out property <length> fs: 15px * scale;
+    out property <length> fs-small: 12px * scale;
+    out property <length> fs-title: 19px * scale;
+    out property <length> pad: compact ? 5px : 10px;
+    out property <color> muted: Palette.foreground.with-alpha(0.62);
+    out property <color> line: Palette.foreground.with-alpha(0.14);
+    out property <color> bubble-mine: accent.with-alpha(0.2);
+    out property <color> bubble-other: Palette.foreground.with-alpha(0.07);
+    out property <color> sidebar: dark ? #1b1d21 : #f1f3f7;
+    out property <color> danger: #c62828;
+}

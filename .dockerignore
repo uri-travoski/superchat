@@ -1,0 +1,11 @@
+target
+**/node_modules
+admin-web/dist
+.git
+.e2e-tmp
+credentials.md
+Server~
+*.apk
+apps/android/app/build
+apps/android/.gradle
+apps/android/app/src/main/jniLibs

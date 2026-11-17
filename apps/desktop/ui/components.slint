@@ -1,0 +1,478 @@
+import { Palette } from "std-widgets.slint";
+import { Theme, ConvItem, MsgItem, BlockItem, FileItem, ReactItem, RowItem, FormButtonItem } from "theme.slint";
+
+export component Avatar {
+    in property <string> initials;
+    in property <color> tint;
+    in property <length> size: 40px * Theme.scale;
+    in property <int> presence: 0; // 0 none, 1 online, 2 away, 3 dnd
+    width: size;
+    height: size;
+    Rectangle {
+        border-radius: parent.width / 2;
+        background: root.tint;
+        Text {
+            text: root.initials;
+            color: white;
+            font-size: root.size * 0.4;
+            font-weight: 700;
+        }
+    }
+    if root.presence > 0: Rectangle {
+        x: parent.width - self.width;
+        y: parent.height - self.height;
+        width: root.size * 0.3;
+        height: self.width;
+        border-radius: self.width / 2;
+        border-width: 2px;
+        border-color: Palette.background;
+        background: root.presence == 1 ? #2e7d32 : (root.presence == 2 ? #f9a825 : #c62828);
+    }
+}
+
+// Flat text button used for the many small actions.
+export component Link {
+    in property <string> text;
+    in property <bool> danger: false;
+    in property <bool> strong: false;
+    in property <bool> enabled: true;
+    callback clicked;
+    min-height: 28px;
+    min-width: lbl.preferred-width + 8px;
+    accessible-role: button;
+    accessible-label: root.text;
+    lbl := Text {
+        text: root.text;
+        font-size: Theme.fs-small * 1.05;
+        font-weight: root.strong ? 700 : 400;
+        color: !root.enabled ? Theme.muted : (root.danger ? Theme.danger : Theme.accent);
+        vertical-alignment: center;
+        horizontal-alignment: center;
+    }
+    TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component Pill {
+    in property <string> text;
+    in property <bool> on: false;
+    callback clicked;
+    height: 30px * Theme.scale;
+    min-width: lbl.preferred-width + 20px;
+    accessible-role: button;
+    accessible-label: root.text;
+    Rectangle {
+        border-radius: self.height / 2;
+        border-width: 1px;
+        border-color: root.on ? Theme.accent : Theme.line;
+        background: root.on ? Theme.accent.with-alpha(0.18) : (ta.has-hover ? Theme.bubble-other : transparent);
+        lbl := Text {
+            text: root.text;
+            font-size: Theme.fs-small * 1.05;
+            color: Palette.foreground;
+        }
+        ta := TouchArea { clicked => { root.clicked(); } }
+    }
+}
+
+export component PrimaryButton {
+    in property <string> text;
+    in property <bool> enabled: true;
+    callback clicked;
+    height: max(38px, 32px * Theme.scale);
+    min-width: lbl.preferred-width + 28px;
+    accessible-role: button;
+    accessible-label: root.text;
+    Rectangle {
+        border-radius: 8px;
+        background: root.enabled ? (ta.has-hover ? Theme.accent.darker(0.1) : Theme.accent) : Theme.line;
+        lbl := Text {
+            text: root.text;
+            color: Theme.on-accent;
+            font-size: Theme.fs;
+            font-weight: 600;
+        }
+        ta := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
+    }
+}
+
+export component GhostButton {
+    in property <string> text;
+    in property <bool> on: false;
+    in property <bool> danger: false;
+    callback clicked;
+    height: max(38px, 32px * Theme.scale);
+    min-width: lbl.preferred-width + 24px;
+    accessible-role: button;
+    accessible-label: root.text;
+    Rectangle {
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: root.on ? Theme.accent : Theme.line;
+        background: root.on ? Theme.accent.with-alpha(0.15) : (ta.has-hover ? Theme.bubble-other : transparent);
+        lbl := Text {
+            text: root.text;
+            color: root.danger ? Theme.danger : Palette.foreground;
+            font-size: Theme.fs;
+        }
+        ta := TouchArea { clicked => { root.clicked(); } }
+    }
+}
+
+export component SectionHeader {
+    in property <string> text;
+    height: Theme.fs-small * 2.2;
+    Text {
+        x: 12px;
+        text: root.text;
+        font-size: Theme.fs-small;
+        font-weight: 700;
+        color: Theme.muted;
+        vertical-alignment: bottom;
+    }
+}
+
+export component ConvRow {
+    in property <ConvItem> item;
+    in property <bool> selected;
+    callback clicked;
+    callback long-pressed;
+    height: Theme.compact ? max(48px, 42px * Theme.scale) : max(64px, 52px * Theme.scale);
+    accessible-role: button;
+    accessible-label: root.item.title + (root.item.unread > 0 ? ", " + root.item.unread + " unread" : "");
+    VerticalLayout {
+        if root.item.header != "": SectionHeader { text: root.item.header; }
+        Rectangle {
+            vertical-stretch: 1;
+            background: root.selected ? Theme.accent.with-alpha(0.18) : (ta.has-hover ? Theme.bubble-other : transparent);
+            HorizontalLayout {
+                padding: Theme.pad;
+                spacing: 10px;
+                Avatar {
+                    initials: root.item.initials;
+                    tint: root.item.color;
+                    size: (Theme.compact ? 32px : 40px) * Theme.scale;
+                    y: (parent.height - self.height) / 2;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+                    HorizontalLayout {
+                        spacing: 6px;
+                        Text {
+                            text: root.item.title;
+                            font-size: Theme.fs;
+                            font-weight: root.item.unread > 0 ? 700 : 500;
+                            color: root.item.muted ? Theme.muted : Palette.foreground;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
+                        if root.item.favourite: Text { text: "\u{2605}"; color: #f9a825; font-size: Theme.fs-small; }
+                        if root.item.muted: Text { text: "\u{1F515}"; font-size: Theme.fs-small; color: Theme.muted; }
+                        Text {
+                            text: root.item.stamp;
+                            font-size: Theme.fs-small;
+                            color: Theme.muted;
+                        }
+                    }
+                    if !Theme.compact: HorizontalLayout {
+                        spacing: 6px;
+                        Text {
+                            text: root.item.preview;
+                            font-size: Theme.fs-small;
+                            color: Theme.muted;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
+                        if root.item.unread > 0: Rectangle {
+                            width: max(20px, badge.preferred-width + 12px);
+                            height: 20px * Theme.scale;
+                            border-radius: 10px * Theme.scale;
+                            background: root.item.muted ? Theme.muted : (root.item.mentions > 0 ? Theme.danger : Theme.accent);
+                            badge := Text {
+                                text: root.item.unread;
+                                color: white;
+                                font-size: Theme.fs-small;
+                                font-weight: 700;
+                            }
+                        }
+                    }
+                }
+            }
+            ta := TouchArea {
+                clicked => { root.clicked(); }
+                pointer-event(e) => {
+                    if e.button == PointerEventButton.right && e.kind == PointerEventKind.up { root.long-pressed(); }
+                }
+            }
+        }
+    }
+}
+
+export component MessageRow {
+    in property <MsgItem> m;
+    in property <bool> selected;
+    in property <bool> in-thread: false;
+    callback toggle-select;
+    callback edit;
+    callback remove;
+    callback react(string);
+    callback open-picker;
+    callback retry;
+    callback open-thread;
+    callback pin;
+    callback copy-link;
+    callback forward;
+    callback open-file(string);
+    callback open-link(string);
+    callback form-action(string);
+    in property <string> playing-id;
+    callback play-audio(string);
+    VerticalLayout {
+        spacing: 3px;
+        if m.day != "": HorizontalLayout {
+            alignment: center;
+            padding-top: 8px;
+            Rectangle {
+                border-radius: 12px;
+                background: Theme.bubble-other;
+                width: dl.preferred-width + 20px;
+                height: dl.preferred-height + 8px;
+                dl := Text { text: m.day; font-size: Theme.fs-small; color: Theme.muted; font-weight: 700; }
+            }
+        }
+        if m.divider: HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            spacing: 8px;
+            Rectangle { height: 1px; background: Theme.danger; y: 8px; horizontal-stretch: 1; }
+            Text { text: "New messages"; color: Theme.danger; font-size: Theme.fs-small; font-weight: 700; }
+            Rectangle { height: 1px; background: Theme.danger; y: 8px; horizontal-stretch: 1; }
+        }
+        Rectangle {
+            background: root.selected ? Theme.bubble-other : transparent;
+            HorizontalLayout {
+                spacing: 10px;
+                padding-left: 12px;
+                padding-right: 12px;
+                padding-top: Theme.compact ? 1px : 4px;
+                padding-bottom: Theme.compact ? 1px : 4px;
+                Avatar {
+                    initials: m.initials;
+                    tint: m.color;
+                    size: (Theme.compact ? 26px : 34px) * Theme.scale;
+                    y: 2px;
+                }
+                VerticalLayout {
+                    spacing: 2px;
+                    horizontal-stretch: 1;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text {
+                            text: m.sender;
+                            font-size: Theme.fs;
+                            font-weight: 700;
+                        }
+                        if m.is-app: Rectangle {
+                            width: apptag.preferred-width + 10px;
+                            height: apptag.preferred-height + 2px;
+                            y: 2px;
+                            border-radius: 3px;
+                            background: Theme.accent.with-alpha(0.22);
+                            accessible-role: text;
+                            accessible-label: "App";
+                            apptag := Text { text: "APP"; font-size: Theme.fs-small * 0.8; font-weight: 800; color: Theme.accent; horizontal-alignment: center; vertical-alignment: center; }
+                        }
+                        Text {
+                            text: m.time + (m.edited ? " (edited)" : "") + (m.state == 1 ? "  sending..." : "") + (m.state == 2 ? "  not sent" : "") + (m.state == 3 ? "  \u{2713}" : "") + (m.pinned ? "  \u{1F4CC}" : "");
+                            font-size: Theme.fs-small;
+                            color: m.state == 2 ? Theme.danger : Theme.muted;
+                            vertical-alignment: bottom;
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                        if m.state == 2: Link { text: "Retry"; clicked => { root.retry(); } }
+                    }
+                    if m.forwarded != "": Text { text: "\u{21AA} " + m.forwarded; font-size: Theme.fs-small; color: Theme.muted; font-italic: true; }
+                    if m.quote != "": Rectangle {
+                        height: qt.preferred-height + 6px;
+                        Rectangle { x: 0; width: 3px; background: Theme.accent; }
+                        qt := Text {
+                            x: 10px;
+                            width: parent.width - 10px;
+                            text: m.quote;
+                            font-size: Theme.fs-small;
+                            color: Theme.muted;
+                            overflow: elide;
+                        }
+                    }
+                    if m.deleted: Text {
+                        text: "Message deleted";
+                        font-size: Theme.fs;
+                        font-italic: true;
+                        color: Theme.muted;
+                    }
+                    if !m.deleted: VerticalLayout {
+                        spacing: 4px;
+                        for b in m.blocks: VerticalLayout {
+                            if b.kind == 1: Rectangle {
+                                background: Theme.bubble-other;
+                                border-radius: 6px;
+                                height: ct.preferred-height + 16px;
+                                ct := Text {
+                                    x: 8px;
+                                    y: 8px;
+                                    width: parent.width - 16px;
+                                    text: b.text;
+                                    font-family: "monospace";
+                                    font-size: Theme.fs * 0.92;
+                                    wrap: word-wrap;
+                                }
+                            }
+                            if b.kind == 2: Rectangle {
+                                height: qs.preferred-height + 4px;
+                                Rectangle { x: 0; width: 3px; background: Theme.line; }
+                                qs := StyledText {
+                                    x: 10px;
+                                    width: parent.width - 10px;
+                                    text: b.styled;
+                                    default-color: Theme.muted;
+                                    default-font-size: Theme.fs;
+                                    link-color: Theme.accent;
+                                    link-clicked(l) => { root.open-link(l); }
+                                }
+                            }
+                            if b.kind == 0: StyledText {
+                                text: b.styled;
+                                default-color: Palette.foreground;
+                                default-font-size: Theme.fs;
+                                link-color: Theme.accent;
+                                selectable: true;
+                                link-clicked(l) => { root.open-link(l); }
+                            }
+                        }
+                        for f in m.files: VerticalLayout {
+                            spacing: 3px;
+                            if f.has-img: HorizontalLayout {
+                                alignment: start;
+                                Image {
+                                    source: f.img;
+                                    width: 240px * Theme.scale;
+                                    height: self.width * f.img.height / max(1, f.img.width);
+                                    image-fit: contain;
+                                    accessible-role: image;
+                                    accessible-label: f.name;
+                                    TouchArea { clicked => { root.open-file(f.id); } }
+                                }
+                            }
+                            Rectangle {
+                                height: max(36px, 30px * Theme.scale);
+                                border-radius: 8px;
+                                border-width: 1px;
+                                border-color: Theme.line;
+                                background: fta.has-hover ? Theme.bubble-other : transparent;
+                                HorizontalLayout {
+                                    padding-left: 10px;
+                                    padding-right: 10px;
+                                    spacing: 8px;
+                                    Text {
+                                        text: f.removed ? "File removed" : (f.kind == 1 ? "\u{1F5BC}" : (f.kind == 2 ? "\u{1F3AC}" : (f.kind == 3 ? "\u{1F3A4}" : "\u{1F4CE}")));
+                                        font-size: Theme.fs;
+                                        vertical-alignment: center;
+                                    }
+                                    Text {
+                                        text: f.removed ? "" : f.name + "  (" + f.size + ")";
+                                        font-size: Theme.fs-small;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                        horizontal-stretch: 1;
+                                    }
+                                    if !f.removed: Text {
+                                        text: f.kind == 3 ? (root.playing-id == f.id ? "Stop" : "Play") : (f.kind == 2 ? "Play" : "Open");
+                                        color: Theme.accent;
+                                        font-size: Theme.fs-small;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                                fta := TouchArea { enabled: !f.removed; clicked => { if f.kind == 3 { root.play-audio(f.id); } else { root.open-file(f.id); } } }
+                            }
+                        }
+                        if m.has-form: Rectangle {
+                            border-radius: 10px;
+                            border-width: 1px;
+                            border-color: Theme.line;
+                            background: Theme.bubble-other;
+                            height: fc.preferred-height + 2px;
+                            accessible-role: groupbox;
+                            accessible-label: m.form-title;
+                            fc := VerticalLayout {
+                                padding: 12px;
+                                spacing: 8px;
+                                if m.form-title != "": Text { text: m.form-title; font-size: Theme.fs; font-weight: 700; wrap: word-wrap; }
+                                if m.form-desc != "": Text { text: m.form-desc; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
+                                if m.responded: Text { text: "\u{2713} You responded"; font-size: Theme.fs-small; color: Theme.accent; font-weight: 700; }
+                                if !m.responded: HorizontalLayout {
+                                    spacing: 8px;
+                                    alignment: start;
+                                    if m.form-fields: PrimaryButton { text: "Fill in"; clicked => { root.form-action(""); } }
+                                    for b in m.form-buttons: HorizontalLayout {
+                                        if b.style == "primary" && !m.form-fields: PrimaryButton { text: b.label + (b.modal ? "..." : ""); clicked => { root.form-action(b.id); } }
+                                        if b.style != "primary" || m.form-fields: GhostButton { text: b.label + (b.modal ? "..." : ""); danger: b.style == "danger"; clicked => { root.form-action(b.id); } }
+                                    }
+                                }
+                            }
+                        }
+                        if m.reactions.length > 0: HorizontalLayout {
+                            spacing: 6px;
+                            alignment: start;
+                            for r in m.reactions: Rectangle {
+                                height: 26px * Theme.scale;
+                                width: rch.preferred-width;
+                                border-radius: self.height / 2;
+                                border-width: 1px;
+                                border-color: r.mine ? Theme.accent : Theme.line;
+                                background: r.mine ? Theme.accent.with-alpha(0.18) : transparent;
+                                accessible-role: button;
+                                accessible-label: r.emoji + " " + r.count;
+                                rch := HorizontalLayout {
+                                    padding-left: 8px;
+                                    padding-right: 8px;
+                                    spacing: 4px;
+                                    if r.has-img: Image { source: r.img; width: 16px * Theme.scale; height: 16px * Theme.scale; y: (parent.height - self.height) / 2; }
+                                    if !r.has-img: Text { text: r.emoji; font-size: Theme.fs-small * 1.1; vertical-alignment: center; }
+                                    Text { text: r.count; font-size: Theme.fs-small * 1.1; vertical-alignment: center; }
+                                }
+                                TouchArea { clicked => { root.react(r.emoji); } }
+                            }
+                        }
+                        if m.replies > 0 && !root.in-thread: Link {
+                            text: m.replies == 1 ? "1 reply" : m.replies + " replies";
+                            strong: true;
+                            clicked => { root.open-thread(); }
+                        }
+                    }
+                    if root.selected && !m.deleted: Flickable {
+                        height: 34px;
+                        content-width: act.preferred-width;
+                        act := HorizontalLayout {
+                            spacing: 12px;
+                            alignment: start;
+                            Link { text: "React"; clicked => { root.open-picker(); } }
+                            if !root.in-thread: Link { text: "Reply in thread"; clicked => { root.open-thread(); } }
+                            if m.can-edit: Link { text: "Edit"; clicked => { root.edit(); } }
+                            Link { text: "Forward"; clicked => { root.forward(); } }
+                            Link { text: "Copy link"; clicked => { root.copy-link(); } }
+                            if m.can-pin: Link { text: m.pinned ? "Unpin" : "Pin"; clicked => { root.pin(); } }
+                            if m.mine: Link { text: "Delete"; danger: true; clicked => { root.remove(); } }
+                        }
+                    }
+                }
+            }
+            TouchArea {
+                z: -1;
+                clicked => { root.toggle-select(); }
+            }
+        }
+    }
+}

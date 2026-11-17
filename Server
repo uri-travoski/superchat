@@ -1,0 +1,35 @@
+SERVER
+
+Build a lightweight chat server with ntfy and apple/google push notifucation support. it should work behind tunnels (cloudflard) and without too. + work with domain names & direct IP addresses. is it possible to not open a port on the vps it is hosted on (make it work with domain name/ip address)?
+
+- end-to-end encryption based on user login.
+- Chats are readable on the server by administrator.
+- Unlimited retention of messages and attachment links.
+- cloud chats. All messages & files live on server like Telegram and a new or second device pulls down all old chats and attachments.
+- Any file type up to 100 MB (photos, videos, voice notes, documents).
+- Attachments can be stored only in Google Drive, S3, Cloudflare R2 or Backblaze B2 (choice of storage on initial setup)
+- Move files between storages and verify that the server still finds them as before.
+- Only configuration, accounts and the text chat database on the server's disk.
+- Create telegram type bots and API tokens in the admin panel. 
+- Telegram-style endpoints (/sendMessage, /sendDocument, /setWebhook, /getUpdates) for apps, receipt loggers and AI agents.
+- Automatic and one-click encrypted backups to selected storage (local, Google Drive, S3, Cloudflare R2 or Backblaze B2)
+- Restore onto a new server and reconnect to the existing storage so old chats and media work immediately.
+- hosted using docker compose
+- a disabled user being logged out with their old chats removed from the phone.
+- ntfy can be on same docker network
+- once apps/clients are built and working, build a webapp that looks like the desktop app (elementx web) as part of the server UI, the admin user can select user, channel, group etc fom a a dropdown and can see all their chats and history like in whatsapp web + search between dates, delete individual or bulk messages-attachments etc, filter messages between dates or before xx date to delete messages,  basically the admin can perfrom all functions in the web app that a normal user can in the desktop & mobile app + more functions like search, filter, delete messages etc. 
+
+Admin panel and users
+- Create users (name and password) directly in the admin panel, and a onetime link is sent to user which he copy pastes in the app login page to login.
+- Disabling a user kicks their session and logs them out of the app straight away.
+- One-click "Clear history": wipes the user's server-side chats and cloud attachments and forces a re-login.
+- Admin chat viewer: elementx Web style, with a user dropdown, photos, videos and files shown inline, using the full window.
+- Each side of a chat stored separately: clearing or deleting one user leaves the other person's copy.
+- Date-range delete: delete messages between two dates, with an optional "also delete the other person's copy" (off by default).
+- Per-user backup button: saves one user's account, contacts and chats.
+- Selective restore: one user, several, or all, merging by default with a "replace" option.
+- Automatic backup before Clear history or Delete: the action is refused if the backup fails.
+- Attachments kept in the backup folder: moved there instead of erased on Clear history or Delete, and moved back on restore.
+- date-range delete, per-user backup, selective restore, backup-before-delete and attachments kept in backups.
+
+

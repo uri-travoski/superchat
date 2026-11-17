@@ -1,0 +1,24 @@
+[package]
+name = "atomic-e2e"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "SV-24 end-to-end test: docker server + MinIO + fake Google Drive, driven by client-core and the CLI"
+
+[lib]
+path = "src/lib.rs"
+
+[dev-dependencies]
+proto.workspace = true
+client-core.workspace = true
+tokio.workspace = true
+serde_json.workspace = true
+serde.workspace = true
+tempfile = "3"
+axum = "0.8"
+bytes.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "multipart"] }
+hmac = "0.12"
+sha2.workspace = true
+hex.workspace = true

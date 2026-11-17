@@ -1,0 +1,19 @@
+[package]
+name = "atomic-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Headless Atomic Chat client for scripting and tests"
+
+[[bin]]
+name = "atomic"
+path = "src/main.rs"
+
+[dependencies]
+proto.workspace = true
+client-core.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing-subscriber.workspace = true

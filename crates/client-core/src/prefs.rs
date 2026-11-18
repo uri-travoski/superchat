@@ -44,6 +44,14 @@ pub struct Prefs {
     pub saved_searches: Vec<String>,
     /// Quick switcher history.
     pub spell_check: bool,
+    /// N-04: play a sound for new messages at all (off = every notification is silent).
+    pub notification_sound: bool,
+    /// N-04: the sound for conversations without their own choice ("default" = the system sound, "none", or a bundled id).
+    pub sound_default: String,
+    /// N-04: per-conversation sound, conversation id to sound id.
+    pub sound_conv: std::collections::BTreeMap<String, String>,
+    /// N-04: show the unread count on the tray icon, the window title and the launcher badge.
+    pub badge_counts: bool,
     /// Sidebar sections the user collapsed (`sec:fav`, `sec:channels`, `sec:dms`).
     pub collapsed_sections: Vec<String>,
 }
@@ -78,6 +86,10 @@ impl Default for Prefs {
             saved_searches: vec![],
             spell_check: true,
             collapsed_sections: vec![],
+            notification_sound: true,
+            sound_default: "default".into(),
+            sound_conv: Default::default(),
+            badge_counts: true,
         }
     }
 }
@@ -100,6 +112,24 @@ impl Prefs {
 
     /// Sidebar sections the given account collapsed. Keys are stored per account as `<account>|<key>`
     /// (the account id is unique per server and user); keys without a prefix are 1.2 leftovers and apply to everyone.
+    /// N-04: the sound a new message in `conv_id` plays: the conversation's own choice, else the default; "none" when
+    /// sounds are off.
+    pub fn sound_for(&self, conv_id: &str) -> String {
+        if !self.notification_sound {
+            return "none".into();
+        }
+        self.sound_conv.get(conv_id).cloned().filter(|s| crate::sounds::is_valid(s)).unwrap_or_else(|| if crate::sounds::is_valid(&self.sound_default) { self.sound_default.clone() } else { "default".into() })
+    }
+
+    /// N-04: sets (or, with "default", clears) the conversation's own sound.
+    pub fn set_conv_sound(&mut self, conv_id: &str, sound: &str) {
+        if sound == "default" || !crate::sounds::is_valid(sound) {
+            self.sound_conv.remove(conv_id);
+        } else {
+            self.sound_conv.insert(conv_id.to_string(), sound.to_string());
+        }
+    }
+
     pub fn collapsed_for(&self, account: &str) -> Vec<String> {
         let pre = format!("{account}|");
         self.collapsed_sections.iter().filter_map(|k| if let Some(r) = k.strip_prefix(&pre) { Some(r.to_string()) } else if !k.contains('|') { Some(k.clone()) } else { None }).collect()
@@ -142,6 +172,41 @@ mod tests {
         assert_eq!(p.text_scale(1.5), 2.0);
         let p = Prefs::default();
         assert!((p.text_scale(1.0) - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn notification_sound_per_conversation_with_global_switch() {
+        let dir = std::env::temp_dir().join(format!("scsound-{}", std::process::id()));
+        let mut p = Prefs::default();
+        assert_eq!(p.sound_for("c1"), "default");
+        p.sound_default = "pop".into();
+        p.set_conv_sound("c1", "bell");
+        p.set_conv_sound("c2", "none");
+        p.set_conv_sound("c3", "not-a-sound");
+        assert_eq!(p.sound_for("c1"), "bell");
+        assert_eq!(p.sound_for("c2"), "none");
+        assert_eq!(p.sound_for("c3"), "pop", "unknown ids are ignored");
+        p.save(&dir);
+        let back = Prefs::load(&dir);
+        assert_eq!(back.sound_for("c1"), "bell");
+        // Back to the default clears the override.
+        let mut back = back;
+        back.set_conv_sound("c1", "default");
+        assert_eq!(back.sound_for("c1"), "pop");
+        // The global switch silences everything, including conversation choices.
+        back.set_conv_sound("c1", "bell");
+        back.notification_sound = false;
+        assert_eq!(back.sound_for("c1"), "none");
+        // Old prefs files without the new fields still load with sounds on.
+        std::fs::write(dir.join("prefs.json"), r#"{"theme":"dark"}"#).unwrap();
+        let old = Prefs::load(&dir);
+        assert!(old.notification_sound && old.badge_counts);
+        assert_eq!(old.sound_for("x"), "default");
+        // The bundled files exist and are real WAVs.
+        let f = crate::sounds::file(&dir, "chime").unwrap();
+        assert!(crate::media::analyze_audio(&f).unwrap().duration_ms.unwrap() > 300);
+        assert!(crate::sounds::file(&dir, "default").is_none());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

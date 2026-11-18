@@ -110,7 +110,10 @@ pub fn desktop_secrets(data_dir: &Path) -> Arc<dyn SecretStore> {
     }
 }
 
-pub fn notify(title: &str, body: &str) {
+/// `silent`: the notification daemon must not play its own sound (the app plays a chosen one, or none).
+pub fn notify(title: &str, body: &str, silent: bool) {
+    #[cfg(windows)]
+    let _ = silent;
     #[cfg(windows)]
     {
         // A balloon from a short PowerShell script; best effort.
@@ -124,7 +127,14 @@ pub fn notify(title: &str, body: &str) {
         return;
     }
     #[cfg(not(windows))]
-    let _ = Command::new("notify-send").args(["--app-name=SuperChat", "--icon=mail-unread", title, body]).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+    {
+        let mut cmd = Command::new("notify-send");
+        cmd.args(["--app-name=SuperChat", "--icon=mail-unread"]);
+        if silent {
+            cmd.arg("--hint=boolean:suppress-sound:true");
+        }
+        let _ = cmd.args([title, body]).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+    }
 }
 
 /// The system "open" command: xdg-open on Linux, `cmd /C start` on Windows.

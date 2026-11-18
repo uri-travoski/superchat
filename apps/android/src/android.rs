@@ -278,11 +278,21 @@ pub extern "system" fn Java_app_superchat_SyncService_nativeStart(mut env: JNIEn
                         let title = conversation.as_ref().map(|cs| c.conversation_title(cs)).unwrap_or_else(|| sender_name.clone());
                         (title, if prefs.notification_preview { format!("{}: {}", sender_name, client_core::logic::markup::to_plain(&message.body)) } else { "New message".to_string() })
                     };
+                    let sound = prefs.sound_for(&message.conv_id);
+                    let unread = if prefs.badge_counts { c.unread_total().clamp(0, 9999) as i32 } else { 0 };
                     with_env(|env, c| {
                         let t = env.new_string(&title).ok()?;
                         let b = env.new_string(&body).ok()?;
                         let cv = env.new_string(&message.conv_id).ok()?;
-                        env.call_static_method(c, "notifyMessage", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", &[JValue::Object(&t), JValue::Object(&b), JValue::Object(&cv)]).ok().map(|_| ())
+                        let sd = env.new_string(&sound).ok()?;
+                        env.call_static_method(
+                            c,
+                            "notifyMessage",
+                            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)V",
+                            &[JValue::Object(&t), JValue::Object(&b), JValue::Object(&cv), JValue::Object(&sd), JValue::Int(unread)],
+                        )
+                        .ok()
+                        .map(|_| ())
                     });
                 }
             }

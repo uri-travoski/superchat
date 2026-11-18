@@ -9,6 +9,7 @@ pub mod logic;
 pub mod media;
 pub mod prefs;
 pub mod secrets;
+pub mod sounds;
 pub mod store;
 pub mod tls;
 

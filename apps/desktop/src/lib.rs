@@ -645,6 +645,9 @@ fn apply_prefs(ui: &AppWindow, st: &St) {
     ui.set_hour24(st.prefs.hour24);
     ui.set_notif(st.prefs.notifications);
     ui.set_notif_preview(st.prefs.notification_preview);
+    ui.set_notif_sound(st.prefs.notification_sound);
+    ui.set_badge_counts(st.prefs.badge_counts);
+    ui.set_sound_default_label(client_core::sounds::label(&st.prefs.sound_default).into());
     ui.set_push_choice(st.prefs.push_choice.clone().into());
     ui.set_ntfy_url(st.prefs.ntfy_url.clone().into());
     ui.set_launch_login(st.prefs.launch_on_login);
@@ -1389,6 +1392,12 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                     ui.set_menu_y(260.0);
                     ui.invoke_open_conv_menu(ui.get_current_conv(), ui.get_current_title(), false);
                 }
+                "soundmenu" => {
+                    ui.set_menu_x(40.0);
+                    ui.set_menu_y(260.0);
+                    ui.set_menu_conv(ui.get_current_conv());
+                    ui.set_menu_kind("sound".into());
+                }
                 "editdemo" => ui.invoke_up_edit(),
                 "searchq" => {
                     ui.invoke_open_search();
@@ -1528,6 +1537,7 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
     {
         let (wk, c, sh) = (ui.as_weak(), client.clone(), osh.clone());
         let is_android = hooks.is_android;
+        let media_n = hooks.media.clone();
         let mut rx = client.subscribe();
         client.handle().spawn(async move {
             let mut last_progress = Instant::now() - Duration::from_secs(1);
@@ -1560,7 +1570,15 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                                 let title = conversation.as_ref().map(|cs| c.conversation_title(cs)).unwrap_or_else(|| sender_name.clone());
                                 (title, if preview { format!("{}: {}", sender_name, model::plain(&message.body)) } else { "New message".into() })
                             };
-                            platform::notify(&title, &body);
+                            // N-04: bundled sounds are played by the app; "default" is left to the notification daemon.
+                            let (sound, dir) = {
+                                let g = sh.lock().unwrap();
+                                (g.prefs.sound_for(&message.conv_id), g.data_dir.clone())
+                            };
+                            platform::notify(&title, &body, sound != "default");
+                            if let Some(p) = client_core::sounds::file(&dir, &sound) {
+                                media_n.play_sound(&p);
+                            }
                         }
                     }
                     ClientEvent::SignedOut { message, .. } => {
@@ -2897,6 +2915,40 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
             })));
         });
         let s = sp.clone();
+        {
+            // N-04: the sound sheet. An empty conversation id means the default sound.
+            let (wk, sh2, h2) = (ui.as_weak(), osh.clone(), hooks.clone());
+            ui.on_set_sound(move |conv, sound| {
+                let Some(ui) = wk.upgrade() else { return };
+                let (conv, sound) = (conv.to_string(), sound.to_string());
+                let mut g = sh2.lock().unwrap();
+                if conv.is_empty() {
+                    if client_core::sounds::is_valid(&sound) {
+                        g.prefs.sound_default = sound.clone();
+                    }
+                    ui.set_sound_default_label(client_core::sounds::label(&g.prefs.sound_default).into());
+                } else {
+                    g.prefs.set_conv_sound(&conv, &sound);
+                }
+                g.prefs.save(&g.data_dir);
+                let (dir, eff) = (g.data_dir.clone(), if conv.is_empty() { sound.clone() } else { g.prefs.sound_for(&conv) });
+                drop(g);
+                ui.set_menu_kind("".into());
+                // Preview what was chosen (the system default and Silent have nothing of ours to play).
+                if let Some(p) = client_core::sounds::file(&dir, &eff) {
+                    h2.media.play_sound(&p);
+                }
+            });
+            let sh2 = osh.clone();
+            ui.on_sound_of(move |conv| {
+                let g = sh2.lock().unwrap();
+                if conv.is_empty() {
+                    g.prefs.sound_default.clone().into()
+                } else {
+                    g.prefs.sound_conv.get(conv.as_str()).cloned().unwrap_or_else(|| "default".into()).into()
+                }
+            });
+        }
         ui.on_notify_level(move |id, lvl| {
             let (id, lvl) = (id.to_string(), lvl.to_string());
             s(Box::new(move |c| Box::pin(async move {
@@ -2977,6 +3029,8 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                 "notif" => {
                     g.prefs.notifications = ui.get_notif();
                     g.prefs.notification_preview = ui.get_notif_preview();
+                    g.prefs.notification_sound = ui.get_notif_sound();
+                    g.prefs.badge_counts = ui.get_badge_counts();
                 }
                 "push" => {
                     g.prefs.push_choice = ui.get_push_choice().to_string();

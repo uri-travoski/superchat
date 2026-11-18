@@ -145,6 +145,11 @@ export component AppWindow inherits Window {
     in-out property <bool> hour24: false;
     in-out property <bool> notif: true;
     in-out property <bool> notif-preview: true;
+    in-out property <bool> notif-sound: true;
+    in-out property <bool> badge-counts: true;
+    in-out property <string> sound-default-label: "System default";
+    pure callback sound-of(string) -> string;
+    callback set-sound(string, string);
     in-out property <string> push-choice: "none";
     in-out property <string> ntfy-url;
     in-out property <bool> privacy-enabled: false;
@@ -1466,6 +1471,9 @@ export component AppWindow inherits Window {
                                         // ---------- notifications ----------
                                         if root.settings-page == "notif": Card {
                                             SettingRow { icon: "bell"; badge: #e8590c; title: "Show notifications"; has-switch: true; on: root.notif; toggled => { root.notif = self.on; root.setting-changed("notif"); } }
+                                            SettingRow { icon: "speaker"; badge: #7c3aed; title: "Notification sounds"; has-switch: true; on: root.notif-sound; toggled => { root.notif-sound = self.on; root.setting-changed("notif"); } }
+                                            if root.notif-sound: SettingRow { icon: "bell-ring"; badge: #7c3aed; title: "Default sound"; summary: root.sound-default-label; clicked => { root.menu-conv = ""; root.menu-kind = "sound"; } }
+                                            SettingRow { icon: "hash"; badge: #0d9488; title: "Show unread count"; has-switch: true; on: root.badge-counts; toggled => { root.badge-counts = self.on; root.setting-changed("notif"); } }
                                             SettingRow { icon: "eye-off"; badge: #64748b; title: "Show message preview"; has-switch: true; on: root.notif-preview; toggled => { root.notif-preview = self.on; root.setting-changed("notif"); } }
                                             SettingRow { icon: "bell-off"; badge: #dc2626; title: "Do not disturb"; has-switch: true; on: root.presence-pref == "dnd"; divider: root.is-android; toggled => { root.set-presence(self.on ? "dnd" : "auto"); } }
                                             if root.is-android: SettingRow { icon: "globe"; badge: #0d9488; title: "Push method"; summary: root.push-choice == "ntfy" ? "ntfy" : (root.push-choice == "fcm" ? "Google (FCM)" : "Off"); divider: false; clicked => { root.menu-kind = "pick-push"; } }
@@ -1478,7 +1486,7 @@ export component AppWindow inherits Window {
                                             }
                                         }
                                         if root.settings-page == "notif" && root.is-android: Text { text: "Pushes never contain message text: the app wakes, syncs and shows its own notification. Sounds and vibration follow Android's notification settings for SuperChat."; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
-                                        if root.settings-page == "notif": Text { text: "Per-conversation levels: open a chat, More options, Options, Notify me about."; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
+                                        if root.settings-page == "notif": Text { text: "Per-conversation levels and sounds: open a chat, More options, Options, Notify me about or Notification sound."; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
 
                                         // ---------- appearance ----------
                                         if root.settings-page == "appearance": Card {
@@ -1949,6 +1957,7 @@ export component AppWindow inherits Window {
                     SheetRow { icon: "star"; text: root.menu-fav ? "Remove from favourites" : "Star (add to favourites)"; clicked => { root.toggle-fav(root.menu-conv); root.menu-kind = ""; } }
                     SheetRow { icon: "bell-off"; text: "Mute"; chevron: true; clicked => { root.menu-kind = "mute"; } }
                     SheetRow { icon: "bell"; text: "Notify me about"; chevron: true; clicked => { root.menu-kind = "notify"; } }
+                    SheetRow { icon: "speaker"; text: "Notification sound"; chevron: true; clicked => { root.menu-kind = "sound"; } }
                     SheetRow { icon: "hash"; text: "Move to section"; chevron: true; clicked => { root.menu-kind = "section"; } }
                     SheetRow { icon: "lock"; text: root.lock-set ? (root.is-conv-locked(root.menu-conv) ? "Remove lock from this conversation" : "Lock conversation") : "Set up App Lock to lock conversations"; clicked => { if root.lock-set { root.toggle-conv-lock(root.menu-conv); root.menu-kind = ""; } else { root.menu-kind = ""; root.open-lock-setup(); } } }
                     SheetRow { icon: "info"; text: "View details"; clicked => { root.menu-kind = ""; root.select-conv(root.menu-conv); root.show-chat = true; root.open-details(root.wide ? "about" : ""); } }
@@ -1968,6 +1977,17 @@ export component AppWindow inherits Window {
                     SheetRow { icon: "bell"; text: "All messages"; clicked => { root.notify-level(root.menu-conv, "all"); root.menu-kind = ""; } }
                     SheetRow { icon: "person"; text: "Mentions only"; clicked => { root.notify-level(root.menu-conv, "mentions"); root.menu-kind = ""; } }
                     SheetRow { icon: "bell-off"; text: "Nothing"; clicked => { root.notify-level(root.menu-conv, "nothing"); root.menu-kind = ""; } }
+                    SheetRow { icon: "speaker"; text: "Notification sound"; chevron: true; clicked => { root.menu-kind = "sound"; } }
+                }
+                if root.menu-kind == "sound": BottomSheet {
+                    title: root.menu-conv == "" ? "Default sound" : "Notification sound"; wide: root.wide; menu: root.menu-conv != ""; anchor-x: root.menu-x; anchor-y: root.menu-y; menu-width: 260px;
+                    dismiss => { root.menu-kind = ""; }
+                    SheetRow { icon: "speaker"; text: root.menu-conv == "" ? "System default" : "Use the default"; checked: root.sound-of(root.menu-conv) == "default"; clicked => { root.set-sound(root.menu-conv, "default"); } }
+                    SheetRow { icon: "bell"; text: "Chime"; checked: root.sound-of(root.menu-conv) == "chime"; clicked => { root.set-sound(root.menu-conv, "chime"); } }
+                    SheetRow { icon: "bell"; text: "Pop"; checked: root.sound-of(root.menu-conv) == "pop"; clicked => { root.set-sound(root.menu-conv, "pop"); } }
+                    SheetRow { icon: "bell"; text: "Knock"; checked: root.sound-of(root.menu-conv) == "knock"; clicked => { root.set-sound(root.menu-conv, "knock"); } }
+                    SheetRow { icon: "bell"; text: "Bell"; checked: root.sound-of(root.menu-conv) == "bell"; clicked => { root.set-sound(root.menu-conv, "bell"); } }
+                    SheetRow { icon: "bell-off"; text: "Silent"; checked: root.sound-of(root.menu-conv) == "none"; clicked => { root.set-sound(root.menu-conv, "none"); } }
                 }
                 if root.menu-kind == "section": BottomSheet {
                     title: "Move to section"; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y;

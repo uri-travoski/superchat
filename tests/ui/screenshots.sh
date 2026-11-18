@@ -76,6 +76,7 @@ VARIANTS=(
   "desk-1280-light-regular-menu-more|1280x800|light|100|chat:general||mousemove 34 392 click 1"
   "desk-1280-light-regular-menu-avatar|1280x800|light|100|chat:general||mousemove 34 760 click 1"
   "desk-1280-light-regular-later-empty|1280x800|light|100|tab:later"
+  "desk-1280-light-regular-menu-sound|1280x800|light|100|soundmenu:general"
   "desk-1280-light-regular-media-cards|1280x800|light|100|chat:design"
   "desk-1280-dark-regular-media-cards|1280x800|dark|100|chat:design"
   # ---- desktop 1000x700 ----

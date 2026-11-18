@@ -67,27 +67,45 @@ object Native {
 
     // ---- N-01: local notification for a new message (called from Rust) ------------------------------------------
 
-    @JvmStatic fun notifyMessage(title: String, body: String, convId: String) {
+    /**
+     * N-04: [sound] is "default" (the system sound), "none" (silent) or a bundled id (res/raw/sound_<id>). Android fixes a
+     * channel's sound once it exists, so each sound gets its own channel; the user can still change any of them in
+     * Android's notification settings. [unread] is the launcher badge number (0 hides it).
+     */
+    @JvmStatic fun notifyMessage(title: String, body: String, convId: String, sound: String, unread: Int) {
         if (visible) return
         val nm = app.getSystemService(NotificationManager::class.java)
+        val channel = if (sound == "default") "messages" else "messages_$sound"
         if (Build.VERSION.SDK_INT >= 26) {
-            nm.createNotificationChannel(NotificationChannel("messages", "Messages", NotificationManager.IMPORTANCE_HIGH))
+            val label = when (sound) { "default" -> "Messages"; "none" -> "Messages (silent)"; else -> "Messages (${sound.replaceFirstChar { it.uppercase() }})" }
+            val ch = NotificationChannel(channel, label, NotificationManager.IMPORTANCE_HIGH)
+            ch.setShowBadge(true)
+            when (sound) {
+                "default" -> {}
+                "none" -> ch.setSound(null, null)
+                else -> {
+                    val res = app.resources.getIdentifier("sound_$sound", "raw", app.packageName)
+                    if (res != 0) ch.setSound(
+                        Uri.parse("android.resource://${app.packageName}/$res"),
+                        android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION).setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+                    )
+                }
+            }
+            nm.createNotificationChannel(ch)
         }
         val open = PendingIntent.getActivity(
             app, convId.hashCode(),
             Intent(app, MainActivity::class.java).putExtra("conv_id", convId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-        nm.notify(
-            convId.hashCode(),
-            android.app.Notification.Builder(app, "messages")
-                .setContentTitle(title)
-                .setContentText(body)
-                .setSmallIcon(android.R.drawable.stat_notify_chat)
-                .setContentIntent(open)
-                .setAutoCancel(true)
-                .build()
-        )
+        val b = android.app.Notification.Builder(app, channel)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setSmallIcon(android.R.drawable.stat_notify_chat)
+            .setContentIntent(open)
+            .setAutoCancel(true)
+        if (unread > 0) b.setNumber(unread)
+        nm.notify(convId.hashCode(), b.build())
     }
 
     // ---- X-02: secrets encrypted with a Keystore key ---------------------------------------------------------------

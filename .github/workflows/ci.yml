@@ -19,6 +19,17 @@ jobs:
         run: cd admin-web && npm ci && npm run build
       - run: cargo test --workspace
       - run: cargo clippy --workspace --all-targets -- -A warnings
+  windows:
+    # X-02 / X-04: the Windows build (Credential Manager store, SQLCipher with vendored OpenSSL, screen recording) is not
+    # buildable in the development environment, so this job compiles the desktop app and runs the Credential Manager test.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Credential Manager round trip and the desktop unit tests
+        shell: bash
+        run: cargo test -p atomic-desktop --lib
   admin-web:
     runs-on: ubuntu-latest
     steps:

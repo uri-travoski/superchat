@@ -385,3 +385,22 @@ pub fn screen_record_stop(mut r: ScreenRecorder) -> Option<PathBuf> {
     }
     std::fs::metadata(&r.path).ok().filter(|m| m.len() > 1024).map(|_| r.path)
 }
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+
+    /// X-02: a value written to the Windows Credential Manager reads back and can be deleted. Runs only in the Windows CI job
+    /// (there is no Windows machine in the development environment).
+    #[test]
+    fn credential_manager_round_trip() {
+        let s = WindowsStore;
+        let key = format!("test-{}", std::process::id());
+        s.set(&key, "value-1").unwrap();
+        assert_eq!(s.get(&key).unwrap().as_deref(), Some("value-1"));
+        s.set(&key, "value-2").unwrap();
+        assert_eq!(s.get(&key).unwrap().as_deref(), Some("value-2"));
+        s.delete(&key).unwrap();
+        assert_eq!(s.get(&key).unwrap(), None);
+    }
+}

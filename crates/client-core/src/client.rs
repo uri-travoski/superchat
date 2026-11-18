@@ -23,6 +23,64 @@ pub struct ClientConfig {
     /// Permit `http://` servers (test servers only).
     pub allow_insecure_http: bool,
     pub secrets: Option<Arc<dyn SecretStore>>,
+    /// X-04: keep the local cache encrypted with SQLCipher, the key in the platform secret store (on by default).
+    pub encrypt_cache: bool,
+}
+
+/// Name of the cache key in the secret store.
+pub const CACHE_KEY_NAME: &str = "cache_key";
+
+/// X-04: opens the local cache, encrypted when the secret store can keep the key. A plain cache from an older version is
+/// converted. If the key cannot be saved (no usable secret store) the cache stays plain instead of risking data loss.
+fn open_cache(path: &std::path::Path, secrets: &dyn SecretStore, encrypt: bool) -> Store {
+    // The app and its background service may open the cache at the same moment; only one may convert it.
+    static OPEN_LOCK: Mutex<()> = Mutex::new(());
+    let _g = OPEN_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let plain = || {
+        Store::open(path)
+            .or_else(|_| {
+                // An encrypted file we have no key for: keep it aside (the key may come back) and start a new cache.
+                let _ = std::fs::rename(path, path.with_extension("db.unreadable"));
+                Store::open(path)
+            })
+            .expect("open cache")
+    };
+    if !encrypt {
+        return plain();
+    }
+    let key = match secrets.get(CACHE_KEY_NAME) {
+        Ok(Some(k)) if k.len() == 64 => Some(k),
+        Ok(_) => {
+            use rand::RngCore;
+            let mut b = [0u8; 32];
+            rand::rngs::OsRng.fill_bytes(&mut b);
+            let k: String = b.iter().map(|x| format!("{x:02x}")).collect();
+            // Read it back: a store that accepts but loses the value would lock the cache forever.
+            match secrets.set(CACHE_KEY_NAME, &k) {
+                Ok(()) if matches!(secrets.get(CACHE_KEY_NAME), Ok(Some(ref v)) if *v == k) => Some(k),
+                _ => None,
+            }
+        }
+        Err(_) => None,
+    };
+    match key {
+        Some(k) => match Store::open_with_key(path, &k) {
+            Ok((s, state)) => {
+                if state != crate::store::CacheState::Opened && state != crate::store::CacheState::Created {
+                    eprintln!("superchat: local cache {state:?}");
+                }
+                s
+            }
+            Err(e) => {
+                eprintln!("superchat: encrypted cache failed ({e}); using a plain cache");
+                plain()
+            }
+        },
+        None => {
+            eprintln!("superchat: no secret store for the cache key; the local cache is not encrypted");
+            plain()
+        }
+    }
 }
 
 impl ClientConfig {
@@ -33,6 +91,7 @@ impl ClientConfig {
             client_version: crate::CLIENT_VERSION.into(),
             allow_insecure_http: false,
             secrets: None,
+            encrypt_cache: true,
         }
     }
 }
@@ -118,11 +177,11 @@ impl Client {
 
     pub fn open_with_handle(cfg: ClientConfig, handle: tokio::runtime::Handle) -> Result<Client> {
         std::fs::create_dir_all(&cfg.data_dir)?;
-        let store = Store::open(&cfg.data_dir.join("cache.db"))?;
         let secrets: Arc<dyn SecretStore> = cfg
             .secrets
             .clone()
             .unwrap_or_else(|| Arc::new(FileSecretStore::new(cfg.data_dir.join("secrets.json"))));
+        let store = open_cache(&cfg.data_dir.join("cache.db"), secrets.as_ref(), cfg.encrypt_cache);
         let (events, _) = broadcast::channel(512);
         let applock = Arc::new(crate::applock::AppLock::open(secrets.clone()));
         let inner = Arc::new_cyclic(|me| Inner {

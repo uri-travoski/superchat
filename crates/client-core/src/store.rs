@@ -143,13 +143,51 @@ impl Applied {
 pub struct Store {
     conn: Mutex<Connection>,
     path: PathBuf,
+    /// X-04: the SQLCipher key (64 hex characters) the cache is encrypted with; None for a plain cache.
+    key: Option<String>,
 }
 
-fn open_conn(path: &Path) -> Result<Connection> {
+/// What `Store::open_with_key` found and did, for logs and tests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheState {
+    /// A new, empty cache was created (encrypted when a key was given).
+    Created,
+    /// An existing cache of the wanted kind was opened as it was.
+    Opened,
+    /// A plain cache was converted to an encrypted one, keeping everything in it.
+    Migrated,
+    /// The existing file could not be read with the key (key lost or file damaged): it was moved aside as
+    /// `cache.db.unreadable` and a new empty cache was created. The cache is rebuilt from the server.
+    Replaced,
+}
+
+const PLAIN_HEADER: &[u8; 16] = b"SQLite format 3\0";
+
+fn is_plain_sqlite(path: &Path) -> bool {
+    use std::io::Read;
+    let mut b = [0u8; 16];
+    std::fs::File::open(path).and_then(|mut f| f.read_exact(&mut b)).is_ok() && &b == PLAIN_HEADER
+}
+
+/// `PRAGMA key` with a raw 256-bit key: SQLCipher skips its slow password hashing and uses the bytes as they are.
+fn apply_key(c: &Connection, key: &str) -> Result<()> {
+    if key.len() != 64 || !key.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        return Err(ClientError::Local("bad cache key".into()));
+    }
+    c.execute_batch(&format!("PRAGMA key = \"x'{key}'\";"))?;
+    Ok(())
+}
+
+fn open_conn(path: &Path, key: Option<&str>) -> Result<Connection> {
     if let Some(d) = path.parent() {
         std::fs::create_dir_all(d)?;
     }
     let c = Connection::open(path)?;
+    if let Some(k) = key {
+        apply_key(&c, k)?;
+    }
+    // The first read fails with "file is not a database" when the key is wrong or the file is not encrypted.
+    c.query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get::<_, i64>(0))?;
     c.pragma_update(None, "journal_mode", "WAL")?;
     c.pragma_update(None, "synchronous", "NORMAL")?;
     c.busy_timeout(std::time::Duration::from_secs(5))?;
@@ -157,9 +195,92 @@ fn open_conn(path: &Path) -> Result<Connection> {
     Ok(c)
 }
 
+fn remove_db_files(path: &Path) {
+    for ext in ["", "-wal", "-shm", "-journal"] {
+        let _ = std::fs::remove_file(PathBuf::from(format!("{}{}", path.display(), ext)));
+    }
+}
+
+/// Converts the plain cache at `path` into an encrypted one in place (export into a new file, check it, swap).
+fn migrate_plain_to_encrypted(path: &Path, key: &str) -> Result<()> {
+    let tmp = PathBuf::from(format!("{}.enc", path.display()));
+    remove_db_files(&tmp);
+    {
+        let c = Connection::open(path)?;
+        // Fold the write-ahead log into the main file first.
+        let _ = c.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()));
+        c.execute_batch(&format!("ATTACH DATABASE '{}' AS enc KEY \"x'{key}'\";", tmp.display().to_string().replace('\'', "''")))?;
+        c.query_row("SELECT sqlcipher_export('enc')", [], |_| Ok(()))?;
+        c.execute_batch("DETACH DATABASE enc;")?;
+    }
+    // The copy must open with the key and hold the same tables before the plain file goes away.
+    {
+        let plain_tables: i64 = Connection::open(path)?.query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get(0))?;
+        let c = Connection::open(&tmp)?;
+        apply_key(&c, key)?;
+        let enc_tables: i64 = c.query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get(0))?;
+        if plain_tables != enc_tables {
+            remove_db_files(&tmp);
+            return Err(ClientError::Local("cache migration check failed".into()));
+        }
+    }
+    // Overwrite the plaintext before deleting it (best effort; copy-on-write disks may keep old blocks).
+    if let Ok(len) = std::fs::metadata(path).map(|m| m.len()) {
+        if let Ok(mut f) = std::fs::OpenOptions::new().write(true).open(path) {
+            use std::io::Write;
+            let zeros = vec![0u8; 64 * 1024];
+            let mut left = len;
+            while left > 0 {
+                let n = left.min(zeros.len() as u64) as usize;
+                if f.write_all(&zeros[..n]).is_err() {
+                    break;
+                }
+                left -= n as u64;
+            }
+            let _ = f.sync_all();
+        }
+    }
+    remove_db_files(path);
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
+
 impl Store {
+    /// A plain (unencrypted) cache. The app uses `open_with_key`.
     pub fn open(path: &Path) -> Result<Store> {
-        Ok(Store { conn: Mutex::new(open_conn(path)?), path: path.to_path_buf() })
+        Ok(Store { conn: Mutex::new(open_conn(path, None)?), path: path.to_path_buf(), key: None })
+    }
+
+    /// X-04: opens the cache encrypted with SQLCipher. A plain cache from an older version is converted without losing
+    /// anything; a file that cannot be read with this key is moved aside and replaced by an empty cache.
+    pub fn open_with_key(path: &Path, key: &str) -> Result<(Store, CacheState)> {
+        let existed = path.exists();
+        let mut state = if existed { CacheState::Opened } else { CacheState::Created };
+        if existed && is_plain_sqlite(path) {
+            migrate_plain_to_encrypted(path, key)?;
+            state = CacheState::Migrated;
+        }
+        let conn = match open_conn(path, Some(key)) {
+            Ok(c) => c,
+            Err(e) if existed && state == CacheState::Opened => {
+                eprintln!("superchat: the cache could not be opened with its key ({e}); starting a new cache");
+                let aside = PathBuf::from(format!("{}.unreadable", path.display()));
+                remove_db_files(&aside);
+                let _ = std::fs::rename(path, &aside);
+                for ext in ["-wal", "-shm"] {
+                    let _ = std::fs::remove_file(PathBuf::from(format!("{}{}", path.display(), ext)));
+                }
+                state = CacheState::Replaced;
+                open_conn(path, Some(key))?
+            }
+            Err(e) => return Err(e),
+        };
+        Ok((Store { conn: Mutex::new(conn), path: path.to_path_buf(), key: Some(key.to_string()) }, state))
+    }
+
+    /// True when the cache file on disk is encrypted.
+    pub fn is_encrypted(&self) -> bool {
+        self.key.is_some()
     }
 
     fn c(&self) -> std::sync::MutexGuard<'_, Connection> {
@@ -176,7 +297,7 @@ impl Store {
             let p = PathBuf::from(format!("{}{}", self.path.display(), ext));
             let _ = std::fs::remove_file(p);
         }
-        *g = open_conn(&self.path)?;
+        *g = open_conn(&self.path, self.key.as_deref())?;
         Ok(())
     }
 

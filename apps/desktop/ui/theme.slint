@@ -137,16 +137,44 @@ export global Theme {
     in-out property <int> accent-index: 0;
     in-out property <bool> reduce-motion: false;
     out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
-    out property <color> accent: [#0dbd8b, #0467dd, #7b61ff, #e8590c][accent-index];
-    out property <color> on-accent: #ffffff;
+    out property <color> accent: [#0dbd8b, #0467dd, #6a4cf5, #e8590c][accent-index];
+    out property <color> accent-text: dark ? [#3ddcae, #6aa9ff, #a898ff, #ff9a5c][accent-index] : [#087a5c, #0467dd, #5a3fe0, #b8460a][accent-index];
+    // Text on an accent fill must keep 4.5:1; the orange and green accents need dark text.
+    out property <color> on-accent: [#06281f, #ffffff, #ffffff, #1f0d02][accent-index];
     out property <length> fs: 15px * scale;
     out property <length> fs-small: 12px * scale;
     out property <length> fs-title: 19px * scale;
+    out property <length> fs-large: 24px * scale;
     out property <length> pad: compact ? 5px : 10px;
-    out property <color> muted: Palette.foreground.with-alpha(0.62);
-    out property <color> line: Palette.foreground.with-alpha(0.14);
+
+    // ---- spacing scale (4 / 8 / 12 / 16 / 24), radii, touch target ----
+    out property <length> sp1: 4px;
+    out property <length> sp2: 8px;
+    out property <length> sp3: 12px;
+    out property <length> sp4: 16px;
+    out property <length> sp6: 24px;
+    out property <length> r-sm: 8px;
+    out property <length> r-md: 12px;
+    out property <length> r-lg: 16px;
+    out property <length> r-sheet: 24px;
+    out property <length> touch: 48px;
+
+    // ---- colour tokens: a soft dark theme (never pure black), light icons ----
+    out property <color> bg: dark ? #1c1f24 : #ffffff;
+    out property <color> surface: dark ? #262a31 : #f2f4f8;
+    out property <color> surface-high: dark ? #30353d : #e7eaf0;
+    out property <color> sheet-bg: dark ? #272b32 : #ffffff;
+    out property <color> scrim: #000000;
+    out property <color> muted: dark ? #aab1bd : #596273;
+    out property <color> line: dark ? #ffffff1f : #0000001a;
+    out property <color> icon: dark ? #c4cad4 : #5a6372;
+    out property <color> icon-soft: dark ? #aeb5c1 : #6b7482;
+    out property <color> text: dark ? #eceff4 : #1b1f24;
     out property <color> bubble-mine: accent.with-alpha(0.2);
-    out property <color> bubble-other: Palette.foreground.with-alpha(0.07);
-    out property <color> sidebar: dark ? #1b1d21 : #f1f3f7;
-    out property <color> danger: #c62828;
+    out property <color> bubble-other: dark ? #ffffff14 : #00000010;
+    out property <color> sidebar: dark ? #1c1f24 : #ffffff;
+    out property <color> danger: dark ? #ff8a80 : #c62828;
+    out property <color> on-danger: dark ? #1c1f24 : #ffffff;
+    out property <color> ok: dark ? #5fd38a : #2e7d32;
+    out property <color> warn: dark ? #ffd166 : #b26a00;
 }

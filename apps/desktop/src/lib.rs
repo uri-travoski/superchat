@@ -8,6 +8,7 @@ mod emoji_data;
 mod forms;
 mod model;
 pub mod handoff;
+pub mod nav;
 pub mod lock;
 pub mod platform;
 mod sched;
@@ -118,6 +119,10 @@ pub struct Hooks {
     pub take_shared: Box<dyn Fn() -> Option<Shared>>,
     /// Android: opens the camera scanner for a login-link QR code. None on desktop (paste the link instead).
     pub scan_qr: Option<Box<dyn Fn()>>,
+    /// Android: "Choose image with QR": the photo picker, then decoding.
+    pub scan_image: Option<Box<dyn Fn()>>,
+    /// A message from the platform's scanner about why a scan failed (no camera, permission refused...), once.
+    pub take_login_error: Box<dyn Fn() -> Option<String>>,
     /// A one-time login link that arrived from outside (QR scan result, a tapped superchat:// link), once.
     pub take_login_link: Box<dyn Fn() -> Option<String>>,
     /// Android: the clipboard text (desktop pastes through the text field itself).
@@ -138,6 +143,8 @@ impl Hooks {
             media: Arc::new(DesktopMedia::new(default_data_dir().join("recordings"))),
             take_shared: Box::new(|| None),
             scan_qr: None,
+            scan_image: None,
+            take_login_error: Box::new(|| None),
             take_login_link: Box::new(|| None),
             clipboard: None,
         }
@@ -359,6 +366,20 @@ fn save_prefs(st: &St) {
 // ------------------------------------------------------------------------------------------------
 // Rendering
 
+/// People you can message, optionally filtered by a name or username fragment.
+fn people_list(c: &Client, filter: &str) -> Vec<PersonItem> {
+    let me = c.my_id().unwrap_or_default();
+    let q = filter.trim().to_lowercase();
+    let mut v: Vec<PersonItem> = c
+        .users()
+        .into_iter()
+        .filter(|u| u.id != me && !u.disabled && (q.is_empty() || u.display_name.to_lowercase().contains(&q) || u.username.to_lowercase().contains(&q)))
+        .map(|u| model::person(&u))
+        .collect();
+    v.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    v
+}
+
 fn refresh(ui: &AppWindow, c: &Client, sh: &Sh) {
     let mut g = sh.lock().unwrap();
     let v = view(&g);
@@ -379,6 +400,11 @@ fn refresh(ui: &AppWindow, c: &Client, sh: &Sh) {
             ui.set_confirm_sign_out_all(false);
         }
         ui.set_hide_last_active(me.hide_last_active);
+        ui.set_me_username(me.user.username.clone().into());
+        ui.set_is_admin(me.user.role.is_admin());
+        if let Some(m) = c.server_meta() {
+            ui.set_server_text(format!("{} (server {})", m.name, m.server_version).into());
+        }
     }
     ui.set_can_back(g.hist_pos > 0);
     ui.set_can_forward(g.hist_pos + 1 < g.hist.len());
@@ -388,6 +414,22 @@ fn refresh(ui: &AppWindow, c: &Client, sh: &Sh) {
     }
     let Some(cs) = c.conversations().into_iter().find(|x| x.conversation.id == cur) else { return };
     ui.set_current_title(c.conversation_title(&cs).into());
+    ui.set_current_initials(initials::initials(&c.conversation_title(&cs)).into());
+    ui.set_current_color(color_of(&cs.conversation.id));
+    ui.set_members(model(
+        cs.conversation
+            .members
+            .iter()
+            .map(|m| match c.user(&m.user_id) {
+                Some(u) => {
+                    let mut p = model::person(&u);
+                    p.sub = if m.role == "owner" { format!("@{}  |  owner", u.username).into() } else { p.sub };
+                    p
+                }
+                None => PersonItem { id: m.user_id.clone().into(), name: "Unknown".into(), initials: "?".into(), color: color_of(&m.user_id), sub: Default::default() },
+            })
+            .collect(),
+    ));
     let members = cs.conversation.members.len();
     ui.set_current_sub(
         match cs.conversation.kind {
@@ -837,9 +879,40 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
     ui.set_is_android(hooks.is_android);
     ui.set_can_record(hooks.media.can_record());
     ui.set_can_scan(hooks.scan_qr.is_some());
+    nav::register(&ui);
+    {
+        let wk = ui.as_weak();
+        ui.on_back_pressed(move || wk.upgrade().map(|ui| nav::handle_back(&ui)).unwrap_or(false));
+        let h = hooks.clone();
+        let wk = ui.as_weak();
+        ui.on_scan_qr(move || {
+            if let Some(ui) = wk.upgrade() {
+                ui.set_login_error("".into());
+            }
+            match &h.scan_qr {
+                Some(f) => f(),
+                None => {
+                    if let Some(ui) = wk.upgrade() {
+                        ui.set_login_error("Scanning is not available here. Paste the link instead.".into());
+                    }
+                }
+            }
+        });
+        let h = hooks.clone();
+        let wk = ui.as_weak();
+        ui.on_scan_image(move || {
+            if let Some(ui) = wk.upgrade() {
+                ui.set_login_error("".into());
+            }
+            if let Some(f) = &h.scan_image {
+                f();
+            }
+        });
+    }
     ui.set_close_tray(sh.lock().unwrap().prefs.close_to_tray);
     ui.set_version(format!("SuperChat {}", client_core::CLIENT_VERSION).into());
     ui.set_emoji_list(model(model::emoji_items(emoji::all())));
+    ui.set_quick_emoji(model(model::emoji_items(["\u{1F44D}", "\u{2764}\u{FE0F}", "\u{1F602}", "\u{1F62E}", "\u{1F622}", "\u{1F64F}"].iter().map(|s| s.to_string()).collect())));
     {
         let g = sh.lock().unwrap();
         apply_prefs(&ui, &g);
@@ -907,6 +980,29 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                 "settings-bottom" => {
                     ui.invoke_open_settings();
                     ui.set_settings_scroll_y(if ui.get_sign_out_allowed() { -1000.0 } else { -600.0 });
+                }
+                "settings-page" => {
+                    ui.invoke_open_settings();
+                    ui.set_settings_page(conv.into());
+                }
+                "sheet" => ui.set_menu_kind(conv.into()),
+                "info" => {
+                    ui.set_info_open(true);
+                    let t = parts.next().unwrap_or("0").parse::<i32>().unwrap_or(0);
+                    ui.set_info_tab(t);
+                    if t == 1 || t == 2 {
+                        ui.set_tab(t);
+                        ui.invoke_tab_changed(t);
+                    }
+                }
+                "msgsheet" => {
+                    use slint::Model;
+                    let n = ui.get_messages().row_count();
+                    if let Some(m) = (0..n).rev().filter_map(|i| ui.get_messages().row_data(i)).find(|m| !m.deleted && !m.mine).or_else(|| ui.get_messages().row_data(n.saturating_sub(1))) {
+                        ui.set_sel_msg(m.clone());
+                        ui.set_menu_msg(m.id.clone());
+                        ui.set_menu_kind("msg".into());
+                    }
                 }
                 "search" => ui.invoke_open_search(),
                 "threads" => ui.invoke_open_threads(),
@@ -1091,6 +1187,14 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                     sh.lock().unwrap().shared = Some(sharing);
                     ui.set_menu_msg("share".into());
                     ui.set_menu_kind("share".into());
+                }
+            }
+            if let Some(err) = (h2.take_login_error)() {
+                if !ui.get_signed_in() {
+                    ui.set_use_link(true);
+                    ui.set_login_error(err.into());
+                } else {
+                    toast(&ui, &err);
                 }
             }
             if let Some(link) = (h2.take_login_link)() {
@@ -2122,13 +2226,39 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
         });
         let (wk, c) = (ui.as_weak(), client.clone());
         ui.on_open_people(move || {
-            let me = c.my_id().unwrap_or_default();
-            let mut v: Vec<PersonItem> = c.users().into_iter().filter(|u| u.id != me && !u.disabled).map(|u| model::person(&u)).collect();
-            v.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
             if let Some(ui) = wk.upgrade() {
-                ui.set_people(model(v));
+                ui.set_people_text("".into());
+                ui.set_people(model(people_list(&c, "")));
                 ui.set_screen("people".into());
             }
+        });
+        let (wk, c) = (ui.as_weak(), client.clone());
+        ui.on_people_filter(move |q| {
+            if let Some(ui) = wk.upgrade() {
+                ui.set_people(model(people_list(&c, q.as_str())));
+            }
+        });
+        let (wk, c, sh) = (ui.as_weak(), client.clone(), osh.clone());
+        ui.on_create_channel(move |name| {
+            let name = name.trim().to_string();
+            if name.is_empty() {
+                return;
+            }
+            let (wk2, c2, sh2) = (wk.clone(), c.clone(), sh.clone());
+            c.handle().spawn(async move {
+                let r = c2.create_channel(&name).await;
+                let _ = slint::invoke_from_event_loop(move || {
+                    let Some(ui) = wk2.upgrade() else { return };
+                    match r {
+                        Ok(id) => {
+                            ui.set_new_channel_open(false);
+                            ui.set_screen("".into());
+                            select_conv(&ui, &c2, &sh2, &id, true);
+                        }
+                        Err(e) => toast(&ui, &format!("Could not create the channel: {e}")),
+                    }
+                });
+            });
         });
         let (wk, c, sh) = (ui.as_weak(), client.clone(), osh.clone());
         ui.on_start_dm(move |uid| {
@@ -2230,6 +2360,7 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                 ui.set_edit_name(me.user.display_name.into());
             }
             ui.set_sections(model(c.sections().into_iter().map(|s| row(0, &s.id, "", s.name, String::new(), String::new())).collect()));
+            ui.set_settings_page("".into());
             ui.set_screen("settings".into());
             load_sessions(&ui, &c);
             let _ = &sh;

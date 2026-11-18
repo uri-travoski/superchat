@@ -37,6 +37,8 @@ pub fn changed(ui: &AppWindow, c: &Client, sh: &Sh) {
     if engaged {
         ui.set_lock_entry_open(false);
         ui.set_lock_pin("".into());
+        ui.set_info_open(false);
+        ui.set_confirm("".into());
         let cur = sh.lock().unwrap().current.clone();
         if !cur.is_empty() && c.is_hidden(&cur) {
             sh.lock().unwrap().current.clear();

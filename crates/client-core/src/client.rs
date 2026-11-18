@@ -494,6 +494,17 @@ impl Client {
         Ok(s.conversation.id)
     }
 
+    /// Creates a channel (the server only allows admins to) and returns its id.
+    pub async fn create_channel(&self, name: &str) -> Result<String> {
+        let s: ConversationSummary = self
+            .api()?
+            .post("/conversations", &CreateConversation { kind: ConversationKind::Channel, name: name.into(), topic: None, members: vec![] })
+            .await?;
+        self.inner.store.put_conversation(&s)?;
+        self.inner.emit(ClientEvent::Changed { conv_ids: vec![s.conversation.id.clone()], users: false, me: false });
+        Ok(s.conversation.id)
+    }
+
     /// M-04: the notes-to-self conversation.
     pub fn self_conversation(&self) -> Option<ConversationSummary> {
         self.conversations().into_iter().find(|c| c.conversation.kind == ConversationKind::SelfNote)

@@ -1,5 +1,7 @@
 import { Palette } from "std-widgets.slint";
 import { Theme, ConvItem, MsgItem, BlockItem, FileItem, ReactItem, RowItem, FormButtonItem } from "theme.slint";
+import { Icon } from "icons.slint";
+export { Icon }
 
 export component Avatar {
     in property <string> initials;
@@ -25,27 +27,44 @@ export component Avatar {
         height: self.width;
         border-radius: self.width / 2;
         border-width: 2px;
-        border-color: Palette.background;
-        background: root.presence == 1 ? #2e7d32 : (root.presence == 2 ? #f9a825 : #c62828);
+        border-color: Theme.bg;
+        background: root.presence == 1 ? Theme.ok : (root.presence == 2 ? Theme.warn : Theme.danger);
     }
 }
 
-// Flat text button used for the many small actions.
+// A touch area that also reports a long press (450 ms without moving) and a right click.
+export component PressArea inherits TouchArea {
+    callback tapped;
+    callback long-pressed;
+    property <bool> fired: false;
+    Timer {
+        interval: 450ms;
+        running: root.pressed && !root.fired && abs(root.mouse-x - root.pressed-x) < 12px && abs(root.mouse-y - root.pressed-y) < 12px;
+        triggered => { root.fired = true; root.long-pressed(); }
+    }
+    pointer-event(e) => {
+        if e.kind == PointerEventKind.down && e.button == PointerEventButton.left { root.fired = false; }
+        if e.kind == PointerEventKind.up && e.button == PointerEventButton.right { root.long-pressed(); }
+    }
+    clicked => { if !root.fired { root.tapped(); } }
+}
+
+// Flat text button used for small actions.
 export component Link {
     in property <string> text;
     in property <bool> danger: false;
     in property <bool> strong: false;
     in property <bool> enabled: true;
     callback clicked;
-    min-height: 28px;
-    min-width: lbl.preferred-width + 8px;
+    min-height: 32px;
+    min-width: lbl.preferred-width + 16px;
     accessible-role: button;
     accessible-label: root.text;
     lbl := Text {
         text: root.text;
-        font-size: Theme.fs-small * 1.05;
-        font-weight: root.strong ? 700 : 400;
-        color: !root.enabled ? Theme.muted : (root.danger ? Theme.danger : Theme.accent);
+        font-size: Theme.fs-small * 1.1;
+        font-weight: root.strong ? 700 : 500;
+        color: !root.enabled ? Theme.muted : (root.danger ? Theme.danger : Theme.accent-text);
         vertical-alignment: center;
         horizontal-alignment: center;
     }
@@ -59,8 +78,8 @@ export component Pill {
     in property <string> text;
     in property <bool> on: false;
     callback clicked;
-    height: 30px * Theme.scale;
-    min-width: lbl.preferred-width + 20px;
+    height: 34px * Theme.scale;
+    min-width: lbl.preferred-width + 24px;
     accessible-role: button;
     accessible-label: root.text;
     Rectangle {
@@ -70,8 +89,8 @@ export component Pill {
         background: root.on ? Theme.accent.with-alpha(0.18) : (ta.has-hover ? Theme.bubble-other : transparent);
         lbl := Text {
             text: root.text;
-            font-size: Theme.fs-small * 1.05;
-            color: Palette.foreground;
+            font-size: Theme.fs-small * 1.1;
+            color: Theme.text;
         }
         ta := TouchArea { clicked => { root.clicked(); } }
     }
@@ -81,16 +100,16 @@ export component PrimaryButton {
     in property <string> text;
     in property <bool> enabled: true;
     callback clicked;
-    height: max(38px, 32px * Theme.scale);
-    min-width: lbl.preferred-width + 28px;
+    height: max(44px, 34px * Theme.scale);
+    min-width: lbl.preferred-width + 32px;
     accessible-role: button;
     accessible-label: root.text;
     Rectangle {
-        border-radius: 8px;
-        background: root.enabled ? (ta.has-hover ? Theme.accent.darker(0.1) : Theme.accent) : Theme.line;
+        border-radius: Theme.r-sm;
+        background: root.enabled ? (ta.has-hover ? Theme.accent.darker(0.1) : Theme.accent) : Theme.surface-high;
         lbl := Text {
             text: root.text;
-            color: Theme.on-accent;
+            color: root.enabled ? Theme.on-accent : Theme.muted;
             font-size: Theme.fs;
             font-weight: 600;
         }
@@ -103,29 +122,53 @@ export component GhostButton {
     in property <bool> on: false;
     in property <bool> danger: false;
     callback clicked;
-    height: max(38px, 32px * Theme.scale);
-    min-width: lbl.preferred-width + 24px;
+    height: max(44px, 34px * Theme.scale);
+    min-width: lbl.preferred-width + 28px;
     accessible-role: button;
     accessible-label: root.text;
     Rectangle {
-        border-radius: 8px;
+        border-radius: Theme.r-sm;
         border-width: 1px;
         border-color: root.on ? Theme.accent : Theme.line;
         background: root.on ? Theme.accent.with-alpha(0.15) : (ta.has-hover ? Theme.bubble-other : transparent);
         lbl := Text {
             text: root.text;
-            color: root.danger ? Theme.danger : Palette.foreground;
+            color: root.danger ? Theme.danger : Theme.text;
             font-size: Theme.fs;
         }
         ta := TouchArea { clicked => { root.clicked(); } }
     }
 }
 
+// A borderless text button for dialog footers (Cancel / OK).
+export component TextButton {
+    in property <string> text;
+    in property <bool> strong: false;
+    in property <bool> danger: false;
+    in property <bool> enabled: true;
+    callback clicked;
+    height: max(48px, 38px * Theme.scale);
+    min-width: max(64px, lbl.preferred-width + 24px);
+    accessible-role: button;
+    accessible-label: root.text;
+    Rectangle {
+        border-radius: Theme.r-sm;
+        background: ta.has-hover ? Theme.bubble-other : transparent;
+        lbl := Text {
+            text: root.text;
+            color: !root.enabled ? Theme.muted : (root.danger ? Theme.danger : Theme.accent-text);
+            font-size: Theme.fs;
+            font-weight: root.strong ? 700 : 500;
+        }
+        ta := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
+    }
+}
+
 export component SectionHeader {
     in property <string> text;
-    height: Theme.fs-small * 2.2;
+    height: Theme.fs-small * 2.4;
     Text {
-        x: 12px;
+        x: 16px;
         text: root.text;
         font-size: Theme.fs-small;
         font-weight: 700;
@@ -134,66 +177,390 @@ export component SectionHeader {
     }
 }
 
+// A 48dp round icon button.
+export component IconButton {
+    in property <string> icon;
+    in property <string> label;
+    in property <brush> tint: Theme.icon;
+    in property <bool> enabled: true;
+    in property <length> glyph: 24px;
+    callback clicked;
+    width: 48px;
+    height: 48px;
+    accessible-role: button;
+    accessible-label: root.label;
+    Rectangle {
+        width: 40px;
+        height: 40px;
+        border-radius: 20px;
+        background: ta.pressed ? Theme.bubble-other : (ta.has-hover ? Theme.bubble-other.with-alpha(0.6) : transparent);
+        Icon { name: root.icon; size: root.glyph; tint: root.enabled ? root.tint : Theme.muted.with-alpha(0.5); x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+    }
+    ta := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
+}
+
+// Round floating action button.
+export component Fab {
+    in property <string> icon;
+    in property <string> label;
+    callback clicked;
+    width: 56px;
+    height: 56px;
+    accessible-role: button;
+    accessible-label: root.label;
+    Rectangle {
+        border-radius: 28px;
+        background: ta.pressed ? Theme.accent.darker(0.15) : Theme.accent;
+        drop-shadow-blur: 8px;
+        drop-shadow-offset-y: 3px;
+        drop-shadow-color: #00000066;
+        Icon { name: root.icon; size: 26px; tint: Theme.on-accent; weight: 2px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+        ta := TouchArea { clicked => { root.clicked(); } }
+    }
+}
+
+// Top app bar of a full-screen page: back arrow (or none), title, right-hand actions as children.
+export component AppBar {
+    in property <string> title;
+    in property <string> subtitle;
+    in property <bool> show-back: true;
+    in property <string> back-icon: "back";
+    callback back;
+    height: max(56px, 42px * Theme.scale);
+    HorizontalLayout {
+        padding-left: root.show-back ? 4px : 16px;
+        padding-right: 4px;
+        spacing: 4px;
+        if root.show-back: IconButton { icon: root.back-icon; label: "Back"; clicked => { root.back(); } y: (parent.height - self.height) / 2; }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            Text { text: root.title; font-size: Theme.fs-title; font-weight: 700; color: Theme.text; overflow: elide; }
+            if root.subtitle != "": Text { text: root.subtitle; font-size: Theme.fs-small; color: Theme.muted; overflow: elide; }
+        }
+        @children
+    }
+    Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
+}
+
+// A row inside a sheet or menu: optional icon, label, optional detail, check mark.
+export component SheetRow {
+    in property <string> icon;
+    in property <string> text;
+    in property <string> detail;
+    in property <bool> danger: false;
+    in property <bool> checked: false;
+    in property <bool> chevron: false;
+    in property <bool> enabled: true;
+    callback clicked;
+    height: max(48px, 40px * Theme.scale);
+    accessible-role: button;
+    accessible-label: root.text;
+    Rectangle {
+        background: ta.pressed ? Theme.bubble-other : (ta.has-hover ? Theme.bubble-other.with-alpha(0.5) : transparent);
+        HorizontalLayout {
+            padding-left: 20px;
+            padding-right: 20px;
+            spacing: 16px;
+            if root.icon != "": Icon { name: root.icon; tint: root.danger ? Theme.danger : Theme.icon; y: (parent.height - self.height) / 2; }
+            Text { text: root.text; font-size: Theme.fs; color: !root.enabled ? Theme.muted : (root.danger ? Theme.danger : Theme.text); vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+            if root.detail != "": Text { text: root.detail; font-size: Theme.fs-small; color: Theme.muted; vertical-alignment: center; }
+            if root.checked: Icon { name: "check"; tint: Theme.accent-text; y: (parent.height - self.height) / 2; }
+            if root.chevron: Icon { name: "chevron-right"; tint: Theme.icon-soft; size: 20px; y: (parent.height - self.height) / 2; }
+        }
+        ta := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
+    }
+}
+
+// A pill-shaped on/off control (no std-widgets Switch: it does not follow the accent or the soft dark theme).
+export component Toggle {
+    in-out property <bool> checked: false;
+    callback toggled;
+    width: 46px;
+    height: 28px;
+    accessible-role: switch;
+    accessible-checked: root.checked;
+    Rectangle {
+        border-radius: 14px;
+        background: root.checked ? Theme.accent : Theme.surface-high;
+        border-width: root.checked ? 0px : 1.5px;
+        border-color: Theme.icon-soft;
+        Rectangle {
+            width: 20px;
+            height: 20px;
+            border-radius: 10px;
+            y: 4px;
+            x: root.checked ? parent.width - self.width - 5px : 5px;
+            background: root.checked ? Theme.on-accent : Theme.icon-soft;
+            animate x { duration: Theme.reduce-motion ? 0ms : 120ms; }
+        }
+    }
+    TouchArea { clicked => { root.checked = !root.checked; root.toggled(); } }
+}
+
+// Settings: a rounded card that holds rows.
+export component Card inherits Rectangle {
+    background: Theme.surface;
+    border-radius: Theme.r-lg;
+    clip: true;
+    VerticalLayout {
+        alignment: start;
+        @children
+    }
+}
+
+// Settings row: coloured round icon, title, optional summary, chevron or switch.
+export component SettingRow {
+    in property <string> icon;
+    in property <color> badge: Theme.accent;
+    in property <string> title;
+    in property <string> summary;
+    in property <bool> chevron: true;
+    in property <bool> has-switch: false;
+    in property <bool> danger: false;
+    in-out property <bool> on: false;
+    in property <bool> divider: true;
+    callback clicked;
+    callback toggled;
+    height: max(60px, 46px * Theme.scale);
+    accessible-role: button;
+    accessible-label: root.title + (root.summary != "" ? ", " + root.summary : "");
+    Rectangle {
+        background: ta.pressed ? Theme.bubble-other : transparent;
+        HorizontalLayout {
+            padding-left: 16px;
+            padding-right: 16px;
+            spacing: 14px;
+            Rectangle {
+                width: 36px;
+                height: 36px;
+                y: (parent.height - self.height) / 2;
+                border-radius: 18px;
+                background: root.badge;
+                Icon { name: root.icon; size: 20px; tint: white; weight: 2px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+            }
+            Text { text: root.title; font-size: Theme.fs; color: root.danger ? Theme.danger : Theme.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+            if root.summary != "" && !root.has-switch: Text { text: root.summary; font-size: Theme.fs-small * 1.05; color: Theme.muted; vertical-alignment: center; overflow: elide; max-width: 190px * Theme.scale; }
+            if root.has-switch: Toggle { checked: root.on; y: (parent.height - self.height) / 2; toggled => { root.on = self.checked; root.toggled(); } }
+            if root.chevron && !root.has-switch: Icon { name: "chevron-right"; size: 20px; tint: Theme.icon-soft; y: (parent.height - self.height) / 2; }
+        }
+        ta := TouchArea { clicked => { if root.has-switch { root.on = !root.on; root.toggled(); } else { root.clicked(); } } }
+    }
+    if root.divider: Rectangle { x: 66px; y: parent.height - 1px; height: 1px; width: parent.width - 66px; background: Theme.line; }
+}
+
+// A modal bottom sheet: scrim, rounded top corners, drag handle, tap outside or swipe down to close.
+// On wide windows it is a centred card (or, with `menu`, a popover at the top right).
+export component BottomSheet inherits Rectangle {
+    in property <string> title;
+    in property <bool> wide: false;
+    in property <bool> menu: false;
+    in property <length> inset-bottom: 0px;
+    callback dismiss;
+    property <bool> shown: false;
+    property <length> drag: 0px;
+    property <length> max-h: root.height * 0.94;
+    init => { root.shown = true; }
+    background: Theme.scrim.with-alpha(root.shown ? 0.5 : 0.0);
+    animate background { duration: Theme.reduce-motion ? 0ms : 180ms; }
+    TouchArea { clicked => { root.dismiss(); } }
+    card := Rectangle {
+        width: root.wide ? (root.menu ? 280px : 400px) : root.width;
+        height: min(root.max-h, (root.wide ? 8px : 28px) + ttl.preferred-height + body.content-height + root.inset-bottom + 8px);
+        x: root.wide ? (root.menu ? root.width - self.width - 12px : (root.width - self.width) / 2) : 0px;
+        y: root.wide ? (root.menu ? 8px : max(12px, (root.height - self.height) / 2)) : (root.shown ? root.height - self.height + root.drag : root.height);
+        background: Theme.sheet-bg;
+        border-top-left-radius: Theme.r-sheet;
+        border-top-right-radius: Theme.r-sheet;
+        border-bottom-left-radius: root.wide ? Theme.r-md : 0px;
+        border-bottom-right-radius: root.wide ? Theme.r-md : 0px;
+        drop-shadow-blur: root.wide ? 18px : 0px;
+        drop-shadow-color: #00000066;
+        animate y { duration: Theme.reduce-motion || root.drag > 0px ? 0ms : 200ms; easing: ease-out; }
+        TouchArea { }
+        // Drag handle + title: swipe down here to dismiss.
+        VerticalLayout {
+            Rectangle {
+                height: root.wide ? 8px : 28px;
+                if !root.wide: Rectangle { width: 36px; height: 4px; border-radius: 2px; background: Theme.icon-soft.with-alpha(0.6); y: 10px; x: (parent.width - self.width) / 2; }
+                TouchArea {
+                    moved => { if !root.wide { root.drag = max(0px, self.mouse-y - self.pressed-y); } }
+                    pointer-event(e) => {
+                        if e.kind == PointerEventKind.up { if root.drag > 70px { root.dismiss(); } root.drag = 0px; }
+                    }
+                }
+            }
+            ttl := Rectangle {
+                height: root.title != "" ? max(36px, 28px * Theme.scale) : 0px;
+                if root.title != "": Text { x: 20px; text: root.title; font-size: Theme.fs-small * 1.05; font-weight: 700; color: Theme.muted; vertical-alignment: center; overflow: elide; width: parent.width - 40px; }
+            }
+            body := Flickable {
+                height: min(self.content-height, root.max-h - (root.wide ? 8px : 28px) - ttl.height - root.inset-bottom - 8px);
+                content-height: inner.preferred-height;
+                inner := VerticalLayout {
+                    alignment: start;
+                    @children
+                }
+            }
+            Rectangle { height: root.inset-bottom + 8px; }
+        }
+    }
+}
+
+// A modal page-style card for forms: title, visible close X, scrolling body, sticky footer. A bottom sheet on phones.
+export component ModalCard inherits Rectangle {
+    in property <string> title;
+    in property <string> ok-text;
+    in property <bool> ok-enabled: true;
+    callback ok;
+    in property <bool> wide: false;
+    in property <length> inset-bottom: 0px;
+    callback dismiss;
+    property <bool> shown: false;
+    init => { root.shown = true; }
+    background: Theme.scrim.with-alpha(0.55);
+    TouchArea { clicked => { root.dismiss(); } }
+    card := Rectangle {
+        width: root.wide ? min(460px, root.width - 32px) : root.width;
+        height: min(root.height - (root.wide ? 32px : 24px), 24px + ttl.height + body.content-height + ftr.preferred-height + root.inset-bottom + 8px);
+        x: (root.width - self.width) / 2;
+        y: root.wide ? (root.height - self.height) / 2 : root.height - self.height;
+        background: Theme.sheet-bg;
+        border-top-left-radius: root.wide ? Theme.r-lg : Theme.r-sheet;
+        border-top-right-radius: root.wide ? Theme.r-lg : Theme.r-sheet;
+        border-bottom-left-radius: root.wide ? Theme.r-lg : 0px;
+        border-bottom-right-radius: root.wide ? Theme.r-lg : 0px;
+        TouchArea { }
+        VerticalLayout {
+            ttl := HorizontalLayout {
+                height: max(56px, 42px * Theme.scale);
+                padding-left: 20px;
+                padding-right: 4px;
+                Text { text: root.title; font-size: Theme.fs-title; font-weight: 700; color: Theme.text; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                IconButton { icon: "close"; label: "Close"; clicked => { root.dismiss(); } y: (parent.height - self.height) / 2; }
+            }
+            body := Flickable {
+                height: min(self.content-height, root.height - 140px - root.inset-bottom);
+                content-height: inner.preferred-height;
+                inner := VerticalLayout {
+                    padding-left: 20px;
+                    padding-right: 20px;
+                    padding-bottom: 8px;
+                    spacing: 10px;
+                    alignment: start;
+                    @children
+                }
+            }
+            Rectangle { height: 1px; background: Theme.line; }
+            ftr := HorizontalLayout {
+                padding: 10px;
+                padding-left: 20px;
+                padding-right: 16px;
+                spacing: 8px;
+                alignment: end;
+                TextButton { text: "Cancel"; clicked => { root.dismiss(); } }
+                if root.ok-text != "": PrimaryButton { text: root.ok-text; enabled: root.ok-enabled; clicked => { root.ok(); } }
+            }
+            Rectangle { height: root.inset-bottom; }
+        }
+    }
+}
+
+// A confirmation: title, message, two text buttons (Cancel / OK).
+export component AlertDialog inherits Rectangle {
+    in property <string> title;
+    in property <string> message;
+    in property <string> ok-text: "OK";
+    in property <bool> danger: false;
+    callback cancel;
+    callback ok;
+    background: Theme.scrim.with-alpha(0.55);
+    TouchArea { clicked => { root.cancel(); } }
+    Rectangle {
+        width: min(root.width - 48px, 340px);
+        height: col.preferred-height;
+        x: (root.width - self.width) / 2;
+        y: max(24px, (root.height - self.height) / 2);
+        background: Theme.sheet-bg;
+        border-radius: Theme.r-lg;
+        TouchArea { }
+        col := VerticalLayout {
+            padding: 24px;
+            padding-bottom: 12px;
+            spacing: 12px;
+            Text { text: root.title; font-size: Theme.fs-title; font-weight: 700; color: Theme.text; wrap: word-wrap; }
+            Text { text: root.message; font-size: Theme.fs; color: Theme.muted; wrap: word-wrap; }
+            HorizontalLayout {
+                alignment: end;
+                spacing: 8px;
+                TextButton { text: "Cancel"; clicked => { root.cancel(); } }
+                TextButton { text: root.ok-text; strong: true; danger: root.danger; clicked => { root.ok(); } }
+            }
+        }
+    }
+}
+
 export component ConvRow {
     in property <ConvItem> item;
     in property <bool> selected;
     callback clicked;
     callback long-pressed;
-    height: Theme.compact ? max(48px, 42px * Theme.scale) : max(64px, 52px * Theme.scale);
+    height: Theme.compact ? max(56px, 44px * Theme.scale) : max(72px, 58px * Theme.scale);
     accessible-role: button;
-    accessible-label: root.item.title + (root.item.unread > 0 ? ", " + root.item.unread + " unread" : "");
+    accessible-label: root.item.title + (root.item.unread > 0 ? ", " + root.item.unread + " unread" : "") + (root.item.muted ? ", muted" : "");
     VerticalLayout {
         if root.item.header != "": SectionHeader { text: root.item.header; }
         Rectangle {
             vertical-stretch: 1;
-            background: root.selected ? Theme.accent.with-alpha(0.18) : (ta.has-hover ? Theme.bubble-other : transparent);
+            background: root.selected ? Theme.accent.with-alpha(0.16) : (ta.pressed ? Theme.bubble-other : (ta.has-hover ? Theme.bubble-other.with-alpha(0.5) : transparent));
             HorizontalLayout {
-                padding: Theme.pad;
-                spacing: 10px;
+                padding-left: 16px;
+                padding-right: 16px;
+                spacing: 14px;
                 Avatar {
                     initials: root.item.initials;
                     tint: root.item.color;
-                    size: (Theme.compact ? 32px : 40px) * Theme.scale;
+                    size: (Theme.compact ? 36px : 48px) * Theme.scale;
                     y: (parent.height - self.height) / 2;
                 }
                 VerticalLayout {
                     alignment: center;
-                    spacing: 2px;
+                    spacing: 3px;
                     HorizontalLayout {
                         spacing: 6px;
                         Text {
                             text: root.item.title;
-                            font-size: Theme.fs;
-                            font-weight: root.item.unread > 0 ? 700 : 500;
-                            color: root.item.muted ? Theme.muted : Palette.foreground;
+                            font-size: Theme.fs * 1.05;
+                            font-weight: root.item.unread > 0 ? 700 : 600;
+                            color: Theme.text;
                             overflow: elide;
                             horizontal-stretch: 1;
                         }
-                        if root.item.favourite: Text { text: "\u{2605}"; color: #f9a825; font-size: Theme.fs-small; }
-                        if root.item.muted: Text { text: "\u{1F515}"; font-size: Theme.fs-small; color: Theme.muted; }
+                        if root.item.favourite: Icon { name: "star"; size: 14px; tint: Theme.warn; y: (parent.height - self.height) / 2; }
                         Text {
                             text: root.item.stamp;
                             font-size: Theme.fs-small;
-                            color: Theme.muted;
+                            color: root.item.unread > 0 && !root.item.muted ? Theme.accent-text : Theme.muted;
                         }
                     }
                     if !Theme.compact: HorizontalLayout {
                         spacing: 6px;
                         Text {
                             text: root.item.preview;
-                            font-size: Theme.fs-small;
+                            font-size: Theme.fs * 0.93;
                             color: Theme.muted;
                             overflow: elide;
                             horizontal-stretch: 1;
                         }
+                        if root.item.muted: Icon { name: "bell-off"; size: 16px; tint: Theme.icon-soft; y: (parent.height - self.height) / 2; }
                         if root.item.unread > 0: Rectangle {
-                            width: max(20px, badge.preferred-width + 12px);
-                            height: 20px * Theme.scale;
-                            border-radius: 10px * Theme.scale;
-                            background: root.item.muted ? Theme.muted : (root.item.mentions > 0 ? Theme.danger : Theme.accent);
+                            width: max(22px, badge.preferred-width + 14px);
+                            height: 22px * Theme.scale;
+                            border-radius: 11px * Theme.scale;
+                            background: root.item.muted ? Theme.icon-soft : (root.item.mentions > 0 ? Theme.danger : Theme.accent);
                             badge := Text {
                                 text: root.item.unread;
-                                color: white;
+                                color: root.item.muted ? Theme.bg : (root.item.mentions > 0 ? Theme.on-danger : Theme.on-accent);
                                 font-size: Theme.fs-small;
                                 font-weight: 700;
                             }
@@ -201,11 +568,9 @@ export component ConvRow {
                     }
                 }
             }
-            ta := TouchArea {
-                clicked => { root.clicked(); }
-                pointer-event(e) => {
-                    if e.button == PointerEventButton.right && e.kind == PointerEventKind.up { root.long-pressed(); }
-                }
+            ta := PressArea {
+                tapped => { root.clicked(); }
+                long-pressed => { root.long-pressed(); }
             }
         }
     }
@@ -215,16 +580,11 @@ export component MessageRow {
     in property <MsgItem> m;
     in property <bool> selected;
     in property <bool> in-thread: false;
-    callback toggle-select;
-    callback edit;
-    callback remove;
+    in property <bool> tap-opens: false;
+    callback actions;
     callback react(string);
-    callback open-picker;
     callback retry;
     callback open-thread;
-    callback pin;
-    callback copy-link;
-    callback forward;
     callback open-file(string);
     callback open-link(string);
     callback form-action(string);
@@ -286,7 +646,7 @@ export component MessageRow {
                             apptag := Text { text: "APP"; font-size: Theme.fs-small * 0.8; font-weight: 800; color: Theme.accent; horizontal-alignment: center; vertical-alignment: center; }
                         }
                         Text {
-                            text: m.time + (m.edited ? " (edited)" : "") + (m.state == 1 ? "  sending..." : "") + (m.state == 2 ? "  not sent" : "") + (m.state == 3 ? "  \u{2713}" : "") + (m.pinned ? "  \u{1F4CC}" : "");
+                            text: m.time + (m.edited ? " (edited)" : "") + (m.state == 1 ? "  sending..." : "") + (m.state == 2 ? "  not sent" : "") + (m.state == 3 ? "  \u{2713}" : "") + (m.pinned ? "  pinned" : "");
                             font-size: Theme.fs-small;
                             color: m.state == 2 ? Theme.danger : Theme.muted;
                             vertical-alignment: bottom;
@@ -345,7 +705,7 @@ export component MessageRow {
                             }
                             if b.kind == 0: StyledText {
                                 text: b.styled;
-                                default-color: Palette.foreground;
+                                default-color: Theme.text;
                                 default-font-size: Theme.fs;
                                 link-color: Theme.accent;
                                 selectable: true;
@@ -376,13 +736,9 @@ export component MessageRow {
                                     padding-left: 10px;
                                     padding-right: 10px;
                                     spacing: 8px;
+                                    Icon { name: f.kind == 1 ? "image" : (f.kind == 3 ? "mic" : "file"); size: 20px; y: (parent.height - self.height) / 2; }
                                     Text {
-                                        text: f.removed ? "File removed" : (f.kind == 1 ? "\u{1F5BC}" : (f.kind == 2 ? "\u{1F3AC}" : (f.kind == 3 ? "\u{1F3A4}" : "\u{1F4CE}")));
-                                        font-size: Theme.fs;
-                                        vertical-alignment: center;
-                                    }
-                                    Text {
-                                        text: f.removed ? "" : f.name + "  (" + f.size + ")";
+                                        text: f.removed ? "File removed" : f.name + "  (" + f.size + ")";
                                         font-size: Theme.fs-small;
                                         vertical-alignment: center;
                                         overflow: elide;
@@ -411,7 +767,7 @@ export component MessageRow {
                                 spacing: 8px;
                                 if m.form-title != "": Text { text: m.form-title; font-size: Theme.fs; font-weight: 700; wrap: word-wrap; }
                                 if m.form-desc != "": Text { text: m.form-desc; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
-                                if m.responded: Text { text: "\u{2713} You responded"; font-size: Theme.fs-small; color: Theme.accent; font-weight: 700; }
+                                if m.responded: Text { text: "\u{2713} You responded"; font-size: Theme.fs-small; color: Theme.accent-text; font-weight: 700; }
                                 if !m.responded: HorizontalLayout {
                                     spacing: 8px;
                                     alignment: start;
@@ -452,46 +808,14 @@ export component MessageRow {
                             clicked => { root.open-thread(); }
                         }
                     }
-                    if root.selected && !m.deleted: Flickable {
-                        height: 34px;
-                        content-width: act.preferred-width;
-                        act := HorizontalLayout {
-                            spacing: 12px;
-                            alignment: start;
-                            Link { text: "React"; clicked => { root.open-picker(); } }
-                            if !root.in-thread: Link { text: "Reply in thread"; clicked => { root.open-thread(); } }
-                            if m.can-edit: Link { text: "Edit"; clicked => { root.edit(); } }
-                            Link { text: "Forward"; clicked => { root.forward(); } }
-                            Link { text: "Copy link"; clicked => { root.copy-link(); } }
-                            if m.can-pin: Link { text: m.pinned ? "Unpin" : "Pin"; clicked => { root.pin(); } }
-                            if m.mine: Link { text: "Delete"; danger: true; clicked => { root.remove(); } }
-                        }
-                    }
                 }
             }
-            TouchArea {
+            PressArea {
                 z: -1;
-                clicked => { root.toggle-select(); }
+                tapped => { if root.tap-opens { root.actions(); } }
+                long-pressed => { root.actions(); }
             }
         }
     }
 }
 
-// A padlock drawn from shapes (no icon font needed): closed when `open` is false.
-export component Padlock {
-    in property <bool> open: false;
-    in property <brush> tint: Palette.foreground;
-    width: 22px;
-    height: 24px;
-    Rectangle {
-        x: root.open ? 9px : 5px;
-        y: root.open ? -1px : 1px;
-        width: 12px;
-        height: 14px;
-        border-radius: 6px;
-        border-width: 2px;
-        border-color: root.tint;
-    }
-    Rectangle { x: 2px; y: 10px; width: 18px; height: 13px; border-radius: 3px; background: root.tint; }
-    Rectangle { x: 9.5px; y: 14px; width: 3px; height: 5px; border-radius: 1.5px; background: Theme.sidebar; }
-}

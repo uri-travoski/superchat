@@ -62,7 +62,7 @@ try {
   const mk = async (u) => (await api("POST", "/admin/users", { username: u, display_name: u[0].toUpperCase() + u.slice(1), password: "password-123", role: "member" }, adm)).user.id;
   const aliceId = await mk("alice"), bobId = await mk("bob");
   const general = (await api("POST", "/conversations", { kind: "channel", name: "general", topic: "Everything", members: [aliceId, bobId] }, adm)).id;
-  const tok = async (u) => (await api("POST", "/login", { username: u, password: "password-123", device_name: "t", client_version: "1.1.0" })).access_token;
+  const tok = async (u) => (await api("POST", "/login", { username: u, password: "password-123", device_name: "t", client_version: "1.1.1" })).access_token;
   const alice = await tok("alice"), bob = await tok("bob");
   const send = (t, conv, body, extra = {}) => api("POST", `/conversations/${conv}/messages`, { client_id: uid(), body, mentions: [], attachment_ids: [], ...extra }, t);
   await send(alice, general, "Morning team, budget apples ready");

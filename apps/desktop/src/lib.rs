@@ -409,7 +409,7 @@ fn refresh(ui: &AppWindow, c: &Client, sh: &Sh) {
     ui.set_current_fav(c.pref(&cur).favourite);
     ui.set_can_write(!cs.conversation.archived);
     ui.set_bookmarks(model(model::bookmarks(c, &cur)));
-    let is_admin = c.me().map(|m| matches!(m.user.role, proto::types::Role::Admin)).unwrap_or(false);
+    let is_admin = c.me().map(|m| m.user.role.is_admin()).unwrap_or(false);
     ui.set_can_curate(is_admin || cs.conversation.members.iter().any(|m| m.user_id == me_id && m.role == "owner"));
     let bot = bot_of_dm(c, &cs, &me_id);
     ui.set_is_bot_dm(bot.is_some());

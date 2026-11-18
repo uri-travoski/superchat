@@ -9,13 +9,15 @@ export class ApiError extends Error {
 
 const KEY = "superchat-admin-session";
 
-interface Saved { access: string; refresh: string; expires: number; username: string }
+interface Saved { access: string; refresh: string; expires: number; username: string; uid?: string; role?: string }
 
 let saved: Saved | null = null;
 try { saved = JSON.parse(sessionStorage.getItem(KEY) || "null"); } catch { saved = null; }
 
 export function signedIn(): boolean { return !!saved; }
 export function username(): string { return saved?.username ?? ""; }
+export function myId(): string { return saved?.uid ?? ""; }
+export function amOwner(): boolean { return saved?.role === "owner"; }
 
 function persist() {
   try {
@@ -26,7 +28,7 @@ function persist() {
 export function signOutLocal() { saved = null; persist(); }
 
 export function useLogin(r: LoginResponse) {
-  saved = { access: r.access_token, refresh: r.refresh_token, expires: Date.now() + r.expires_in * 1000, username: r.me.user.username };
+  saved = { access: r.access_token, refresh: r.refresh_token, expires: Date.now() + r.expires_in * 1000, username: r.me.user.username, uid: r.me.user.id, role: r.me.user.role };
   persist();
 }
 
@@ -70,7 +72,7 @@ export async function api<T = any>(method: string, path: string, body?: unknown)
 export const meta = () => api<ServerMeta>("GET", "/meta");
 
 export async function login(user: string, password: string): Promise<LoginResponse> {
-  const res = await fetch("/api/v1/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: user, password, device_name: "Admin panel", client_version: "1.1.0" }) });
+  const res = await fetch("/api/v1/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: user, password, device_name: "Admin panel", client_version: "1.1.1" }) });
   const r: LoginResponse = await parse(res);
   useLogin(r);
   return r;

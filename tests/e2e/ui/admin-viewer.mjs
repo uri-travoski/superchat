@@ -35,7 +35,7 @@ async function api(method, p, body, token) {
   if (!res.ok) throw new Error(`${method} ${p}: ${res.status} ${t}`);
   return j;
 }
-const loginApi = async (u, p) => (await api("POST", "/login", { username: u, password: p, device_name: "ui-test", client_version: "1.1.0" })).access_token;
+const loginApi = async (u, p) => (await api("POST", "/login", { username: u, password: p, device_name: "ui-test", client_version: "1.1.1" })).access_token;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const uid = () => crypto.randomUUID().replaceAll("-", "");
 

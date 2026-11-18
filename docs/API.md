@@ -24,6 +24,13 @@ Edit rule (`proto::rules::edit_allowed`): channels and notes-to-self always; DMs
 Admin (`/admin/...`, owner or admin only): overview, users (+reset-password, login-link, revoke-sessions, clear-history, backup,
 delete-range), backups, sessions, conversations (+members), files, storage (+test, migrate, verify), jobs.
 
+## 1.1.1 additions
+
+* `PUT /admin/users/{id}/role` with `{"role":"member"|"admin"|"owner"}` returns the updated `AdminUser`. Owner only (`forbidden` for admins and members);
+  `forbidden` when changing your own role; `validation` for deleted accounts, for a bot given any role but member, and when it would leave no owner.
+  Permissions are read on every request, so the change is effective for open sessions immediately. The user's apps receive `me_update` (their own `Me`
+  with the new role) and everyone receives `user_upsert`; no new event type, `min_client_version` stays 1.0.0. `PATCH /admin/users/{id}` with `role` follows the same rules.
+
 ## 1.1 additions
 
 * **Login link landing page** (no auth, not under `/api/v1`): `GET /l/<token>` shows the open-in-app page without consuming the token (200 valid, 410 used or

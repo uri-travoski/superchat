@@ -58,6 +58,7 @@ pub struct AllTypes {
     pub admin_create_user: CreateUserRequest,
     pub admin_create_user_response: CreateUserResponse,
     pub admin_update_user: UpdateUserRequest,
+    pub admin_set_role: SetRoleRequest,
     pub storage_config: StorageConfig,
     pub storage_test: StorageTestResponse,
     pub job: JobStatus,

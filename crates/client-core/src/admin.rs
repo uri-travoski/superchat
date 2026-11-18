@@ -76,6 +76,11 @@ impl AdminClient {
         self.call(Method::GET, "/admin/users", None).await
     }
 
+    /// Owner only: sets a user's role (`PUT /admin/users/{id}/role`).
+    pub async fn set_role(&self, id: &str, role: Role) -> Result<AdminUser> {
+        self.call(Method::PUT, &format!("/admin/users/{id}/role"), Some(serde_json::to_value(SetRoleRequest { role })?)).await
+    }
+
     pub async fn set_disabled(&self, id: &str, disabled: bool) -> Result<AdminUser> {
         self.call(Method::PATCH, &format!("/admin/users/{id}"), Some(serde_json::json!({"disabled": disabled}))).await
     }

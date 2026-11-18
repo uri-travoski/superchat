@@ -3958,6 +3958,18 @@
       ],
       "type": "object"
     },
+    "SetRoleRequest": {
+      "description": "Body of `PUT /admin/users/{id}/role` (owner only).",
+      "properties": {
+        "role": {
+          "$ref": "#/definitions/Role"
+        }
+      },
+      "required": [
+        "role"
+      ],
+      "type": "object"
+    },
     "SetupRequest": {
       "properties": {
         "display_name": {
@@ -4627,6 +4639,9 @@
     "admin_delete_messages_response": {
       "$ref": "#/definitions/AdminDeleteMessagesResponse"
     },
+    "admin_set_role": {
+      "$ref": "#/definitions/SetRoleRequest"
+    },
     "admin_update_user": {
       "$ref": "#/definitions/UpdateUserRequest"
     },
@@ -4875,6 +4890,7 @@
     "admin_create_user_response",
     "admin_delete_messages",
     "admin_delete_messages_response",
+    "admin_set_role",
     "admin_update_user",
     "ai_defaults_update",
     "ai_overview",

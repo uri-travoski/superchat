@@ -17,6 +17,10 @@ Open `https://your-server/admin` and sign in with an owner or admin account.
   `.apk`, `.AppImage`/`.deb`/`.rpm`, `.exe`/`.msi`) and lists them at `/downloads`. With an empty folder it points to `SUPERCHAT_RELEASE_URL`
   (default: the project's GitHub releases).
 * **Phones**: the whole panel works at phone width (menu button, cards instead of tables, single-pane chat viewer with a back button).
+* **Role** (owner only): each other user has a Member / Admin / Owner menu in the Users table (and on the phone cards); a confirmation says what changes.
+  The change applies at once, even to devices that are signed in, and their apps update without a restart. Rules: admins see roles but cannot change them;
+  nobody can change their own role; at least one owner always remains (make someone else an owner before an owner steps down); bots are always members;
+  disabled users can still be changed. Restoring a deleted user from a backup brings back the role in the backup (an "owner" in a backup returns as admin when another owner exists).
 * **Clear history** always writes a per-user backup first and refuses to proceed if the backup fails. It removes only that
   person's copy of every chat (other participants keep theirs), moves files nobody else can see into
   `backups/users/<user>/<backup>/att/` in your storage, and signs the person out everywhere.
@@ -26,7 +30,7 @@ Open `https://your-server/admin` and sign in with an owner or admin account.
   Verify (quick or deep).
 * **Sessions**: every signed-in device with last seen; sign any out.
 * **Backups**: list of per-user backups.
-* **Privacy screen** per user: when on, the user may hide their last-active time from others. Default off.
+* **Privacy options** per user (Allow / Disallow): with Allow, the user's app shows the Privacy screen in Settings and they may hide their last-active time from others. Default Disallow.
 
 The same operations exist in the `atomic admin ...` CLI (`atomic help`).
 

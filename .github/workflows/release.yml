@@ -1,4 +1,4 @@
-# Builds every artifact when a tag like v1.1.0 is pushed and attaches them to the GitHub Release.
+# Builds every artifact when a tag like v1.1.1 is pushed and attaches them to the GitHub Release.
 # Android signing: set the repository secrets ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and
 # ANDROID_KEY_PASSWORD to sign with your own key. Without them CI generates a throw-away keystore (the APK installs,
 # but each release is signed with a different key, so it cannot update a previous install: set the secrets for real use).

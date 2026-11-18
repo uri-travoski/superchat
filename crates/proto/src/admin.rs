@@ -57,6 +57,12 @@ pub struct UpdateUserRequest {
     pub privacy_controls_enabled: Option<bool>,
 }
 
+/// Body of `PUT /admin/users/{id}/role` (owner only).
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SetRoleRequest {
+    pub role: Role,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 pub struct ResetPasswordRequest {
     /// Omit to generate a random password and a one-time login link.

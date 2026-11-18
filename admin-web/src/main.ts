@@ -1,5 +1,5 @@
 import "./style.css";
-import { api, ApiError, login, meta, signedIn, signOutLocal, useLogin, username } from "./api";
+import { amOwner, api, ApiError, login, meta, myId, signedIn, signOutLocal, useLogin, username } from "./api";
 import type { AdminConversation, AdminUser, BackupInfo, JobStatus, ServerMeta, SessionInfo, StorageConfig } from "./api-types";
 import { copy, dialog, field, fmtBytes, fmtDate, h, toast } from "./dom";
 import { storageForm } from "./storage-form";
@@ -123,13 +123,11 @@ const pages: Record<Tab, (el: HTMLElement, m: ServerMeta) => Promise<void>> = {
       const st = u.deleted ? h("span", { class: "pill bad" }, "deleted") : u.disabled ? h("span", { class: "pill bad" }, "disabled") : h("span", { class: "pill ok" }, u.presence === "online" ? "online" : "active");
       tbody.append(h("tr", {},
         h("td", {}, h("b", {}, u.display_name), h("div", { class: "muted mono" }, u.username)),
-        h("td", {}, u.role), h("td", {}, st),
+        h("td", {}, roleCell(u, reload)), h("td", {}, st),
         h("td", {}, u.password_set ? "" : h("span", { class: "pill warn" }, "link not used")),
         h("td", {}, fmtDate(u.last_active_real_ms)),
         h("td", {}, String(u.session_count)),
-        h("td", {}, h("label", { style: "display:flex;gap:6px;align-items:center;margin:0;color:var(--text)" },
-          h("input", { type: "checkbox", style: "width:auto", checked: u.privacy_controls_enabled, disabled: u.deleted,
-            onchange: async (e: Event) => { try { await api("PATCH", `/admin/users/${u.id}`, { privacy_controls_enabled: (e.target as HTMLInputElement).checked }); toast("Saved"); } catch (er) { fail(er); } } }), "on")),
+        h("td", {}, privacyCell(u)),
         h("td", {}, u.deleted ? "" : userActions(u, reload))));
     }
     const pu: any = await api("GET", "/admin/public-url").catch(() => null);
@@ -140,8 +138,8 @@ const pages: Record<Tab, (el: HTMLElement, m: ServerMeta) => Promise<void>> = {
     el.append(puCard);
     el.append(h("div", { class: "card" },
       h("div", { class: "row" }, h("h2", { style: "margin:0;flex:1" }, "Users"), h("button", { class: "primary", onclick: () => createUserDialog(reload) }, "Create user")),
-      h("table", {}, h("thead", {}, h("tr", {}, ...["Name", "Role", "Status", "Setup", "Last active", "Sessions", "Privacy screen", "Actions"].map((x) => h("th", {}, x)))), tbody),
-      h("p", { class: "muted" }, "Privacy screen: when on, the user can hide their last active time from the app's Settings. It is off for everyone by default.")));
+      h("table", {}, h("thead", {}, h("tr", {}, ...["Name", "Role", "Status", "Setup", "Last active", "Sessions", "Privacy options", "Actions"].map((x) => h("th", {}, x)))), tbody),
+      h("p", { class: "muted" }, "Privacy options: Allow shows the Privacy screen in the user's app Settings, where they can hide their last active time. It is Disallow for everyone by default.")));
   },
 
   async conversations(el) {
@@ -245,6 +243,48 @@ const pages: Record<Tab, (el: HTMLElement, m: ServerMeta) => Promise<void>> = {
 };
 
 // ------------------------------------------------------------------ dialogs and actions
+
+/** Privacy options column: Allow / Disallow, saved as soon as it changes. */
+function privacyCell(u: AdminUser): HTMLElement {
+  const sel = h("select", { class: "privacy-select", "data-user": u.username, "aria-label": "Privacy options of " + u.display_name, disabled: u.deleted },
+    h("option", { value: "allow" }, "Allow"), h("option", { value: "disallow" }, "Disallow")) as HTMLSelectElement;
+  let cur = u.privacy_controls_enabled ? "allow" : "disallow";
+  sel.value = cur;
+  sel.addEventListener("change", async () => {
+    const want = sel.value;
+    sel.disabled = true;
+    try { await api("PATCH", `/admin/users/${u.id}`, { privacy_controls_enabled: want === "allow" }); cur = want; toast("Saved"); }
+    catch (er) { sel.value = cur; fail(er); }
+    finally { sel.disabled = u.deleted; }
+  });
+  return sel;
+}
+
+const ROLE_NAMES: Record<string, string> = { owner: "Owner", admin: "Admin", member: "Member" };
+
+/** Role column: the owner gets a menu to change other people's role; everyone else sees the role as text. */
+function roleCell(u: AdminUser, reload: () => void): HTMLElement | string {
+  const label = ROLE_NAMES[u.role] ?? u.role;
+  if (!amOwner() || u.deleted || u.is_bot || u.id === myId()) return h("span", { "data-role": u.role }, label);
+  const sel = h("select", { class: "role-select", "data-user": u.username, "aria-label": "Role of " + u.display_name }, ...(["member", "admin", "owner"] as const).map((r) => h("option", { value: r, selected: r === u.role }, ROLE_NAMES[r]))) as HTMLSelectElement;
+  sel.value = u.role;
+  sel.addEventListener("change", () => {
+    const to = sel.value;
+    if (to === u.role) return;
+    const text = to === "owner"
+      ? `${u.display_name} will be an owner with the same full power as you: they manage every setting, and they can change or remove other owners and admins. At least one owner always stays.`
+      : to === "admin"
+      ? `${u.display_name} will become an admin: they can create channels, manage users, read and moderate chats, and use the admin panel.`
+      : `${u.display_name} will become a member: they lose admin rights such as creating channels and using this panel.`;
+    const d = dialog(`Change role to ${ROLE_NAMES[to]}?`, h("div", {}, h("p", {}, text), h("p", { class: "muted" }, "It applies at once, without signing them out.")), [{
+      label: `Make ${ROLE_NAMES[to].toLowerCase()}`, primary: to !== "member" && to !== "owner", danger: to === "member" || to === "owner",
+      action: async (close) => { await api("PUT", `/admin/users/${u.id}/role`, { role: to }); close(); toast("Role changed"); reload(); },
+    }]);
+    d.setAttribute("id", "role-dialog");
+    d.addEventListener("close", () => { sel.value = u.role; });
+  });
+  return sel;
+}
 
 function userActions(u: AdminUser, reload: () => void): HTMLElement {
   const run = (f: () => Promise<any>, ok?: string) => async () => { try { await f(); if (ok) toast(ok); reload(); } catch (e) { fail(e); } };

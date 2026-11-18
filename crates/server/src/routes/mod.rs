@@ -76,6 +76,7 @@ pub fn api_router() -> Router<St> {
         .route("/admin/overview", get(admin::overview))
         .route("/admin/users", get(admin::list_users).post(admin::create_user_route))
         .route("/admin/users/{id}", get(admin::get_user_route).patch(admin::update_user).delete(admin::delete_user_route))
+        .route("/admin/users/{id}/role", put(admin::set_role))
         .route("/admin/users/{id}/reset-password", post(admin::reset_password))
         .route("/admin/users/{id}/login-link", post(admin::new_login_link))
         .route("/admin/users/{id}/revoke-sessions", post(admin::revoke_user_sessions))

@@ -258,6 +258,7 @@ export interface SuperChatAPI {
   admin_create_user_response: CreateUserResponse;
   admin_delete_messages: AdminDeleteMessagesRequest;
   admin_delete_messages_response: AdminDeleteMessagesResponse;
+  admin_set_role: SetRoleRequest;
   admin_update_user: UpdateUserRequest;
   ai_defaults_update: AiDefaultsUpdate;
   ai_overview: AiOverview;
@@ -479,6 +480,12 @@ export interface AdminDeleteMessagesResponse {
   attachments_moved: number;
   backup_id: string;
   messages_deleted: number;
+}
+/**
+ * Body of `PUT /admin/users/{id}/role` (owner only).
+ */
+export interface SetRoleRequest {
+  role: Role;
 }
 export interface UpdateUserRequest {
   disabled?: boolean | null;

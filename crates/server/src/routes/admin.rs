@@ -147,13 +147,7 @@ pub async fn update_user(State(st): State<St>, Admin(a): Admin, Path(id): Path<S
                     tx.execute("UPDATE users SET email=?2 WHERE id=?1", params![id, e])?;
                 }
                 if let Some(r) = req.role {
-                    if a.role != Role::Owner {
-                        return Err(AppError::forbidden("only the owner can change roles"));
-                    }
-                    if r == Role::Owner || u.role == Role::Owner {
-                        return Err(AppError::validation("the owner role cannot be changed"));
-                    }
-                    tx.execute("UPDATE users SET role=?2 WHERE id=?1", params![id, r.as_str()])?;
+                    apply_role_change(&tx, &a, &u, r)?;
                 }
                 if let Some(p) = req.privacy_controls_enabled {
                     tx.execute("UPDATE users SET privacy_controls_enabled=?2 WHERE id=?1", params![id, p as i64])?;
@@ -180,6 +174,63 @@ pub async fn update_user(State(st): State<St>, Admin(a): Admin, Path(id): Path<S
                 tx.commit()?;
                 em.flush(&hub);
                 crate::routes::ws::broadcast_presence_hub(c, &hub, &id)?;
+                admin_user(c, &hub, &get_user(c, &id)?)
+            })
+            .await?,
+    ))
+}
+
+/// The pure rules for a role change (PRD section 3). `other_owners` counts owners besides the target.
+pub(crate) fn check_role_change(actor_role: Role, actor_id: &str, target: &UserRow, new: Role, other_owners: i64) -> AppResult<()> {
+    if actor_role != Role::Owner {
+        return Err(AppError::forbidden("only the owner can change roles"));
+    }
+    if target.id == actor_id {
+        return Err(AppError::forbidden("you cannot change your own role"));
+    }
+    if target.deleted {
+        return Err(AppError::validation("account was deleted"));
+    }
+    if target.is_bot && new != Role::Member {
+        return Err(AppError::validation("a bot always has the member role"));
+    }
+    if target.role == Role::Owner && new != Role::Owner && other_owners < 1 {
+        return Err(AppError::validation("the last owner cannot be demoted; make someone else an owner first"));
+    }
+    Ok(())
+}
+
+/// Validates and applies a role change inside `tx`. The new role applies to the user's live sessions at once
+/// (the role is read on every request); the caller emits the events.
+fn apply_role_change(tx: &Connection, actor: &Auth, target: &UserRow, new: Role) -> AppResult<()> {
+    let other_owners: i64 = tx.query_row("SELECT COUNT(*) FROM users WHERE role='owner' AND deleted=0 AND id!=?1", [&target.id], |r| r.get(0))?;
+    check_role_change(actor.role, &actor.user_id, target, new, other_owners)?;
+    if target.role != new {
+        tx.execute("UPDATE users SET role=?2 WHERE id=?1", params![target.id, new.as_str()])?;
+    }
+    Ok(())
+}
+
+pub async fn set_role(State(st): State<St>, Admin(a): Admin, Path(id): Path<String>, Json(req): Json<SetRoleRequest>) -> J<AdminUser> {
+    let hub = st.hub.clone();
+    Ok(Json(
+        st.db
+            .call(move |c| {
+                let u = get_user(c, &id)?;
+                let tx = c.transaction()?;
+                apply_role_change(&tx, &a, &u, req.role)?;
+                if u.role != req.role {
+                    let mut em = Emitter::new();
+                    announce_user(&tx, &hub, &id, &mut em)?;
+                    let row = get_user(&tx, &id)?;
+                    if !row.disabled && !row.deleted {
+                        em.emit(&tx, &id, EventData::MeUpdate { me: to_me(&row, &hub) })?;
+                    }
+                    tx.commit()?;
+                    em.flush(&hub);
+                } else {
+                    tx.commit()?;
+                }
                 admin_user(c, &hub, &get_user(c, &id)?)
             })
             .await?,
@@ -608,4 +659,42 @@ pub async fn put_public_url(State(st): State<St>, Admin(a): Admin, parts: Parts,
     }
     st.db.call(move |c| crate::db::set_setting(c, "public_url", &v)).await?;
     get_public_url(State(st), Admin(a), parts).await
+}
+
+#[cfg(test)]
+mod role_rule_tests {
+    use super::*;
+
+    fn row(id: &str, role: Role, bot: bool) -> UserRow {
+        UserRow {
+            id: id.into(), username: id.into(), display_name: id.into(), role, disabled: false, deleted: false, is_bot: bot,
+            hide_last_active: false, privacy_controls_enabled: false, presence_pref: "auto".into(), last_active_ms: None,
+            avatar: None, email: None, password_set: true, created_ms: 0,
+        }
+    }
+
+    #[test]
+    fn rules() {
+        let m = row("m", Role::Member, false);
+        // only owners change roles
+        assert_eq!(check_role_change(Role::Admin, "a", &m, Role::Admin, 1).unwrap_err().code, ErrorCode::Forbidden);
+        assert_eq!(check_role_change(Role::Member, "a", &m, Role::Admin, 1).unwrap_err().code, ErrorCode::Forbidden);
+        assert!(check_role_change(Role::Owner, "o", &m, Role::Owner, 0).is_ok());
+        // never your own role
+        let me = row("o", Role::Owner, false);
+        assert_eq!(check_role_change(Role::Owner, "o", &me, Role::Admin, 1).unwrap_err().code, ErrorCode::Forbidden);
+        // the last owner cannot be demoted, another owner can
+        let o2 = row("o2", Role::Owner, false);
+        assert_eq!(check_role_change(Role::Owner, "o", &o2, Role::Member, 0).unwrap_err().code, ErrorCode::Validation);
+        assert!(check_role_change(Role::Owner, "o", &o2, Role::Admin, 1).is_ok());
+        assert!(check_role_change(Role::Owner, "o", &o2, Role::Owner, 0).is_ok());
+        // bots stay members
+        let bot = row("b", Role::Member, true);
+        assert_eq!(check_role_change(Role::Owner, "o", &bot, Role::Admin, 1).unwrap_err().code, ErrorCode::Validation);
+        assert!(check_role_change(Role::Owner, "o", &bot, Role::Member, 1).is_ok());
+        // deleted accounts
+        let mut d = row("d", Role::Member, false);
+        d.deleted = true;
+        assert!(check_role_change(Role::Owner, "o", &d, Role::Admin, 1).is_err());
+    }
 }

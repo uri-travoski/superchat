@@ -7,6 +7,7 @@ import { chatsPage, leaveViewer } from "./viewer";
 import { backupsPage, restoreSetupForm } from "./backups";
 import { bookmarksPage, groupsPage } from "./orgadmin";
 import { aiPage, botsPage, webhooksPage } from "./automation";
+import { qrSvg } from "./qr";
 
 const app = document.getElementById("app")!;
 const tabs = ["overview", "chats", "users", "conversations", "groups", "bookmarks", "bots", "webhooks", "ai", "storage", "sessions", "backups"] as const;
@@ -33,11 +34,13 @@ async function render() {
   if (!signedIn()) return renderLogin(m);
   leaveViewer();
   const body = h("main", {});
+  const nav = h("nav", { class: "tabs", id: "nav" }, ...tabs.map((t) => h("a", { href: "#/" + t, class: t === tab() ? "on" : "" }, t === "ai" ? "AI" : t[0].toUpperCase() + t.slice(1))));
+  const menu = h("button", { class: "menu-btn", id: "menu-btn", "aria-label": "Menu", "aria-expanded": "false", "aria-controls": "nav", onclick: () => { const o = nav.classList.toggle("open"); menu.setAttribute("aria-expanded", String(o)); } }, "☰ Menu");
   app.replaceChildren(
-    h("header", { class: "top" }, h("img", { class: "logo", src: "/admin/logo.png", alt: "", width: 28, height: 28 }), h("h1", {}, m.name + " admin"), h("span", { class: "muted" }, "v" + m.server_version), h("div", { class: "spacer" }),
+    h("header", { class: "top" }, menu, h("img", { class: "logo", src: "/admin/logo.png", alt: "", width: 28, height: 28 }), h("h1", {}, m.name + " admin"), h("span", { class: "muted" }, "v" + m.server_version), h("div", { class: "spacer" }),
       h("span", { class: "muted" }, username()),
       h("button", { onclick: async () => { try { await api("POST", "/logout"); } catch { /* ignore */ } signOutLocal(); render(); } }, "Sign out")),
-    h("nav", { class: "tabs" }, ...tabs.map((t) => h("a", { href: "#/" + t, class: t === tab() ? "on" : "" }, t === "ai" ? "AI" : t[0].toUpperCase() + t.slice(1)))),
+    nav,
     body);
   try {
     await pages[tab()](body, m);
@@ -255,8 +258,10 @@ function userActions(u: AdminUser, reload: () => void): HTMLElement {
 }
 
 function showLink(title: string, link: string, expires: number) {
-  dialog(title, h("div", {}, h("p", {}, "Send this to the user. They paste it on the app's login page. It works once and expires on " + fmtDate(expires) + "."),
-    h("div", { class: "linkbox mono" }, link)), [{ label: "Copy link", primary: true, action: async () => { await copy(link); } }]);
+  const qr = qrSvg(link, 220);
+  dialog(title, h("div", {}, h("p", {}, "Send this to the user. They paste it on the app's login page, or scan the QR code with the app (Sign in, Scan QR). It works once and expires on " + fmtDate(expires) + "."),
+    h("div", { class: "linkbox mono", id: "login-link" }, link),
+    h("div", { class: "qrbox", id: "login-qr" }, qr ?? h("p", { class: "muted" }, "This link is too long for a QR code; copy it instead."))), [{ label: "Copy link", primary: true, action: async () => { await copy(link); } }]);
 }
 
 function createUserDialog(reload: () => void) {
@@ -323,3 +328,12 @@ function renameDialog(c: AdminConversation, reload: () => void) {
 }
 
 render();
+
+// On phones tables are shown as cards; each cell is labelled with its column heading (CSS prints the label).
+function labelCells() {
+  for (const t of app.querySelectorAll("table")) {
+    const heads = [...t.querySelectorAll("thead th")].map((x) => x.textContent ?? "");
+    for (const tr of t.querySelectorAll("tbody tr")) [...tr.children].forEach((td, i) => { if (!td.hasAttribute("data-label")) td.setAttribute("data-label", heads[i] ?? ""); });
+  }
+}
+new MutationObserver(labelCells).observe(app, { childList: true, subtree: true });

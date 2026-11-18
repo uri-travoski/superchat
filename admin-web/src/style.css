@@ -49,7 +49,6 @@ code, .mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 
 .linkbox { background: var(--row); border: 1px dashed var(--border); border-radius: 8px; padding: 10px; word-break: break-all; margin: 8px 0; }
 .progress { height: 10px; background: var(--row); border-radius: 6px; overflow: hidden; }
 .progress > div { height: 100%; background: var(--accent); transition: width .2s; }
-@media (max-width: 720px) { th:nth-child(n+5), td:nth-child(n+5) { display: none; } }
 
 /* ---- chat viewer (Element X web style) ---- */
 body.viewer-page main { padding: 0; }
@@ -123,3 +122,72 @@ label.radio { display: flex; gap: 8px; align-items: flex-start; color: var(--tex
 .formcard .fakebtn { padding: 3px 10px; border-radius: 6px; border: 1px solid var(--border); font-size: .85rem; }
 .scheduled-box { margin: 8px 16px; padding: 8px 12px; border: 1px dashed var(--border); border-radius: 10px; }
 .scheduled-box .sched { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; }
+.qrbox { display: flex; justify-content: center; margin: 12px 0 4px; }
+.qr { max-width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--border); }
+
+/* ---- phone layout (360 to 430 px wide and up to tablets in portrait) ---- */
+.menu-btn, .back { display: none; }
+@media (max-width: 720px) {
+  html { font-size: 16px; }
+  body { overflow-x: hidden; }
+  header.top { padding: 8px 12px; gap: 10px; }
+  header.top h1 { font-size: 1rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  header.top .muted { display: none; }
+  .menu-btn { display: inline-flex; align-items: center; justify-content: center; }
+  nav.tabs { display: none; flex-direction: column; gap: 0; padding: 0; background: var(--panel); border-bottom: 1px solid var(--border); }
+  nav.tabs.open { display: flex; }
+  nav.tabs a { min-height: 48px; display: flex; align-items: center; padding: 0 16px; border-radius: 0; border: none; border-bottom: 1px solid var(--border); }
+  nav.tabs a.on { background: var(--row); box-shadow: inset 4px 0 0 var(--accent); }
+  main { padding: 0 12px 32px; }
+  .card { border-radius: 12px; padding: 14px; margin-top: 12px; }
+  .card + .card { margin-top: 12px; }
+  main > .card:first-child { margin-top: 12px; }
+  h2 { font-size: 1.15rem; }
+  button, .btn { min-height: 44px; padding: 8px 14px; }
+  button.tiny, button.linkish { min-height: 44px; min-width: 44px; padding: 6px 12px; font-size: .85rem; }
+  input, select, textarea { min-height: 44px; font-size: 16px; }
+  input[type=checkbox], input[type=radio] { min-height: 0; width: 22px !important; height: 22px; }
+  label.radio, label.inline { min-height: 44px; align-items: center; }
+  .row { gap: 8px; }
+  .row > button { flex: 1 1 auto; }
+  .grid, .grid2 { grid-template-columns: 1fr; }
+  .stat b { font-size: 1.25rem; }
+  .toast { bottom: 12px; width: calc(100vw - 24px); text-align: center; }
+  dialog { width: calc(100vw - 20px); max-width: none; max-height: calc(100vh - 20px); overflow: auto; padding: 16px; }
+  dialog .row[style*="flex-end"] { justify-content: stretch; }
+  .linkbox, .secret, pre, code { overflow-wrap: anywhere; word-break: break-all; }
+  pre { white-space: pre-wrap; overflow: auto; max-width: 100%; }
+  img, video, svg, audio, canvas { max-width: 100%; }
+  .login { margin: 4vh auto; }
+  /* tables become one card per row */
+  table, thead, tbody, tr, th, td { display: block; width: 100%; }
+  thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  tr { border: 1px solid var(--border); border-radius: 10px; margin: 10px 0; padding: 6px 12px; background: var(--panel); }
+  tr:hover td { background: transparent; }
+  td { border: none; padding: 6px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
+  td::before { content: attr(data-label); flex: 0 0 6.5em; color: var(--muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .03em; }
+  td[data-label=""]::before, td:not([data-label])::before { display: none; }
+  td > .row, td.row { width: 100%; }
+  td:empty { display: none; }
+  /* chat viewer: one pane at a time */
+  body.viewer-page main { padding: 0; }
+  .viewer { margin: 0; border-radius: 0; border-left: none; border-right: none; flex-direction: column; height: calc(100dvh - 58px); min-height: 360px; }
+  .viewer .side { width: auto; max-height: none; flex: 1; border: none; }
+  .viewer .main { display: none; }
+  .viewer.conv-open .side { display: none; }
+  .viewer.conv-open .main { display: flex; flex: 1; }
+  .back { display: inline-flex; align-items: center; }
+  .viewer .thread { position: fixed; inset: 0; z-index: 30; width: auto; border: none; background: var(--panel); }
+  .main-head { padding: 8px 10px; gap: 8px; }
+  .main-head .grow .small { display: none; }
+  .tools { padding: 8px 10px; }
+  .tools input[type=search] { width: 100%; flex: 1 1 100%; }
+  .tools label.inline { flex: 1 1 45%; }
+  .tools label.inline input { min-width: 0; }
+  .timeline { padding: 10px; }
+  .bubble { max-width: 92%; }
+  .msg-actions { display: flex; position: static; margin-top: 4px; width: fit-content; }
+  .composer { padding: 8px 10px; }
+  .pickbar { flex-wrap: wrap; padding: 8px 10px; }
+  .scheduled-box { margin: 8px 10px; }
+}

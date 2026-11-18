@@ -231,6 +231,7 @@ export async function chatsPage(el: HTMLElement): Promise<void> {
   function drawMain(scrollBottom = false, keepPos = false) {
     const prevScroll = main.querySelector(".timeline") as HTMLElement | null;
     const oldH = prevScroll?.scrollHeight ?? 0, oldTop = prevScroll?.scrollTop ?? 0;
+    root.classList.toggle("conv-open", !!st.cur);
     if (!st.cur) {
       main.replaceChildren(h("div", { class: "empty" }, h("h2", {}, "Chat viewer"), h("p", { class: "muted" }, "Pick a person or channel on the left, then a conversation. You can read everything, search, and delete messages (a backup is always written first).")));
       return;
@@ -247,6 +248,7 @@ export async function chatsPage(el: HTMLElement): Promise<void> {
       h("button", { onclick: () => { st.picked.clear(); drawMain(false, true); } }, "Clear"),
       h("button", { class: "danger do-delete", onclick: () => deleteDialog([...st.picked]) }, "Delete selected…"));
     const header = h("div", { class: "main-head" },
+      h("button", { class: "back", id: "viewer-back", "aria-label": "Back to the conversation list", onclick: () => { st.cur = null; st.thread = null; threadPane.style.display = "none"; for (const b of list.querySelectorAll(".conv")) b.classList.remove("on"); drawMain(); } }, "← Back"),
       avatar(c.title, c.id, 40),
       h("div", { class: "grow" }, h("b", {}, (c.kind === "channel" ? "# " : "") + c.title), h("div", { class: "muted small ellipsis", title: members }, `${c.kind === "channel" ? "Channel" : c.kind === "dm" ? "Direct message" : c.kind === "group_dm" ? "Group" : "Notes to self"}  ·  ${members}`)),
       h("button", { class: st.selectMode ? "primary" : "", onclick: () => { st.selectMode = !st.selectMode; st.picked.clear(); drawMain(false, true); } }, st.selectMode ? "Done selecting" : "Select"));

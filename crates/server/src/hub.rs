@@ -51,6 +51,12 @@ impl Hub {
         false
     }
 
+    /// Test support: forgets the user's live connections so the server treats them as offline (and sends wake-up pushes
+    /// instead of live events) while their sockets stay open. Used by the emulator push test.
+    pub fn forget_user(&self, user_id: &str) {
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).remove(user_id);
+    }
+
     pub fn is_online(&self, user_id: &str) -> bool {
         let g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         g.get(user_id).map(|v| !v.is_empty()).unwrap_or(false)

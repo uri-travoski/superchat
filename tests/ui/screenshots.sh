@@ -68,6 +68,16 @@ VARIANTS=(
   "desk-light-regular-drafts|1000x700|light|100|drafts"
   "desk-dark-regular-bookmark|1000x700|dark|100|bookmark:general"
   "desk-light-regular-ai-search|1000x700|light|100|search:general:"
+  "phone-light-regular-lock-screen|360x640|light|100|lockpin:design"
+  "phone-dark-regular-lock-screen|360x640|dark|100|lockpin:design"
+  "phone-light-large-lock-screen|360x640|light|115|lockpin:design"
+  "phone-dark-large-lock-screen|360x640|dark|115|lockpin:design"
+  "phone-light-regular-lock-list-locked|360x640|light|100|locklist:design"
+  "phone-dark-regular-lock-list-locked|360x640|dark|100|locklist:design"
+  "phone-light-large-lock-list-locked|360x640|light|115|locklist:design"
+  "phone-dark-large-lock-list-locked|360x640|dark|115|locklist:design"
+  "phone-light-regular-lock-list-unlocked|360x640|light|100|lockopen:design"
+  "phone-dark-large-lock-list-unlocked|360x640|dark|115|lockopen:design"
 )
 n=0
 for v in "${VARIANTS[@]}"; do

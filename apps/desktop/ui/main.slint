@@ -1,6 +1,6 @@
 import { LineEdit, ListView, ScrollView, Palette, Switch, TextEdit } from "std-widgets.slint";
 import { Theme, ConvItem, MsgItem, PersonItem, RowItem, BookmarkItem, BlockItem, FileItem, ReactItem, EmojiItem, FormFieldItem, FormOptionItem, FormButtonItem } from "theme.slint";
-import { Avatar, Link, Pill, PrimaryButton, GhostButton, SectionHeader, ConvRow, MessageRow } from "components.slint";
+import { Avatar, Padlock, Link, Pill, PrimaryButton, GhostButton, SectionHeader, ConvRow, MessageRow } from "components.slint";
 export { Theme, ConvItem, MsgItem, PersonItem, RowItem, BookmarkItem, BlockItem, FileItem, ReactItem, EmojiItem, FormFieldItem, FormOptionItem, FormButtonItem }
 
 component Header {
@@ -175,6 +175,25 @@ export component AppWindow inherits Window {
 
     callback login(string, string, string, string);
     callback scan-qr();
+    // ---- App Lock ----
+    in-out property <bool> lock-set: false;
+    in-out property <bool> lock-engaged: false;
+    in-out property <bool> lock-entry-open: false;
+    in-out property <string> lock-error;
+    in-out property <string> lock-msg;
+    in-out property <string> lock-pin;
+    in-out property <string> lock-cur;
+    in-out property <string> lock-new;
+    in-out property <string> lock-new2;
+    callback lock-tapped();
+    callback lock-cancel();
+    callback pin-edited(string, string);
+    callback lock-enable();
+    callback lock-change();
+    callback lock-remove();
+    callback lock-now();
+    callback toggle-conv-lock(string);
+    pure callback is-conv-locked(string) -> bool;
     callback paste-clip();
     callback server-edited(string);
     callback tofu-accept();
@@ -272,6 +291,7 @@ export component AppWindow inherits Window {
                 if root.schedule-open { root.schedule-open = false; return accept; }
                 if root.bookmark-open { root.bookmark-open = false; return accept; }
                 if root.picker-open { root.picker-open = false; return accept; }
+                if root.lock-entry-open { root.lock-cancel(); return accept; }
                 if root.menu-kind != "" { root.menu-kind = ""; return accept; }
                 if root.screen != "" { root.screen = ""; return accept; }
                 if root.thread-id != "" { root.close-thread(); return accept; }
@@ -358,6 +378,11 @@ export component AppWindow inherits Window {
                                     TouchArea { clicked => { root.open-settings(); } accessible-role: button; accessible-label: "Profile and settings"; }
                                 }
                                 Text { text: root.me-name; font-size: Theme.fs; font-weight: 700; overflow: elide; horizontal-stretch: 1; vertical-alignment: center; }
+                                if root.lock-set: Rectangle {
+                                    width: 36px;
+                                    Padlock { open: !root.lock-engaged; tint: root.lock-engaged ? Palette.foreground : Theme.accent; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+                                    TouchArea { clicked => { root.lock-tapped(); } accessible-role: button; accessible-label: root.lock-engaged ? "App Lock, locked. Tap to unlock" : "App Lock, unlocked. Tap to lock"; }
+                                }
                                 Link { text: "Threads"; clicked => { root.open-threads(); } }
                                 Link { text: "New"; clicked => { root.open-people(); } }
                                 Link { text: "Settings"; clicked => { root.open-settings(); } }
@@ -960,6 +985,21 @@ export component AppWindow inherits Window {
                                     Switch { text: "24-hour clock"; checked: root.hour24; toggled => { root.hour24 = self.checked; root.setting-changed("hour24"); } }
                                 }
                                 SettingRow {
+                                    label: "App Lock";
+                                    hint: root.lock-set ? "Conversations you lock are hidden until you enter your PIN. The PIN stays on this device." : "Set a 6-digit PIN to hide chosen conversations. The PIN stays on this device and cannot be recovered; if you forget it, sign out to reset.";
+                                    if root.lock-set: LineEdit { text <=> root.lock-cur; input-type: password; placeholder-text: "Current PIN"; font-size: Theme.fs; accessible-label: "Current PIN"; edited(t) => { root.pin-edited("cur", t); } }
+                                    LineEdit { text <=> root.lock-new; input-type: password; placeholder-text: root.lock-set ? "New PIN (6 digits)" : "PIN (6 digits)"; font-size: Theme.fs; accessible-label: "New PIN"; edited(t) => { root.pin-edited("new", t); } }
+                                    LineEdit { text <=> root.lock-new2; input-type: password; placeholder-text: "Repeat the PIN"; font-size: Theme.fs; accessible-label: "Repeat the PIN"; edited(t) => { root.pin-edited("new2", t); } }
+                                    if root.lock-msg != "": Text { text: root.lock-msg; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; accessible-role: text; }
+                                    HorizontalLayout {
+                                        spacing: 8px; alignment: start;
+                                        if !root.lock-set: PrimaryButton { text: "Turn on App Lock"; clicked => { root.lock-enable(); } }
+                                        if root.lock-set: PrimaryButton { text: "Change PIN"; clicked => { root.lock-change(); } }
+                                        if root.lock-set: GhostButton { text: "Remove PIN"; danger: true; clicked => { root.lock-remove(); } }
+                                        if root.lock-set: GhostButton { text: "Lock now"; clicked => { root.lock-now(); } }
+                                    }
+                                }
+                                SettingRow {
                                     label: "Notifications";
                                     Switch { text: "Show notifications"; checked: root.notif; toggled => { root.notif = self.checked; root.setting-changed("notif"); } }
                                     Switch { text: "Show message preview"; checked: root.notif-preview; toggled => { root.notif-preview = self.checked; root.setting-changed("notif"); } }
@@ -1054,6 +1094,25 @@ export component AppWindow inherits Window {
                     }
                 }
 
+                // ---- App Lock: PIN entry. Says nothing about what is hidden. ----
+                if root.signed-in && root.lock-entry-open: Rectangle {
+                    background: Palette.background;
+                    TouchArea { }
+                    VerticalLayout {
+                        alignment: center;
+                        padding: 24px;
+                        spacing: 14px;
+                        Padlock { open: false; x: (parent.width - self.width) / 2; }
+                        Text { text: "App Lock"; font-size: Theme.fs-title; font-weight: 700; horizontal-alignment: center; }
+                        HorizontalLayout {
+                            alignment: center;
+                            LineEdit { width: min(260px, root.width - 48px); text <=> root.lock-pin; input-type: password; horizontal-alignment: center; placeholder-text: "6-digit PIN"; font-size: Theme.fs-title; accessible-label: "PIN"; edited(t) => { root.pin-edited("entry", t); } }
+                        }
+                        Text { text: root.lock-error; color: Theme.danger; font-size: Theme.fs; horizontal-alignment: center; wrap: word-wrap; accessible-role: text; }
+                        HorizontalLayout { alignment: center; GhostButton { text: "Cancel"; clicked => { root.lock-cancel(); } } }
+                    }
+                }
+
                 // ---- conversation menu / forward ----
                 if root.menu-kind != "": Overlay {
                     dismiss => { root.menu-kind = ""; }
@@ -1075,6 +1134,7 @@ export component AppWindow inherits Window {
                                 if root.menu-kind == "share": Text { text: "Share to"; font-size: Theme.fs-title; font-weight: 700; }
                                 if root.menu-kind == "share" && root.share-text != "": Text { text: root.share-text; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
                                 if root.menu-kind == "conv": Link { text: "Favourite or unfavourite"; clicked => { root.toggle-fav(root.menu-conv); root.menu-kind = ""; } }
+                                if root.menu-kind == "conv" && root.lock-set: Link { text: root.is-conv-locked(root.menu-conv) ? "Remove lock from this conversation" : "Lock this conversation"; clicked => { root.toggle-conv-lock(root.menu-conv); root.menu-kind = ""; } }
                                 if root.menu-kind == "conv": Link { text: "Mark as unread"; clicked => { root.mark-unread(root.menu-conv); root.menu-kind = ""; } }
                                 if root.menu-kind == "conv": SectionHeader { text: "Mute"; }
                                 if root.menu-kind == "conv": HorizontalLayout {

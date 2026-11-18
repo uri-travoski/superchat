@@ -301,7 +301,7 @@ impl AppLock {
     pub fn activity(&self, now_ms: i64) {
         let mut s = self.lock_state();
         if !s.engaged {
-            s.last_activity_ms = now_ms;
+            s.last_activity_ms = s.last_activity_ms.max(now_ms);
         }
     }
 

@@ -40,6 +40,8 @@ object Native {
     @JvmStatic external fun nativeTzOffset(secs: Int)
     @JvmStatic external fun nativeShare(text: String, files: String)
     @JvmStatic external fun nativeLoginLink(link: String)
+    @JvmStatic external fun nativeUserInput()
+    @JvmStatic external fun nativeBackground(background: Boolean)
 
     private lateinit var app: Context
     private var ready = false

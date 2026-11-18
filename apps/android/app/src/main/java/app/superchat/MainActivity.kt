@@ -37,12 +37,20 @@ class MainActivity : NativeActivity() {
     override fun onResume() {
         super.onResume()
         Native.visible = true
+        Native.nativeBackground(false)
         Native.pushTimeZone() // the zone (or daylight saving) may have changed while we were away
     }
 
     override fun onPause() {
         Native.visible = false
+        Native.nativeBackground(true)
         super.onPause()
+    }
+
+    /** Every touch or key press postpones the App Lock idle timeout. */
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        Native.nativeUserInput()
     }
 
     override fun onNewIntent(intent: Intent) {

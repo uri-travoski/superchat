@@ -476,3 +476,22 @@ export component MessageRow {
         }
     }
 }
+
+// A padlock drawn from shapes (no icon font needed): closed when `open` is false.
+export component Padlock {
+    in property <bool> open: false;
+    in property <brush> tint: Palette.foreground;
+    width: 22px;
+    height: 24px;
+    Rectangle {
+        x: root.open ? 9px : 5px;
+        y: root.open ? -1px : 1px;
+        width: 12px;
+        height: 14px;
+        border-radius: 6px;
+        border-width: 2px;
+        border-color: root.tint;
+    }
+    Rectangle { x: 2px; y: 10px; width: 18px; height: 13px; border-radius: 3px; background: root.tint; }
+    Rectangle { x: 9.5px; y: 14px; width: 3px; height: 5px; border-radius: 1.5px; background: Theme.sidebar; }
+}

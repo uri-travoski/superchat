@@ -8,6 +8,7 @@ mod emoji_data;
 mod forms;
 mod model;
 pub mod handoff;
+pub mod lock;
 pub mod platform;
 mod sched;
 
@@ -200,6 +201,8 @@ pub fn shared_client_with(data_dir: &Path, insecure: bool, device: &str, secrets
 
 /// Android cannot tell chrono its zone, so the Kotlin shell pushes the offset (seconds) here; `i32::MIN` = unset.
 static TZ_OVERRIDE: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(i32::MIN);
+
+pub use lock::{note_background, note_input};
 
 pub fn set_tz_offset(secs: i32) {
     TZ_OVERRIDE.store(secs, std::sync::atomic::Ordering::Relaxed);
@@ -856,8 +859,24 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
             let screen = parts.next().unwrap_or("");
             let conv = parts.next().unwrap_or("");
             let cs = c.conversations().into_iter().find(|x| c.conversation_title(x).eq_ignore_ascii_case(conv)).or_else(|| c.conversations().into_iter().next());
-            if let Some(cs) = cs {
+            if let (Some(cs), false) = (&cs, screen.starts_with("lock")) {
                 select_conv(&ui, &c, &sh, &cs.conversation.id, true);
+            }
+            if screen.starts_with("lock") {
+                // App Lock demo: PIN 123456, the named conversation locked.
+                if let Some(cs) = &cs {
+                    let _ = c.applock().set_pin("123456", "123456", client_core::applock::wall_ms());
+                    let _ = c.applock().set_conv_locked(&cs.conversation.id, true);
+                    if screen != "lockopen" {
+                        c.applock().lock();
+                    }
+                    lock::changed(&ui, &c, &sh);
+                    if screen == "lockpin" {
+                        ui.invoke_lock_tapped();
+                    }
+                }
+                ui.set_status("\u{0}done".into());
+                return;
             }
             match screen {
                 "settings" => ui.invoke_open_settings(),
@@ -935,6 +954,12 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
         use slint::winit_030::{winit, EventResult, WinitWindowAccessor};
         let wk = ui.as_weak();
         ui.window().on_winit_window_event(move |_, ev| {
+            use winit::event::WindowEvent as WE;
+            match ev {
+                WE::CursorMoved { .. } | WE::MouseInput { .. } | WE::MouseWheel { .. } | WE::KeyboardInput { .. } | WE::Touch(_) => lock::note_input(),
+                WE::Focused(f) => lock::note_background(!*f),
+                _ => {}
+            }
             if let winit::event::WindowEvent::DroppedFile(p) = ev {
                 if let Some(ui) = wk.upgrade() {
                     ui.invoke_attach(p.to_string_lossy().to_string().into());
@@ -972,8 +997,13 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                         let pref = c.pref(&message.conv_id);
                         let allowed = proto::rules::should_notify(Some(&pref), now_ms(), me.as_ref().map(|m| m.presence_pref.as_str()).unwrap_or("auto"), message.mentions.contains(&my_id));
                         if !is_android && notif && !dnd && allowed && (message.conv_id != cur || !c.signed_in()) {
-                            let title = conversation.as_ref().map(|cs| c.conversation_title(cs)).unwrap_or_else(|| sender_name.clone());
-                            let body = if preview { format!("{}: {}", sender_name, model::plain(&message.body)) } else { "New message".into() };
+                            // A locked conversation never shows its name or text, whether or not the app is unlocked.
+                            let (title, body) = if c.is_conv_locked(&message.conv_id) {
+                                ("SuperChat".to_string(), "New message".to_string())
+                            } else {
+                                let title = conversation.as_ref().map(|cs| c.conversation_title(cs)).unwrap_or_else(|| sender_name.clone());
+                                (title, if preview { format!("{}: {}", sender_name, model::plain(&message.body)) } else { "New message".into() })
+                            };
                             platform::notify(&title, &body);
                         }
                     }
@@ -1010,8 +1040,12 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
     let timer = slint::Timer::default();
     {
         let (wk, c, sh, h2) = (ui.as_weak(), client.clone(), osh.clone(), hooks.clone());
+        let mut lock_bg = false;
         timer.start(slint::TimerMode::Repeated, Duration::from_millis(500), move || {
             let Some(ui) = wk.upgrade() else { return };
+            if ui.get_signed_in() {
+                lock::tick(&ui, &c, &sh, &mut lock_bg);
+            }
             {
                 let mut g = sh.lock().unwrap();
                 let s = (h2.system_scale)();
@@ -1045,7 +1079,7 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                 }
             }
             if let Some(conv) = (h2.take_open_conv)() {
-                if ui.get_signed_in() {
+                if ui.get_signed_in() && !c.is_hidden(&conv) {
                     select_conv(&ui, &c, &sh, &conv, true);
                 }
             }
@@ -1068,6 +1102,8 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
             ui.set_typing_text(t.into());
         });
     }
+
+    lock::install(&ui, &client, &osh);
 
     // ---- login screen helpers: a link pasted anywhere switches to link mode and supplies the server -------------
     {

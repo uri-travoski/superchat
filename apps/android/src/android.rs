@@ -217,8 +217,13 @@ pub extern "system" fn Java_app_superchat_SyncService_nativeStart(mut env: JNIEn
                     if !prefs.notifications || pref_name == "dnd" || !allowed {
                         continue;
                     }
-                    let title = conversation.as_ref().map(|cs| c.conversation_title(cs)).unwrap_or_else(|| sender_name.clone());
-                    let body = if prefs.notification_preview { format!("{}: {}", sender_name, client_core::logic::markup::to_plain(&message.body)) } else { "New message".to_string() };
+                    // A locked conversation never shows its name or text.
+                    let (title, body) = if c.is_conv_locked(&message.conv_id) {
+                        ("SuperChat".to_string(), "New message".to_string())
+                    } else {
+                        let title = conversation.as_ref().map(|cs| c.conversation_title(cs)).unwrap_or_else(|| sender_name.clone());
+                        (title, if prefs.notification_preview { format!("{}: {}", sender_name, client_core::logic::markup::to_plain(&message.body)) } else { "New message".to_string() })
+                    };
                     with_env(|env, c| {
                         let t = env.new_string(&title).ok()?;
                         let b = env.new_string(&body).ok()?;
@@ -265,6 +270,18 @@ pub extern "system" fn Java_app_superchat_Native_nativeLoginLink(mut env: JNIEnv
     if let Ok(mut g) = LOGIN_LINK.lock() {
         *g = Some(link);
     }
+}
+
+/// Any touch or key press (MainActivity.onUserInteraction): postpones the App Lock idle timeout.
+#[no_mangle]
+pub extern "system" fn Java_app_superchat_Native_nativeUserInput(_env: JNIEnv, _c: JClass) {
+    atomic_ui::note_input();
+}
+
+/// The app moved to the background or came back (MainActivity.onPause / onResume).
+#[no_mangle]
+pub extern "system" fn Java_app_superchat_Native_nativeBackground(_env: JNIEnv, _c: JClass, background: jni::sys::jboolean) {
+    atomic_ui::note_background(background != 0);
 }
 
 /// Called by MainActivity when a notification is tapped.

@@ -20,3 +20,4 @@ A Slack-style rebuild of the desktop and phone UI on top of 1.1.3, driven by own
 * Layout polish items known on the phone: the New message button can sit over the badge of the last list row when the list is long, and "Jump to first unread" shares the top strip with the date pill.
 * Desktop screenshots come from a private Xvfb session without a window manager; real-desktop IME, clipboard and drag-drop are untested.
 * App Lock is a screen lock, not encryption.
+* Search result snippets show the message's raw markup (for example asterisks) and join lines; this is cosmetic.

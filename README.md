@@ -16,12 +16,12 @@ Android (one Slint UI shared by all three), plus a command-line client. Your dat
 * New in 1.1.2: self-service Sign out / Sign out of all devices exist only for users whose admin set Privacy options to Allow (see [docs/RELEASE-NOTES-v1.1.2.md](docs/RELEASE-NOTES-v1.1.2.md)).
 * New in 1.1: tap-to-sign-in links with a QR code, several AI providers, App Lock (PIN-hidden conversations), a phone-friendly admin panel. See [docs/RELEASE-NOTES-v1.1.md](docs/RELEASE-NOTES-v1.1.md). Calls (voice/video) are still planned.
 
-![Desktop app](docs/screenshots/desk-light-regular-chat.png)
+![Desktop app](docs/screenshots/desk-1280-light-regular-home.png)
 
 | | | |
 |---|---|---|
-| ![Dark](docs/screenshots/desk-dark-regular-chat.png) | ![Form](docs/screenshots/desk-light-regular-form.png) | ![Phone](docs/screenshots/phone-light-regular-list.png) |
-| ![App Lock](docs/screenshots/phone-light-regular-lock-screen.png) | ![Login link page](docs/screenshots/mobile-4b-landing-page.png) | ![Admin on a phone](docs/screenshots/mobile-3-users.png) |
+| ![Dark](docs/screenshots/desk-1280-dark-regular-thread-panel.png) | ![Form](docs/screenshots/desk-1280-light-regular-later.png) | ![Phone](docs/screenshots/android-1.2-home-regular.png) |
+| ![App Lock](docs/screenshots/android-1.2-app-lock-hidden.png) | ![Login link page](docs/screenshots/mobile-4b-landing-page.png) | ![Admin on a phone](docs/screenshots/mobile-3-users.png) |
 
 ## Quick start (server)
 

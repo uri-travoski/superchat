@@ -745,6 +745,44 @@ impl Client {
         p.exists().then_some(p)
     }
 
+    /// F-03: where the preview PNG of a PDF is cached, if it has been fetched.
+    pub fn pdf_thumb_path(&self, att: &Attachment) -> Option<PathBuf> {
+        let p = self.inner.cfg.data_dir.join("thumbs").join(format!("{}.png", att.id));
+        p.exists().then_some(p)
+    }
+
+    /// F-03: fetches the server-drawn preview of the first page of a PDF and caches it. A PDF the server cannot draw
+    /// leaves an empty marker so the app does not ask again (the message then shows a plain file card).
+    pub async fn fetch_pdf_thumb(&self, att: &Attachment) -> Result<PathBuf> {
+        let dir = self.inner.cfg.data_dir.join("thumbs");
+        std::fs::create_dir_all(&dir)?;
+        let dest = dir.join(format!("{}.png", att.id));
+        if dest.exists() {
+            return Ok(dest);
+        }
+        let none = dir.join(format!("{}.none", att.id));
+        if none.exists() {
+            return Err(ClientError::Local("No preview".into()));
+        }
+        let api = self.api()?;
+        let url = format!("{}/thumb", api.download_url(&att.id).split('?').next().unwrap_or_default());
+        match api.exec(|c| c.get(&url)).await {
+            Ok(resp) => {
+                let bytes = resp.bytes().await.map_err(|e| ClientError::Network(e.to_string()))?;
+                let tmp = dest.with_extension("part");
+                std::fs::write(&tmp, &bytes)?;
+                std::fs::rename(&tmp, &dest)?;
+                Ok(dest)
+            }
+            Err(e) => {
+                if matches!(e.code(), Some(proto::ErrorCode::NotFound)) {
+                    let _ = std::fs::write(&none, b"");
+                }
+                Err(e)
+            }
+        }
+    }
+
     /// F-03: downloads (and caches) an attachment, returning the local file path.
     pub async fn download_attachment(&self, att: &Attachment) -> Result<PathBuf> {
         if att.removed {

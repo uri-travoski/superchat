@@ -49,6 +49,31 @@ fn poster_jpeg() -> String {
     base64::engine::general_purpose::STANDARD.encode(out)
 }
 
+/// A one-page PDF (a heading, a few lines and a coloured block) so the demo shows a real first-page preview.
+fn demo_pdf() -> Vec<u8> {
+    let content = "0.1 0.55 0.45 rg 40 700 515 6 re f BT /F1 26 Tf 40 740 Td (Project brief) Tj ET BT /F1 13 Tf 40 670 Td 18 TL (Goal: ship the onboarding flow by Friday.) ' (Scope: sign-in, invite link, first message.) ' (Owner: Bob   Reviewer: Alice) ' ET 0.93 0.95 0.97 rg 40 480 515 150 re f 0.1 0.55 0.45 rg 40 480 8 150 re f BT /F1 14 Tf 60 600 Td 18 TL (Risks) ' (- Spacing on the login screen) ' (- Dark mode contrast) ' ET";
+    let objs = [
+        "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>".to_string(),
+        format!("<< /Length {} >>\nstream\n{}\nendstream", content.len(), content),
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string(),
+    ];
+    let mut out = b"%PDF-1.4\n".to_vec();
+    let mut offs = vec![];
+    for (i, o) in objs.iter().enumerate() {
+        offs.push(out.len());
+        out.extend(format!("{} 0 obj\n{}\nendobj\n", i + 1, o).as_bytes());
+    }
+    let xref = out.len();
+    out.extend(format!("xref\n0 {}\n0000000000 65535 f \n", objs.len() + 1).as_bytes());
+    for o in offs {
+        out.extend(format!("{o:010} 00000 n \n").as_bytes());
+    }
+    out.extend(format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{}\n%%EOF\n", objs.len() + 1, xref).as_bytes());
+    out
+}
+
 fn png(w: u32, h: u32) -> Vec<u8> {
     fn crc(data: &[u8]) -> u32 {
         let mut c = 0xffff_ffffu32;
@@ -139,7 +164,7 @@ async fn seed_and_serve() {
     std::fs::write(&img, png(480, 270)).unwrap();
     carol.send_files(&design, "New onboarding mockup", &[img.clone()], SendOptions::default()).unwrap();
     let pdf = s.dir.path().join("brief.pdf");
-    std::fs::write(&pdf, b"%PDF-1.4 demo").unwrap();
+    std::fs::write(&pdf, demo_pdf()).unwrap();
     bob.send_files(&design, "Brief for review", &[pdf], SendOptions::default()).unwrap();
     let wav = s.dir.path().join("voice-message-1.wav");
     std::fs::write(&wav, voice_wav()).unwrap();

@@ -241,3 +241,65 @@ async fn sidebar_order_of_conversations_and_sections_syncs_between_devices() {
     alice.reorder_sections(&[]).await.unwrap();
     assert_eq!(alice.section_order(), vec!["fav".to_string(), b, c, a, "channels".into(), "dms".into()]);
 }
+
+fn tiny_pdf() -> Vec<u8> {
+    let content = "0.1 0.4 0.8 rg 40 600 300 100 re f BT /F1 24 Tf 50 500 Td (Hello preview) Tj ET";
+    let objs = [
+        "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 800] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>".to_string(),
+        format!("<< /Length {} >>\nstream\n{}\nendstream", content.len(), content),
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string(),
+    ];
+    let mut out = b"%PDF-1.4\n".to_vec();
+    let mut offs = vec![];
+    for (i, o) in objs.iter().enumerate() {
+        offs.push(out.len());
+        out.extend(format!("{} 0 obj\n{}\nendobj\n", i + 1, o).as_bytes());
+    }
+    let xref = out.len();
+    out.extend(format!("xref\n0 {}\n0000000000 65535 f \n", objs.len() + 1).as_bytes());
+    for o in offs {
+        out.extend(format!("{o:010} 00000 n \n").as_bytes());
+    }
+    out.extend(format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{}\n%%EOF\n", objs.len() + 1, xref).as_bytes());
+    out
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn pdf_gets_a_server_drawn_first_page_preview_and_broken_pdfs_fall_back_to_a_card() {
+    let s = TestServer::start().await;
+    let (alice_id, alice) = s.user("alice").await;
+    let (bob_id, bob) = s.user("bob").await;
+    let (_, carol) = s.user("carol").await;
+    let ch = make_channel(&s, "docs", &[&alice_id, &bob_id]).await;
+    wait_conv(&alice, &ch).await;
+    wait_conv(&bob, &ch).await;
+    let good = s.dir.path().join("report.pdf");
+    std::fs::write(&good, tiny_pdf()).unwrap();
+    let bad = s.dir.path().join("broken.pdf");
+    std::fs::write(&bad, b"%PDF-1.4 this is not a real document").unwrap();
+    alice.send_files(&ch, "good", &[good], SendOptions::default()).unwrap();
+    alice.send_files(&ch, "bad", &[bad], SendOptions::default()).unwrap();
+    let m_good = wait_until_msg(&bob, &ch, |m| m.body == "good" && !m.attachments.is_empty()).await;
+    let m_bad = wait_until_msg(&bob, &ch, |m| m.body == "bad" && !m.attachments.is_empty()).await;
+    // A preview that every member can fetch, cached on disk afterwards.
+    let p = bob.fetch_pdf_thumb(&m_good.attachments[0]).await.unwrap();
+    let png = std::fs::read(&p).unwrap();
+    assert_eq!(&png[1..4], b"PNG");
+    assert!(png.len() > 2000, "a drawn page, not a blank");
+    assert_eq!(bob.pdf_thumb_path(&m_good.attachments[0]), Some(p));
+    // The document that cannot be drawn: no preview, remembered, and the file itself is still downloadable.
+    assert!(bob.fetch_pdf_thumb(&m_bad.attachments[0]).await.is_err());
+    assert!(bob.fetch_pdf_thumb(&m_bad.attachments[0]).await.is_err());
+    assert!(bob.pdf_thumb_path(&m_bad.attachments[0]).is_none());
+    assert!(bob.download_attachment(&m_bad.attachments[0]).await.is_ok());
+    // Someone outside the channel cannot get the preview.
+    assert!(carol.fetch_pdf_thumb(&m_good.attachments[0]).await.is_err());
+    // A removed file has no preview.
+    let id = m_good.attachments[0].id.clone();
+    s.admin.call::<serde_json::Value>(reqwest::Method::DELETE, &format!("/admin/files/{id}"), None).await.unwrap();
+    let mut gone = m_good.attachments[0].clone();
+    gone.id = format!("{}x", gone.id);
+    assert!(alice.fetch_pdf_thumb(&gone).await.is_err());
+}

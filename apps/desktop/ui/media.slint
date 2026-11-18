@@ -113,14 +113,17 @@ export component VideoCard {
     }
 }
 
-// F-03 and others: a file card with a type badge (PDF, ZIP...), name, size and Open.
+// F-03 and others: a file card with a type badge (PDF, ZIP...), name, size and Open. A PDF whose first page has been
+// drawn by the server shows that page as a preview above the name.
 export component FileCard {
     in property <FileItem> f;
     callback open;
-    height: max(48px, 42px * Theme.scale);
+    property <bool> preview: root.f.has-poster && !root.f.removed;
+    preferred-height: root.preview ? max(210px, 190px * Theme.scale) + max(48px, 42px * Theme.scale) : max(48px, 42px * Theme.scale);
     preferred-width: 340px * max(1.0, Theme.scale * 0.9);
     min-width: 200px;
     horizontal-stretch: 0;
+    vertical-stretch: 0;
     accessible-role: button;
     accessible-label: root.f.removed ? "File removed" : root.f.name + ", " + root.f.size;
     Rectangle {
@@ -128,27 +131,39 @@ export component FileCard {
         border-width: 1px;
         border-color: Theme.line;
         background: ta.has-hover ? Theme.bubble-other : Theme.bg;
-        HorizontalLayout {
-            padding: 8px;
-            padding-left: 10px;
-            padding-right: 12px;
-            spacing: 10px;
-            Rectangle {
-                width: 34px * Theme.scale;
-                height: self.width;
-                y: (parent.height - self.height) / 2;
-                border-radius: 7px;
-                background: root.f.ext == "PDF" ? #d6402e : (root.f.kind == 1 ? Theme.accent : Theme.icon-soft);
-                if root.f.ext != "": Text { text: root.f.ext; color: white; font-size: Theme.fs-small * 0.85; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
-                if root.f.ext == "": Icon { name: root.f.kind == 1 ? "image" : "file"; size: 18px; tint: white; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+        clip: true;
+        VerticalLayout {
+            if root.preview: Rectangle {
+                height: max(210px, 190px * Theme.scale);
+                background: #ffffff;
+                clip: true;
+                // The top of the page at full width (the rest is cut off), like a document thumbnail.
+                Image { source: root.f.poster; x: 0px; y: 0px; width: parent.width; height: parent.width * root.f.poster.height / max(1, root.f.poster.width); image-fit: fill; image-rendering: smooth; }
+                Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
             }
-            VerticalLayout {
-                horizontal-stretch: 1;
-                alignment: center;
-                Text { text: root.f.removed ? "File removed" : root.f.name; font-size: Theme.fs-small * 1.05; color: Theme.text; overflow: elide; }
-                if !root.f.removed: Text { text: root.f.size; font-size: Theme.fs-small * 0.92; color: Theme.muted; }
+            HorizontalLayout {
+                padding: 8px;
+                padding-left: 10px;
+                padding-right: 12px;
+                spacing: 10px;
+                height: max(48px, 42px * Theme.scale);
+                Rectangle {
+                    width: 34px * Theme.scale;
+                    height: self.width;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: 7px;
+                    background: root.f.ext == "PDF" ? #d6402e : (root.f.kind == 1 ? Theme.accent : Theme.icon-soft);
+                    if root.f.ext != "": Text { text: root.f.ext; color: white; font-size: Theme.fs-small * 0.85; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                    if root.f.ext == "": Icon { name: root.f.kind == 1 ? "image" : "file"; size: 18px; tint: white; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+                }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    Text { text: root.f.removed ? "File removed" : root.f.name; font-size: Theme.fs-small * 1.05; color: Theme.text; overflow: elide; }
+                    if !root.f.removed: Text { text: root.f.size; font-size: Theme.fs-small * 0.92; color: Theme.muted; }
+                }
+                if !root.f.removed: Text { text: "Open"; color: Theme.accent-text; font-size: Theme.fs-small; vertical-alignment: center; }
             }
-            if !root.f.removed: Text { text: "Open"; color: Theme.accent-text; font-size: Theme.fs-small; vertical-alignment: center; }
         }
         ta := TouchArea { enabled: !root.f.removed; clicked => { root.open(); } }
     }

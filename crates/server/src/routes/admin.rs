@@ -510,6 +510,8 @@ pub async fn remove_file(State(st): State<St>, Admin(_a): Admin, Path(id): Path<
         })
         .await?;
     let _ = st.storage().delete(&key).await;
+    // F-03: a removed file leaves no preview behind either.
+    let _ = st.storage().delete(&format!("thumb/{id}.png")).await;
     Ok(Json(serde_json::json!({"ok": true})))
 }
 

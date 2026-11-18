@@ -225,6 +225,18 @@ pub fn msg_item(cx: &mut Ctx, t: &TimelineItem, day: String, divider: bool) -> M
                 }
             }
             let (mut poster, mut has_poster) = (slint::Image::default(), false);
+            // F-03: the first page of a PDF, drawn by the server and cached here.
+            if a.content_type == "application/pdf" && !a.removed && a.size < 30 * 1024 * 1024 {
+                match cx.c.pdf_thumb_path(a) {
+                    Some(p) => {
+                        if let Ok(i) = slint::Image::load_from_path(&p) {
+                            poster = i;
+                            has_poster = true;
+                        }
+                    }
+                    None => cx.want_images.push(a.clone()),
+                }
+            }
             if let Some(b64) = a.meta.as_ref().and_then(|m| m.poster_b64.as_deref()) {
                 if let Some(i) = poster_image(b64) {
                     poster = i;

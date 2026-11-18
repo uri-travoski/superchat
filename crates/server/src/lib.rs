@@ -15,6 +15,7 @@ pub mod hooks;
 pub mod hub;
 pub mod landing;
 pub mod org;
+pub mod pdfthumb;
 pub mod push;
 pub mod queries;
 pub mod restore;

@@ -888,7 +888,7 @@ fn refresh(ui: &AppWindow, c: &Client, sh: &Sh) {
         if g.img_inflight.insert(a.id.clone()) {
             let (wk, c2, sh2) = (ui.as_weak(), c.clone(), sh.clone());
             c.handle().spawn(async move {
-                let ok = c2.download_attachment(&a).await.is_ok();
+                let ok = if a.content_type == "application/pdf" { c2.fetch_pdf_thumb(&a).await.is_ok() } else { c2.download_attachment(&a).await.is_ok() };
                 let _ = slint::invoke_from_event_loop(move || {
                     if let Some(ui) = wk.upgrade() {
                         if ok {

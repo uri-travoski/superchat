@@ -168,6 +168,53 @@ pub async fn set_meta(State(st): State<St>, auth: Auth, Path(id): Path<String>, 
     Ok(Json(serde_json::json!({"ok": true})))
 }
 
+/// F-03: the first page of a PDF as a PNG. Drawn once on first request and kept next to the file; a PDF that cannot be
+/// drawn leaves a marker so it is not tried again.
+pub async fn thumbnail(State(st): State<St>, auth: Auth, Path(id): Path<String>) -> AppResult<Response> {
+    let (uid, admin, id2) = (auth.user_id.clone(), auth.is_admin(), id.clone());
+    let row = st
+        .db
+        .call(move |c| {
+            let row = att_row(c, &id2)?;
+            if !can_access(c, &id2, &row, &uid, admin)? {
+                return Err(AppError::not_found("file not found"));
+            }
+            Ok(row)
+        })
+        .await?;
+    if row.removed || row.content_type != "application/pdf" {
+        return Err(AppError::not_found("no preview"));
+    }
+    let (key, none_key) = (format!("thumb/{id}.png"), format!("thumb/{id}.none"));
+    let png = if st.storage().head(&key).await?.is_some() {
+        st.storage().get_all(&key).await?
+    } else if st.storage().head(&none_key).await?.is_some() || row.size as u64 > crate::pdfthumb::MAX_PDF_BYTES {
+        return Err(AppError::not_found("no preview"));
+    } else {
+        static GATE: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
+        let _permit = GATE.acquire().await.map_err(|_| AppError::internal("busy"))?;
+        let pdf = st.storage().get_all(&row.key).await?;
+        let rendered = tokio::task::spawn_blocking(move || crate::pdfthumb::first_page_png(pdf.to_vec())).await.ok().flatten();
+        match rendered {
+            Some(p) => {
+                let b = bytes::Bytes::from(p);
+                let _ = st.storage().put_bytes(&key, b.clone(), "image/png").await;
+                b
+            }
+            None => {
+                let _ = st.storage().put_bytes(&none_key, bytes::Bytes::from_static(b"x"), "text/plain").await;
+                return Err(AppError::not_found("no preview"));
+            }
+        }
+    };
+    let mut resp = Response::new(Body::from(png));
+    let h = resp.headers_mut();
+    h.insert(header::CONTENT_TYPE, HeaderValue::from_static("image/png"));
+    h.insert("x-content-type-options", HeaderValue::from_static("nosniff"));
+    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("private, max-age=86400"));
+    Ok(resp)
+}
+
 pub struct AttRow {
     pub key: String,
     pub content_type: String,

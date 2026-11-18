@@ -693,7 +693,8 @@ async fn registration_does_not_exist_and_setup_is_one_time() {
 #[tokio::test]
 async fn sessions_list_and_revoke() {
     let s = TestServer::start().await;
-    let (_a, phone) = s.user("alice").await;
+    let (a_id, phone) = s.user("alice").await;
+    s.allow_signout(&a_id, &phone).await;
     let laptop = s.new_client("alice-laptop");
     laptop.login(&s.url, "alice", "password-123", None).await.unwrap();
     laptop.start();

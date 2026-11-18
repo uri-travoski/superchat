@@ -30,7 +30,7 @@ Open `https://your-server/admin` and sign in with an owner or admin account.
   Verify (quick or deep).
 * **Sessions**: every signed-in device with last seen; sign any out.
 * **Backups**: list of per-user backups.
-* **Privacy options** per user (Allow / Disallow): with Allow, the user's app shows the Privacy screen in Settings and they may hide their last-active time from others. Default Disallow.
+* **Privacy options** per user (Allow / Disallow): with Allow, the user sees Privacy settings (hide last-active) and can sign out / sign out of all devices; with Disallow (the default) their apps show no sign-out controls anywhere and the server refuses self-service sign-out (`forbidden`, "sign-out is not allowed for this account"), so people cannot remove their own session by accident. Their sessions end only when you revoke them (Users, Sessions), disable the account, reset the password or clear history. Admins and owners can always sign out. Changing the setting reaches open apps at once.
 
 The same operations exist in the `atomic admin ...` CLI (`atomic help`).
 

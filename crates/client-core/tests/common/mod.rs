@@ -62,6 +62,12 @@ impl TestServer {
         wait_online(&c).await;
         (r.user.user.id, c)
     }
+
+    /// Admin sets Privacy options to Allow for the user and waits until the client has seen it.
+    pub async fn allow_signout(&self, id: &str, c: &Client) {
+        self.admin.update_user(id, &UpdateUserRequest { privacy_controls_enabled: Some(true), ..Default::default() }).await.unwrap();
+        wait_until("client sees Allow", || c.can_sign_out()).await;
+    }
 }
 
 pub fn capitalise(s: &str) -> String {

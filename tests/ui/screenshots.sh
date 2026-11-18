@@ -42,7 +42,7 @@ for _ in $(seq 1 120); do [ -s "$WORK/url" ] && break; sleep 0.5; done
 [ -s "$WORK/url" ] || { echo "seed server did not start"; cat "$WORK/seed.log"; exit 1; }
 URL="$(cat "$WORK/url")"
 
-# name | size | theme | font step (100/115/130) | open
+# name | size | theme | font step (100/115/130) | open | optional user (default alice; carol has Privacy options Allow)
 VARIANTS=(
   "desk-light-regular-chat|1000x700|light|100|chat:general"
   "desk-dark-regular-chat|1000x700|dark|100|chat:general"
@@ -53,6 +53,10 @@ VARIANTS=(
   "phone-dark-regular-chat|360x640|dark|100|chat:design"
   "phone-light-large-chat|360x640|light|115|chat:design"
   "desk-light-regular-settings|1000x700|light|100|settings"
+  "desk-light-regular-settings-no-signout|1000x700|light|100|settings-bottom"
+  "desk-light-large-settings-no-signout|1000x700|light|115|settings-bottom"
+  "desk-light-regular-settings-signout|1000x700|light|100|settings-bottom|carol"
+  "desk-light-large-settings-signout|1000x700|light|115|settings-bottom|carol"
   "desk-dark-regular-search|1000x700|dark|100|search:general:release"
   "desk-light-regular-threads|1000x700|light|100|threads"
   "desk-dark-regular-switcher|1000x700|dark|100|switcher"
@@ -81,13 +85,13 @@ VARIANTS=(
 )
 n=0
 for v in "${VARIANTS[@]}"; do
-  IFS='|' read -r name size theme font open <<<"$v"
+  IFS='|' read -r name size theme font open user <<<"$v"
   if [ -n "${SHOTS:-}" ] && ! grep -qw -- "$name" <<<"$SHOTS"; then continue; fi
   n=$((n+1))
   DATA="$WORK/data-$n"; mkdir -p "$DATA"
   printf '{"theme":"%s","font_scale":%s}' "$theme" "$font" >"$DATA/prefs.json"
   W="${size%x*}"; H="${size#*x}"
-  export ATOMIC_DATA_DIR="$DATA" ATOMIC_AUTOLOGIN_SERVER="$URL" ATOMIC_AUTOLOGIN_USER=alice ATOMIC_AUTOLOGIN_PASS=password-123
+  export ATOMIC_DATA_DIR="$DATA" ATOMIC_AUTOLOGIN_SERVER="$URL" ATOMIC_AUTOLOGIN_USER="${user:-alice}" ATOMIC_AUTOLOGIN_PASS=password-123
   unset ATOMIC_UI_OPEN
   [ "$open" = none ] || export ATOMIC_UI_OPEN="$open"
   "$ROOT/target/debug/superchat" >"$WORK/app-$n.log" 2>&1 &

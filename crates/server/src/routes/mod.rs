@@ -28,6 +28,7 @@ pub fn api_router() -> Router<St> {
         .route("/me/password", post(change_password))
         .route("/sessions", get(list_sessions))
         .route("/sessions/revoke-others", post(revoke_other_sessions))
+        .route("/sessions/revoke-all", post(revoke_all_sessions))
         .route("/sessions/{id}", delete(revoke_session))
         .route("/users", get(chat::list_users))
         .route("/users/{id}", get(chat::get_user_route))

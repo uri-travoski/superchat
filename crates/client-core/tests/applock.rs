@@ -72,6 +72,7 @@ async fn locked_chats_vanish_from_lists_search_counts_threads_and_drafts() {
     assert!(!bob.applock().is_set());
 
     // Signing out forgets the lock together with the rest of the local data.
+    s.allow_signout(&a_id, &alice).await;
     alice.applock().lock();
     alice.logout().await.unwrap();
     assert!(!alice.applock().is_set());

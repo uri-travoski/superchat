@@ -17,9 +17,10 @@ USAGE: superchat-cli [--data-dir DIR] [--json] [--insecure-http] <command> [args
 Account
   login <server> <username> <password>      sign in (https required; --insecure-http for test servers)
   link <pasted-link-or-code> [server]       sign in with an admin's one-time link
-  logout                                    sign out and erase local data
+  logout                                    sign out and erase local data (needs Privacy options: Allow, or admin)
   whoami                                    show the signed-in user and connection details
   sessions                                  list this account's devices
+  logout-all                                sign out of every device (needs Privacy options: Allow, or admin)
 Chats
   chats                                     list conversations with unread counts
   users                                     list people
@@ -195,6 +196,11 @@ async fn run(o: &Opts, args: &[String]) -> anyhow::Result<()> {
             let c = open(o)?;
             c.logout().await?;
             println!("signed out; local data erased");
+        }
+        "logout-all" => {
+            let c = open(o)?;
+            c.logout_all().await?;
+            println!("signed out of all devices; local data erased");
         }
         "whoami" => {
             let c = open(o)?;

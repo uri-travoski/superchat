@@ -139,7 +139,7 @@ const pages: Record<Tab, (el: HTMLElement, m: ServerMeta) => Promise<void>> = {
     el.append(h("div", { class: "card" },
       h("div", { class: "row" }, h("h2", { style: "margin:0;flex:1" }, "Users"), h("button", { class: "primary", onclick: () => createUserDialog(reload) }, "Create user")),
       h("table", {}, h("thead", {}, h("tr", {}, ...["Name", "Role", "Status", "Setup", "Last active", "Sessions", "Privacy options", "Actions"].map((x) => h("th", {}, x)))), tbody),
-      h("p", { class: "muted" }, "Privacy options: Allow shows the Privacy screen in the user's app Settings, where they can hide their last active time. It is Disallow for everyone by default.")));
+      h("p", { class: "muted" }, "Privacy options. Allow: the user sees Privacy settings (hide last-active) and can sign out / sign out of all devices. Disallow (the default): no Privacy settings and no sign-out controls in their apps; only you or the server end their sessions.")));
   },
 
   async conversations(el) {
@@ -246,7 +246,7 @@ const pages: Record<Tab, (el: HTMLElement, m: ServerMeta) => Promise<void>> = {
 
 /** Privacy options column: Allow / Disallow, saved as soon as it changes. */
 function privacyCell(u: AdminUser): HTMLElement {
-  const sel = h("select", { class: "privacy-select", "data-user": u.username, "aria-label": "Privacy options of " + u.display_name, disabled: u.deleted },
+  const sel = h("select", { class: "privacy-select", "data-user": u.username, "aria-label": "Privacy options of " + u.display_name, title: "Allow: user sees Privacy settings (hide last-active) and can sign out / sign out of all devices", disabled: u.deleted },
     h("option", { value: "allow" }, "Allow"), h("option", { value: "disallow" }, "Disallow")) as HTMLSelectElement;
   let cur = u.privacy_controls_enabled ? "allow" : "disallow";
   sel.value = cur;

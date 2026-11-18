@@ -161,6 +161,10 @@ export component AppWindow inherits Window {
     in-out property <string> push-choice: "none";
     in-out property <string> ntfy-url;
     in-out property <bool> privacy-enabled: false;
+    // Self-service sign-out is only offered to admins and to users whose Privacy options is Allow.
+    in-out property <bool> sign-out-allowed: false;
+    in-out property <bool> confirm-sign-out-all: false;
+    in-out property <length> settings-scroll-y: 0px;
     in-out property <bool> hide-last-active: false;
     in-out property <bool> launch-login: false;
     in-out property <bool> start-min: false;
@@ -215,6 +219,7 @@ export component AppWindow inherits Window {
     callback jump-unread();
     callback jump-date(string);
     callback sign-out();
+    callback sign-out-all();
     callback setting-changed(string);
     callback attach(string);
     callback browse-file();
@@ -913,6 +918,7 @@ export component AppWindow inherits Window {
                     VerticalLayout {
                         Header { title: "Settings"; back => { root.screen = ""; } }
                         ScrollView {
+                            content-y <=> root.settings-scroll-y;
                             vertical-stretch: 1;
                             VerticalLayout {
                                 padding: 16px;
@@ -986,7 +992,7 @@ export component AppWindow inherits Window {
                                 }
                                 SettingRow {
                                     label: "App Lock";
-                                    hint: root.lock-set ? "Conversations you lock are hidden until you enter your PIN. The PIN stays on this device." : "Set a 6-digit PIN to hide chosen conversations. The PIN stays on this device and cannot be recovered; if you forget it, sign out to reset.";
+                                    hint: root.lock-set ? "Conversations you lock are hidden until you enter your PIN. The PIN stays on this device." : "Set a 6-digit PIN to hide chosen conversations. The PIN stays on this device and cannot be recovered; if you forget it, ask your admin to reset your account.";
                                     if root.lock-set: LineEdit { text <=> root.lock-cur; input-type: password; placeholder-text: "Current PIN"; font-size: Theme.fs; accessible-label: "Current PIN"; edited(t) => { root.pin-edited("cur", t); } }
                                     LineEdit { text <=> root.lock-new; input-type: password; placeholder-text: root.lock-set ? "New PIN (6 digits)" : "PIN (6 digits)"; font-size: Theme.fs; accessible-label: "New PIN"; edited(t) => { root.pin-edited("new", t); } }
                                     LineEdit { text <=> root.lock-new2; input-type: password; placeholder-text: "Repeat the PIN"; font-size: Theme.fs; accessible-label: "Repeat the PIN"; edited(t) => { root.pin-edited("new2", t); } }
@@ -1034,7 +1040,7 @@ export component AppWindow inherits Window {
                                         GhostButton { text: "Add"; clicked => { root.new-section(root.new-section-name); root.new-section-name = ""; } }
                                     }
                                 }
-                                SettingRow {
+                                if root.sign-out-allowed: SettingRow {
                                     label: "Devices";
                                     hint: "Where you are signed in.";
                                     VerticalLayout {
@@ -1051,10 +1057,20 @@ export component AppWindow inherits Window {
                                         Link { text: "Sign out all other devices"; danger: true; clicked => { root.revoke-others(); } }
                                     }
                                 }
+                                if root.sign-out-allowed && root.confirm-sign-out-all: SettingRow {
+                                    label: "Sign out of all devices?";
+                                    hint: "Every device, including this one, is signed out and its local chats are removed.";
+                                    HorizontalLayout {
+                                        spacing: 8px; alignment: start;
+                                        GhostButton { text: "Sign out everywhere"; danger: true; clicked => { root.confirm-sign-out-all = false; root.screen = ""; root.sign-out-all(); } }
+                                        PrimaryButton { text: "Cancel"; clicked => { root.confirm-sign-out-all = false; } }
+                                    }
+                                }
                                 HorizontalLayout {
                                     padding-top: 12px; spacing: 8px; alignment: start;
-                                    GhostButton { text: "Sign out"; danger: true; clicked => { root.screen = ""; root.sign-out(); } }
-                                    PrimaryButton { text: "Close"; clicked => { root.screen = ""; } }
+                                    if root.sign-out-allowed: GhostButton { text: "Sign out"; danger: true; clicked => { root.screen = ""; root.sign-out(); } }
+                                    if root.sign-out-allowed: GhostButton { text: "Sign out of all devices"; danger: true; clicked => { root.confirm-sign-out-all = true; } }
+                                    PrimaryButton { text: "Close"; clicked => { root.confirm-sign-out-all = false; root.screen = ""; } }
                                 }
                                 Text { text: root.version + "  |  Built with Slint (slint.dev), colour emoji by Noto Color Emoji"; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
                             }

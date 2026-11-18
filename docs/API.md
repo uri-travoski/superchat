@@ -24,6 +24,15 @@ Edit rule (`proto::rules::edit_allowed`): channels and notes-to-self always; DMs
 Admin (`/admin/...`, owner or admin only): overview, users (+reset-password, login-link, revoke-sessions, clear-history, backup,
 delete-range), backups, sessions, conversations (+members), files, storage (+test, migrate, verify), jobs.
 
+## 1.1.2 additions
+
+* Self-service sign-out is gated by the admin's Privacy options (`privacy_controls_enabled` in `GET /me`). For a member without it, `POST /logout`, `DELETE /sessions/{own id}`,
+  `POST /sessions/revoke-others` and the new `POST /sessions/revoke-all` answer `403 forbidden` ("sign-out is not allowed for this account") and change nothing.
+  Admins and owners are exempt, admins can still end any session (`DELETE /sessions/{id}`, `POST /admin/users/{id}/revoke-sessions`), and token refresh and the forced
+  revocations (`account_disabled`, `password_reset`, `history_cleared`) are unaffected. `GET /sessions` stays readable.
+* `POST /sessions/revoke-all` signs the caller out of every device including the calling one and returns `{"revoked": n}`.
+* Older apps (1.1.1 and before) still show their sign-out buttons for such users; the server refuses them.
+
 ## 1.1.1 additions
 
 * `PUT /admin/users/{id}/role` with `{"role":"member"|"admin"|"owner"}` returns the updated `AdminUser`. Owner only (`forbidden` for admins and members);

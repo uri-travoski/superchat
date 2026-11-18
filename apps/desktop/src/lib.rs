@@ -373,6 +373,11 @@ fn refresh(ui: &AppWindow, c: &Client, sh: &Sh) {
         ui.set_me_color(color_of(&me.user.id));
         ui.set_presence_pref(me.presence_pref.clone().into());
         ui.set_privacy_enabled(me.privacy_controls_enabled);
+        let allowed = me.user.role.is_admin() || me.privacy_controls_enabled;
+        ui.set_sign_out_allowed(allowed);
+        if !allowed {
+            ui.set_confirm_sign_out_all(false);
+        }
         ui.set_hide_last_active(me.hide_last_active);
     }
     ui.set_can_back(g.hist_pos > 0);
@@ -691,6 +696,24 @@ fn open_thread(ui: &AppWindow, c: &Client, sh: &Sh, conv: &str, root: &str) {
     });
 }
 
+/// Returns to the login screen after a self-service sign-out; a refused one (server says forbidden) changes nothing.
+fn finish_sign_out(wk: Weak<AppWindow>, ok: bool) {
+    let _ = slint::invoke_from_event_loop(move || {
+        if let Some(ui) = wk.upgrade() {
+            if !ok {
+                toast(&ui, "Sign-out is not allowed for this account.");
+                return;
+            }
+            ui.set_signed_in(false);
+            ui.set_login_error("".into());
+            ui.set_conversations(model(vec![]));
+            ui.set_messages(model(vec![]));
+            ui.set_current_conv("".into());
+            ui.set_current_title("".into());
+        }
+    });
+}
+
 fn load_sessions(ui: &AppWindow, c: &Client) {
     let (wk, c2) = (ui.as_weak(), c.clone());
     c.handle().spawn(async move {
@@ -880,6 +903,11 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
             }
             match screen {
                 "settings" => ui.invoke_open_settings(),
+                // Test hook for screenshots: Settings scrolled to the bottom (sign-out controls).
+                "settings-bottom" => {
+                    ui.invoke_open_settings();
+                    ui.set_settings_scroll_y(if ui.get_sign_out_allowed() { -1000.0 } else { -600.0 });
+                }
                 "search" => ui.invoke_open_search(),
                 "threads" => ui.invoke_open_threads(),
                 "switcher" => ui.invoke_open_switcher(),
@@ -1075,7 +1103,7 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                         ui.set_login_error("That is not a SuperChat login link.".into());
                     }
                 } else if ui.get_signed_in() {
-                    toast(&ui, "Already signed in. Sign out first to use a login link.");
+                    toast(&ui, "Already signed in.");
                 }
             }
             if let Some(conv) = (h2.take_open_conv)() {
@@ -2308,6 +2336,9 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
         });
         let (wk, c) = (ui.as_weak(), client.clone());
         ui.on_revoke_session(move |id| {
+            if !c.can_sign_out() {
+                return;
+            }
             let (wk, c2, id) = (wk.clone(), c.clone(), id.to_string());
             c.handle().spawn(async move {
                 let _ = c2.revoke_session(&id).await;
@@ -2320,6 +2351,9 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
         });
         let (wk, c) = (ui.as_weak(), client.clone());
         ui.on_revoke_others(move || {
+            if !c.can_sign_out() {
+                return;
+            }
             let (wk, c2) = (wk.clone(), c.clone());
             c.handle().spawn(async move {
                 let _ = c2.revoke_other_sessions().await;
@@ -2332,19 +2366,24 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
         });
         let (wk, c) = (ui.as_weak(), client.clone());
         ui.on_sign_out(move || {
+            if !c.can_sign_out() {
+                return;
+            }
             let (wk, c) = (wk.clone(), c.clone());
             c.clone().handle().spawn(async move {
-                let _ = c.logout().await;
-                let _ = slint::invoke_from_event_loop(move || {
-                    if let Some(ui) = wk.upgrade() {
-                        ui.set_signed_in(false);
-                        ui.set_login_error("".into());
-                        ui.set_conversations(model(vec![]));
-                        ui.set_messages(model(vec![]));
-                        ui.set_current_conv("".into());
-                        ui.set_current_title("".into());
-                    }
-                });
+                let r = c.logout().await;
+                finish_sign_out(wk, r.is_ok());
+            });
+        });
+        let (wk, c) = (ui.as_weak(), client.clone());
+        ui.on_sign_out_all(move || {
+            if !c.can_sign_out() {
+                return;
+            }
+            let (wk, c) = (wk.clone(), c.clone());
+            c.clone().handle().spawn(async move {
+                let r = c.logout_all().await;
+                finish_sign_out(wk, r.is_ok());
             });
         });
     }

@@ -223,10 +223,22 @@ pub async fn refresh(State(st): State<St>, Json(req): Json<RefreshRequest>) -> A
     Ok(Json(TokenPair { refresh_token: req.refresh_token, ..tokens }))
 }
 
+/// Self-service sign-out is only for admins and for members whose admin enabled "Privacy options".
+fn ensure_signout_allowed(c: &rusqlite::Connection, auth: &Auth) -> AppResult<()> {
+    if auth.is_admin() {
+        return Ok(());
+    }
+    if get_user(c, &auth.user_id)?.privacy_controls_enabled {
+        return Ok(());
+    }
+    Err(AppError::forbidden("sign-out is not allowed for this account"))
+}
+
 pub async fn logout(State(st): State<St>, auth: Auth) -> AppResult<Json<serde_json::Value>> {
     let st2 = st.clone();
     st.db
         .call(move |c| {
+            ensure_signout_allowed(c, &auth)?;
             c.execute(
                 "UPDATE sessions SET revoked=1, revoke_reason='logout' WHERE id=?1",
                 [&auth.session_id],
@@ -372,8 +384,11 @@ pub async fn revoke_session(State(st): State<St>, auth: Auth, Path(sid): Path<St
             let owner: Option<String> =
                 c.query_row("SELECT user_id FROM sessions WHERE id=?1", [&sid], |r| r.get(0)).optional()?;
             match owner {
-                Some(o) if o == auth.user_id || auth.is_admin() => {}
+                Some(ref o) if *o == auth.user_id || auth.is_admin() => {}
                 _ => return Err(AppError::not_found("session not found")),
+            }
+            if owner.as_deref() == Some(auth.user_id.as_str()) {
+                ensure_signout_allowed(c, &auth)?;
             }
             c.execute("UPDATE sessions SET revoked=1, revoke_reason='session_revoked' WHERE id=?1", [&sid])?;
             st2.hub.kick_session(&sid, ErrorCode::SessionRevoked, close::SESSION_ENDED, "session revoked");
@@ -387,7 +402,23 @@ pub async fn revoke_other_sessions(State(st): State<St>, auth: Auth) -> AppResul
     let st2 = st.clone();
     let n = st
         .db
-        .call(move |c| revoke_sessions(c, &st2.hub, &auth.user_id, "session_revoked", Some(&auth.session_id)))
+        .call(move |c| {
+            ensure_signout_allowed(c, &auth)?;
+            revoke_sessions(c, &st2.hub, &auth.user_id, "session_revoked", Some(&auth.session_id))
+        })
+        .await?;
+    Ok(Json(serde_json::json!({"revoked": n})))
+}
+
+/// Signs the caller out everywhere, including this device.
+pub async fn revoke_all_sessions(State(st): State<St>, auth: Auth) -> AppResult<Json<serde_json::Value>> {
+    let st2 = st.clone();
+    let n = st
+        .db
+        .call(move |c| {
+            ensure_signout_allowed(c, &auth)?;
+            revoke_sessions(c, &st2.hub, &auth.user_id, "logout", None)
+        })
         .await?;
     Ok(Json(serde_json::json!({"revoked": n})))
 }

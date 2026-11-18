@@ -11,6 +11,7 @@ Android (one Slint UI shared by all three), plus a command-line client. Your dat
 * No end-to-end encryption: TLS in transit, and admins can read messages (needed for the admin chat viewer and search). Backups are
   encrypted with a passphrase.
 * Bots and automation: Telegram-style bot API, webhooks, interactive forms, scheduled messages, optional AI search and recaps.
+* New in 1.1.2: self-service Sign out / Sign out of all devices exist only for users whose admin set Privacy options to Allow (see [docs/RELEASE-NOTES-v1.1.2.md](docs/RELEASE-NOTES-v1.1.2.md)).
 * New in 1.1: tap-to-sign-in links with a QR code, several AI providers, App Lock (PIN-hidden conversations), a phone-friendly admin panel. See [docs/RELEASE-NOTES-v1.1.md](docs/RELEASE-NOTES-v1.1.md). Calls (voice/video) are still planned.
 
 ![Desktop app](docs/screenshots/desk-light-regular-chat.png)
@@ -96,7 +97,7 @@ Packages (output in `dist/`):
 cargo install cargo-deb && cargo deb -p atomic-desktop --output dist/     # .deb
 packaging/linux/build-appimage.sh                                         # AppImage
 (cd apps/android && ./gradlew assembleRelease)                            # APK (arm64-v8a + x86_64)
-docker build -f deploy/Dockerfile -t superchat:1.1.1 .                    # server image
+docker build -f deploy/Dockerfile -t superchat:1.1.2 .                    # server image
 ```
 
 Windows (`.exe` and NSIS installer) and the published images are built by `.github/workflows/release.yml` when a `v*` tag is pushed.

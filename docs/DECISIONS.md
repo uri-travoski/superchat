@@ -181,3 +181,12 @@ Not verified: real-device performance, IME composition for CJK, accessibility (T
   Locked chats are removed at the client-core level (list, search, quick switcher, threads, unread counts, drafts, scheduled), so every UI inherits it. Notifications for locked chats are always "SuperChat: New message". Locks are not synced because a synced lock would let one stolen device reveal the others.
   Idle detection uses window events on desktop and `onUserInteraction` on Android; background time is measured by focus loss (desktop) and onPause (Android).
 * **Mobile admin**: tables become cards under 720 px (a MutationObserver labels the cells), the menu collapses, the viewer is single-pane. Playwright runs at 390x844.
+
+## 1.1.2 decisions: sign-out is an admin-controlled privilege
+
+* **Who may sign out:** admins and owners always; members only when their Privacy options is Allow (`privacy_controls_enabled`). The default is Disallow, so people cannot remove their own session by accident. Only an admin (admin panel), or the server (disable, password reset, clear history) ends such sessions.
+* **Enforcement is on the server** (`forbidden`, "sign-out is not allowed for this account") for `POST /logout`, revoking an own session, `POST /sessions/revoke-others` and the new `POST /sessions/revoke-all`; the apps only hide the controls. Admin revocation of any session, token refresh and the forced wipes (`account_disabled`, `session_revoked`, `password_reset`, `history_cleared`) are not gated.
+* **Devices list: hidden entirely when Disallow** (not read-only). Showing a list of sessions that cannot be acted on is noise, and it avoids exposing IP addresses for no purpose. It, Sign out and Sign out of all devices appear together when Allow, and follow the setting live through `me_update`.
+* **Sign out of all devices** asks for confirmation inline (a second step with "Sign out everywhere" / Cancel) because it also signs out this device and erases its local chats.
+* **PIN hint:** the App Lock text no longer tells people to sign out to reset a forgotten PIN; it says to ask the admin.
+* **Client-core:** `logout()` returns the `forbidden` error without wiping when the server refuses; `can_sign_out()` is the single check used by the UI; `logout_all()` and CLI `logout-all` were added. Older apps still show the buttons for Disallow users, but the server refuses them.

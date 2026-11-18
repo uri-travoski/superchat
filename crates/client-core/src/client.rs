@@ -239,9 +239,15 @@ impl Client {
     }
 
     /// Ends this device's session on the server and erases local data.
+    ///
+    /// Only admins and members with "Privacy options" set to Allow may do this; for everyone else the server
+    /// answers `forbidden` and nothing is wiped.
     pub async fn logout(&self) -> Result<()> {
         if let Ok(api) = self.inner.api() {
-            let _ = api.post::<serde_json::Value, _>("/logout", &serde_json::json!({})).await;
+            match api.post::<serde_json::Value, _>("/logout", &serde_json::json!({})).await {
+                Err(e) if e.code() == Some(ErrorCode::Forbidden) => return Err(e),
+                _ => {}
+            }
         }
         self.inner.wipe_local(None, "You signed out.".into());
         Ok(())
@@ -586,6 +592,19 @@ impl Client {
 
     pub async fn sessions(&self) -> Result<Vec<SessionInfo>> {
         self.api()?.get("/sessions").await
+    }
+
+    /// True when the signed-in user may use the self-service sign-out controls (admins, or members with
+    /// "Privacy options" set to Allow). Follows live `me_update` events.
+    pub fn can_sign_out(&self) -> bool {
+        self.me().map(|m| m.user.role.is_admin() || m.privacy_controls_enabled).unwrap_or(false)
+    }
+
+    /// Signs out of every device including this one, then erases local data.
+    pub async fn logout_all(&self) -> Result<()> {
+        let _: serde_json::Value = self.api()?.post("/sessions/revoke-all", &serde_json::json!({})).await?;
+        self.inner.wipe_local(None, "You signed out.".into());
+        Ok(())
     }
 
     pub async fn revoke_other_sessions(&self) -> Result<()> {

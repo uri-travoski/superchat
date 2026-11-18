@@ -265,7 +265,7 @@ async fn sv24_full_scenario() {
     assert_eq!(std::fs::read(bob.download_attachment(&att).await.unwrap()).unwrap(), data);
 
     // --- CLI smoke (scripted use of the same client-core) ----------------------------------------------------------------------------
-    let cli = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/atomic");
+    let cli = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/superchat-cli");
     if cli.exists() {
         let run = |args: &[&str]| {
             let o = Command::new(&cli).args(["--insecure-http", "--data-dir"]).arg(tmp.path().join("cli")).args(args).output().unwrap();
@@ -279,6 +279,14 @@ async fn sv24_full_scenario() {
         run(&["send", &dm, "sent from the CLI"]);
         wait_for("alice got CLI message", || alice.conversations().iter().any(|c| c.conversation.id == dm) && texts(&alice, &dm).contains(&"sent from the CLI".to_string())).await;
         assert!(run(&["history", &dm]).contains("sent from the CLI"));
+        // Members without "Privacy options: Allow" cannot sign out; with Allow the CLI can.
+        let o = Command::new(&cli).args(["--insecure-http", "--data-dir"]).arg(tmp.path().join("cli")).arg("logout").output().unwrap();
+        assert!(!o.status.success(), "logout must be refused without Allow: {} {}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr));
+        admin.update_user(&c_id, &UpdateUserRequest { privacy_controls_enabled: Some(true), ..Default::default() }).await.unwrap();
+        for _ in 0..40 {
+            if carol.can_sign_out() { break; }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
         run(&["logout"]);
     } else {
         eprintln!("CLI smoke skipped: build it with `cargo build -p atomic-cli`");

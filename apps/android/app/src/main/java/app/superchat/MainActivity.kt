@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.KeyEvent
 
 /** Hosts the Slint UI (native activity). Everything else in this shell is Android-only glue. */
 class MainActivity : NativeActivity() {
@@ -45,6 +46,26 @@ class MainActivity : NativeActivity() {
         Native.visible = false
         Native.nativeBackground(true)
         super.onPause()
+    }
+
+    /**
+     * System Back goes to the Rust UI's one Back stack (popup, sheet, page, chat). Only when nothing is left to close does the
+     * app leave: the task moves to the background, which is the standard Android behaviour for a root screen.
+     * (Legacy Back dispatch is selected in the manifest, so there is no predictive animation to get out of sync.)
+     */
+    private fun handleBack() {
+        if (!Native.nativeBack()) moveTaskToBack(true)
+    }
+
+    @Deprecated("Back is routed through the Rust UI")
+    override fun onBackPressed() = handleBack()
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_BACK) {
+            if (event.action == KeyEvent.ACTION_UP && !event.isCanceled) handleBack()
+            return true
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     /** Every touch or key press postpones the App Lock idle timeout. */

@@ -26,13 +26,19 @@ export function toast(msg: string, err = false) {
 
 export function dialog(title: string, body: Node, buttons: { label: string; primary?: boolean; danger?: boolean; action: (close: () => void) => void | Promise<void> }[]): HTMLDialogElement {
   const d = h("dialog", {});
-  const close = () => { d.close(); d.remove(); };
-  d.append(h("h2", {}, title), body, h("div", { class: "row", style: "margin-top:16px;justify-content:flex-end" },
-    h("button", { onclick: close }, "Cancel"),
-    ...buttons.map((b) => h("button", { class: b.primary ? "primary" : b.danger ? "danger" : "", onclick: async (ev: Event) => {
-      const btn = ev.currentTarget as HTMLButtonElement; btn.disabled = true;
-      try { await b.action(close); } catch (e: any) { toast(e.message ?? String(e), true); } finally { btn.disabled = false; }
-    } }, b.label))));
+  // Close from anywhere: the X, Cancel, Esc (native), a click on the backdrop. The element is removed whichever way it closes.
+  const close = () => { if (d.open) d.close(); d.remove(); };
+  d.addEventListener("close", () => d.remove());
+  d.addEventListener("click", (ev) => { if (ev.target === d) close(); });
+  d.append(
+    h("div", { class: "dlg-head" }, h("h2", {}, title), h("button", { class: "dlg-x", type: "button", "aria-label": "Close", title: "Close", onclick: close }, "\u00d7")),
+    h("div", { class: "dlg-body" }, body),
+    h("div", { class: "row dlg-foot" },
+      h("button", { type: "button", class: "dlg-cancel", onclick: close }, "Cancel"),
+      ...buttons.map((b) => h("button", { type: "button", class: b.primary ? "primary" : b.danger ? "danger" : "", onclick: async (ev: Event) => {
+        const btn = ev.currentTarget as HTMLButtonElement; btn.disabled = true;
+        try { await b.action(close); } catch (e: any) { toast(e.message ?? String(e), true); } finally { btn.disabled = false; }
+      } }, b.label))));
   document.body.append(d);
   d.showModal();
   return d;

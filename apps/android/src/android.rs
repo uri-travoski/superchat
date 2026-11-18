@@ -14,6 +14,7 @@ static VM: OnceLock<JavaVM> = OnceLock::new();
 static NATIVE: OnceLock<GlobalRef> = OnceLock::new();
 static SHARED: Mutex<Option<Shared>> = Mutex::new(None);
 static LOGIN_LINK: Mutex<Option<String>> = Mutex::new(None);
+static LOGIN_ERROR: Mutex<Option<String>> = Mutex::new(None);
 
 /// Runs `f` on a JNI-attached thread with the `app.superchat.Native` class. None when the shell is not ready or Java threw.
 fn with_env<R>(f: impl FnOnce(&mut JNIEnv, &JClass) -> Option<R>) -> Option<R> {
@@ -27,6 +28,24 @@ fn with_env<R>(f: impl FnOnce(&mut JNIEnv, &JClass) -> Option<R>) -> Option<R> {
         return None;
     }
     r
+}
+
+/// Starts the QR scanner in the Kotlin shell. A failure (Java threw, the shell is not ready) is never silent: it becomes
+/// a visible message on the login screen and a log line.
+fn call_scanner(name: &str) {
+    let ok = with_env(|env, c| match env.call_static_method(c, name, "()V", &[]) {
+        Ok(_) => Some(()),
+        Err(e) => {
+            log::error!("{name} failed: {e}");
+            None
+        }
+    });
+    if ok.is_none() {
+        log::error!("{name}: JNI call did not run");
+        if let Ok(mut g) = LOGIN_ERROR.lock() {
+            *g = Some("The scanner could not start. Paste the link instead.".to_string());
+        }
+    }
 }
 
 fn call_bool(name: &str) -> bool {
@@ -166,9 +185,9 @@ fn android_main(app: slint::android::AndroidApp) {
         is_android: true,
         media: Arc::new(AndroidMedia),
         take_shared: Box::new(|| SHARED.lock().ok().and_then(|mut g| g.take())),
-        scan_qr: Some(Box::new(|| {
-            with_env(|env, c| env.call_static_method(c, "scanQr", "()V", &[]).ok().map(|_| ()));
-        })),
+        scan_qr: Some(Box::new(|| call_scanner("scanQr"))),
+        scan_image: Some(Box::new(|| call_scanner("scanImage"))),
+        take_login_error: Box::new(|| LOGIN_ERROR.lock().ok().and_then(|mut g| g.take())),
         take_login_link: Box::new(|| LOGIN_LINK.lock().ok().and_then(|mut g| g.take())),
         clipboard: Some(Box::new(|| call_string("clipboardText", "").filter(|s| !s.is_empty()))),
     };
@@ -269,6 +288,21 @@ pub extern "system" fn Java_app_superchat_Native_nativeLoginLink(mut env: JNIEnv
     let link = jstr(&mut env, &link);
     if let Ok(mut g) = LOGIN_LINK.lock() {
         *g = Some(link);
+    }
+}
+
+/// System Back (MainActivity): routed to the UI's Back stack. True when it closed something.
+#[no_mangle]
+pub extern "system" fn Java_app_superchat_Native_nativeBack(_env: JNIEnv, _c: JClass) -> jni::sys::jboolean {
+    atomic_ui::nav::back_from_platform() as jni::sys::jboolean
+}
+
+/// The scanner could not read a login link; the login screen shows why.
+#[no_mangle]
+pub extern "system" fn Java_app_superchat_Native_nativeLoginError(mut env: JNIEnv, _c: JClass, msg: JString) {
+    let msg = jstr(&mut env, &msg);
+    if let Ok(mut g) = LOGIN_ERROR.lock() {
+        *g = Some(msg);
     }
 }
 

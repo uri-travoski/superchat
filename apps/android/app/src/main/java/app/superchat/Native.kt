@@ -42,6 +42,10 @@ object Native {
     @JvmStatic external fun nativeLoginLink(link: String)
     @JvmStatic external fun nativeUserInput()
     @JvmStatic external fun nativeBackground(background: Boolean)
+    /** System Back: true when the UI closed something (popup, page, chat); false when nothing is left to close. */
+    @JvmStatic external fun nativeBack(): Boolean
+    /** Tells the login screen why a scan could not be done (shown as text, never silent). */
+    @JvmStatic external fun nativeLoginError(message: String)
 
     private lateinit var app: Context
     private var ready = false
@@ -119,9 +123,25 @@ object Native {
 
     // ---- QR login: opens the camera scanner (called from Rust) ------------------------------------------------------
 
-    @JvmStatic fun scanQr() {
-        val a = activity ?: return
-        a.runOnUiThread { a.startActivity(Intent(a, ScanActivity::class.java)) }
+    @JvmStatic fun scanQr() = openScanner(false)
+
+    /** "Choose image with QR": the photo picker, then ZXing decodes the picture. */
+    @JvmStatic fun scanImage() = openScanner(true)
+
+    private fun openScanner(fromImage: Boolean) {
+        val a = activity
+        if (a == null) {
+            nativeLoginError("The scanner could not start (the app window is not ready). Paste the link instead.")
+            return
+        }
+        a.runOnUiThread {
+            try {
+                a.startActivity(Intent(a, ScanActivity::class.java).putExtra("image", fromImage))
+            } catch (e: Exception) {
+                android.util.Log.e("atomic", "scanner failed to start", e)
+                nativeLoginError("The scanner could not start: ${e.message}. Paste the link instead.")
+            }
+        }
     }
 
     /** Plain text on the clipboard (the login screen's Paste button); empty when there is none. */

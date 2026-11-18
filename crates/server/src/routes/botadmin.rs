@@ -466,27 +466,78 @@ pub async fn test_outgoing(State(st): State<St>, Admin(_a): Admin, Path(id): Pat
 
 // ------------------------------------------------------------------ AI settings
 
-pub async fn get_ai(State(st): State<St>, Admin(_a): Admin) -> J<AiSettings> {
-    Ok(Json(st.db.call(|c| Ok(crate::ai::load(c)?.view())).await?))
-}
-
-pub async fn put_ai(State(st): State<St>, Admin(a): Admin, Json(req): Json<AiSettingsUpdate>) -> J<AiSettings> {
+fn owner_only(a: &crate::auth::Auth) -> AppResult<()> {
     if a.role != Role::Owner {
         return Err(AppError::forbidden("only the owner can change server-wide settings"));
     }
+    Ok(())
+}
+
+pub async fn get_ai(State(st): State<St>, Admin(_a): Admin) -> J<AiOverview> {
+    Ok(Json(st.db.call(|c| Ok(crate::ai::load(c)?.view())).await?))
+}
+
+pub async fn add_ai_provider(State(st): State<St>, Admin(a): Admin, Json(req): Json<AiProviderInput>) -> J<AiProvider> {
+    owner_only(&a)?;
     Ok(Json(
         st.db
             .call(move |c| {
-                let cfg = crate::ai::apply_update(crate::ai::load(c)?, req)?;
-                crate::ai::save(c, &cfg)?;
-                Ok(cfg.view())
+                let (mut store, p) = crate::ai::add_provider(crate::ai::load(c)?, req)?;
+                // The first provider becomes the default for both features.
+                if store.providers.len() == 1 {
+                    store.search_provider = Some(p.id.clone());
+                    store.recap_provider = Some(p.id.clone());
+                }
+                crate::ai::save(c, &store)?;
+                Ok(p.view())
             })
             .await?,
     ))
 }
 
-pub async fn test_ai(State(st): State<St>, Admin(_a): Admin) -> J<AiTestResponse> {
-    let cfg = st.db.call(|c| crate::ai::load(c)).await?;
+pub async fn update_ai_provider(State(st): State<St>, Admin(a): Admin, Path(id): Path<String>, Json(req): Json<AiProviderUpdate>) -> J<AiProvider> {
+    owner_only(&a)?;
+    Ok(Json(
+        st.db
+            .call(move |c| {
+                let (store, p) = crate::ai::update_provider(crate::ai::load(c)?, &id, req)?;
+                crate::ai::save(c, &store)?;
+                Ok(p.view())
+            })
+            .await?,
+    ))
+}
+
+pub async fn delete_ai_provider(State(st): State<St>, Admin(a): Admin, Path(id): Path<String>) -> J<AiOverview> {
+    owner_only(&a)?;
+    Ok(Json(
+        st.db
+            .call(move |c| {
+                let store = crate::ai::delete_provider(crate::ai::load(c)?, &id)?;
+                crate::ai::save(c, &store)?;
+                Ok(store.view())
+            })
+            .await?,
+    ))
+}
+
+pub async fn put_ai_defaults(State(st): State<St>, Admin(a): Admin, Json(req): Json<AiDefaultsUpdate>) -> J<AiOverview> {
+    owner_only(&a)?;
+    Ok(Json(
+        st.db
+            .call(move |c| {
+                let store = crate::ai::set_defaults(crate::ai::load(c)?, req)?;
+                crate::ai::save(c, &store)?;
+                Ok(store.view())
+            })
+            .await?,
+    ))
+}
+
+/// Sends a tiny request to exactly this provider (enabled or not) so the admin sees whether it works.
+pub async fn test_ai_provider(State(st): State<St>, Admin(_a): Admin, Path(id): Path<String>) -> J<AiTestResponse> {
+    let store = st.db.call(|c| crate::ai::load(c)).await?;
+    let cfg = store.providers.iter().find(|p| p.id == id).cloned().ok_or_else(|| AppError::not_found("no such AI provider"))?;
     if cfg.api_key.is_empty() {
         return Ok(Json(AiTestResponse { ok: false, message: "enter an API key first".into() }));
     }

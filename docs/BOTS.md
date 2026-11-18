@@ -80,8 +80,19 @@ They are stored in the database, so they are sent after a restart (late ones are
 
 ## AI (optional, off by default)
 
-Admin panel, AI page: provider (Anthropic or OpenAI-compatible), model, base URL and key. **When on, the text a user searches
-for, and the messages a user asks to be recapped, are sent to that provider.** Clients show this notice. Endpoints: `POST /ai/search`, `POST /ai/recap`.
+Admin panel, AI page: a **list of providers**, each with a name, kind (Anthropic or OpenAI-compatible), base URL, model, API key and an
+enabled switch. Choose which provider serves **search** and which serves **recaps** (or leave both on "Automatic": the first enabled
+provider). If the chosen provider fails (network error, 4xx/5xx), the other enabled providers are tried in list order. Each provider
+has Test, Enable/Disable, Edit and Delete. Keys are stored on the server and never returned: the API shows only "has a key" and the
+last four characters of long keys. **When on, the text a user searches for, and the messages a user asks to be recapped, are sent to
+the provider(s).** Clients show this notice. User endpoints: `POST /ai/search`, `POST /ai/recap`.
+
+Admin endpoints (owner may change, any admin may read): `GET /admin/ai` (providers + defaults + notice),
+`POST /admin/ai/providers` (`name`, `kind` = `anthropic` | `openai` | `openai-compatible`, `api_key`, optional `model`, `base_url`, `enabled`),
+`PATCH /admin/ai/providers/{id}` (any field; an empty or missing `api_key` keeps the stored key), `DELETE /admin/ai/providers/{id}`,
+`POST /admin/ai/providers/{id}/test`, `PUT /admin/ai/defaults` (`search_provider`, `recap_provider`; empty string = automatic).
+The first provider you add becomes the default for both features. The single provider of 1.0 is migrated into the first list entry
+the first time the list is read.
 
 ## Example: receipt logger and AI agent (Python, standard library only)
 

@@ -397,31 +397,66 @@ pub struct ScheduleRequest {
 
 // ------------------------------------------------------------------ AI (SV-21)
 
+/// One configured AI provider as the admin panel sees it. The API key is never returned.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct AiSettings {
-    pub enabled: bool,
+pub struct AiProvider {
+    pub id: String,
+    pub name: String,
     /// "anthropic" or "openai" (any OpenAI-compatible endpoint).
-    pub provider: String,
+    pub kind: String,
     pub model: String,
     /// Overrides the provider's default API address (OpenAI-compatible servers, proxies).
     #[serde(default)]
     pub base_url: String,
-    /// The key is never returned; only whether one is stored and its last characters.
+    pub enabled: bool,
     pub has_key: bool,
+    /// Last four characters of the key (only when the key is long enough for that to be safe).
     #[serde(default)]
     pub key_hint: String,
+}
+
+/// All providers plus which one serves which feature. `None` = the first enabled provider with a key.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct AiOverview {
+    pub providers: Vec<AiProvider>,
+    #[serde(default)]
+    pub search_provider: Option<String>,
+    #[serde(default)]
+    pub recap_provider: Option<String>,
     /// Shown by the admin panel: message text is sent to the provider.
     pub notice: String,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
-pub struct AiSettingsUpdate {
+pub struct AiProviderInput {
+    pub name: String,
+    /// "anthropic" or "openai" ("openai-compatible" is accepted as an alias).
+    pub kind: String,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub base_url: Option<String>,
+    pub api_key: String,
+    #[serde(default)]
     pub enabled: Option<bool>,
-    pub provider: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+pub struct AiProviderUpdate {
+    pub name: Option<String>,
+    pub kind: Option<String>,
     pub model: Option<String>,
     pub base_url: Option<String>,
-    /// Empty string removes the key.
+    /// A new key; `None` or an empty string keeps the stored one.
     pub api_key: Option<String>,
+    pub enabled: Option<bool>,
+}
+
+/// Which provider serves which feature. An empty string clears the choice (= automatic).
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+pub struct AiDefaultsUpdate {
+    pub search_provider: Option<String>,
+    pub recap_provider: Option<String>,
 }
 
 pub const AI_NOTICE: &str = "When AI features are on, the text of messages that match a search or belong to a recap is sent to the provider you configure here. Leave this off if that is not acceptable.";

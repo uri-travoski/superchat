@@ -728,29 +728,29 @@ async fn ai_is_off_by_default_and_works_with_a_fake_provider() {
     assert!(!alice.ai_enabled());
     assert_eq!(alice.ai_search("what did bob send", false).await.unwrap_err().code(), Some(ErrorCode::Forbidden));
     assert_eq!(alice.ai_recap(&fin, None).await.unwrap_err().code(), Some(ErrorCode::Forbidden));
-    let cfg = s.admin.ai_settings().await.unwrap();
-    assert!(!cfg.enabled && !cfg.has_key);
-    assert_eq!(cfg.provider, "anthropic");
-    assert_eq!(cfg.model, "claude-sonnet-5-5");
+    let cfg = s.admin.ai_overview().await.unwrap();
+    assert!(cfg.providers.is_empty() && cfg.search_provider.is_none());
     assert!(cfg.notice.contains("sent to the provider"));
-    // Cannot enable without a key; invalid provider refused; members cannot configure.
-    assert!(s.admin.put_ai_settings(&AiSettingsUpdate { enabled: Some(true), ..Default::default() }).await.is_err());
-    assert!(s.admin.put_ai_settings(&AiSettingsUpdate { provider: Some("acme".into()), ..Default::default() }).await.is_err());
+    // Cannot enable without a key; invalid kind refused; members cannot configure.
+    let input = |name: &str, kind: &str, key: &str, base: &str| AiProviderInput { name: name.into(), kind: kind.into(), api_key: key.into(), base_url: Some(base.into()), ..Default::default() };
+    assert!(s.admin.add_ai_provider(&input("Claude", "anthropic", "", &url)).await.is_err());
+    assert!(s.admin.add_ai_provider(&input("Claude", "acme", "sk-x", &url)).await.is_err());
     let r = http().get(format!("{}{}/admin/ai", s.url, API_PREFIX)).bearer_auth(alice.api().unwrap().current_access_token().unwrap()).send().await.unwrap();
     assert_eq!(r.status(), 403);
 
-    // Anthropic provider through the fake server.
-    let cfg = s
-        .admin
-        .put_ai_settings(&AiSettingsUpdate { enabled: Some(true), api_key: Some("sk-ant-fake-1234".into()), base_url: Some(url.clone()), ..Default::default() })
-        .await
-        .unwrap();
-    assert!(cfg.enabled && cfg.has_key);
-    assert_eq!(cfg.key_hint, "1234");
-    assert!(!format!("{cfg:?}").contains("sk-ant-fake"), "the key is never returned");
+    // Anthropic provider through the fake server; the first provider becomes the default for both features.
+    let claude = s.admin.add_ai_provider(&input("Claude", "anthropic", "sk-ant-fake-1234567", &url)).await.unwrap();
+    assert!(claude.enabled && claude.has_key);
+    assert_eq!(claude.model, "claude-sonnet-5-5");
+    assert_eq!(claude.key_hint, "4567");
+    let ov = s.admin.ai_overview().await.unwrap();
+    assert_eq!(ov.search_provider.as_deref(), Some(claude.id.as_str()));
+    assert_eq!(ov.recap_provider.as_deref(), Some(claude.id.as_str()));
+    assert!(!format!("{ov:?}").contains("sk-ant-fake"), "the key is never returned");
     assert!(alice.refresh_server_meta().await.unwrap().ai_search_enabled);
-    let test = s.admin.call::<AiTestResponse>(reqwest::Method::POST, "/admin/ai/test", Some(json!({}))).await.unwrap();
+    let test = s.admin.test_ai_provider(&claude.id).await.unwrap();
     assert!(test.ok, "{test:?}");
+    assert!(s.admin.test_ai_provider("nope").await.is_err());
 
     let r = alice.ai_search("what did bob send about invoices last week", true).await.unwrap();
     assert_eq!(r.interpreted.q, "invoice");
@@ -769,7 +769,7 @@ async fn ai_is_off_by_default_and_works_with_a_fake_provider() {
         let reqs = prov.reqs.lock().unwrap();
         let (path, headers, body) = reqs.iter().find(|r| r.2["system"].as_str().unwrap_or("").contains("search filter")).unwrap();
         assert_eq!(path, "/v1/messages");
-        assert_eq!(headers.get("x-api-key").unwrap(), "sk-ant-fake-1234");
+        assert_eq!(headers.get("x-api-key").unwrap(), "sk-ant-fake-1234567");
         assert_eq!(headers.get("anthropic-version").unwrap(), "2023-06-01");
         assert_eq!(body["model"], "claude-sonnet-5-5");
         // Search interpretation sends the question and names, never message bodies.
@@ -779,15 +779,17 @@ async fn ai_is_off_by_default_and_works_with_a_fake_provider() {
         assert!(recap.2.to_string().contains("invoice 42 is paid"));
     }
 
-    // OpenAI-compatible provider.
-    s.admin.put_ai_settings(&AiSettingsUpdate { provider: Some("openai".into()), model: Some("local-model".into()), ..Default::default() }).await.unwrap();
+    // OpenAI-compatible provider: switching kind and model of the same entry (the stored key is kept).
+    let upd = s.admin.update_ai_provider(&claude.id, &AiProviderUpdate { kind: Some("openai-compatible".into()), model: Some("local-model".into()), ..Default::default() }).await.unwrap();
+    assert_eq!(upd.kind, "openai");
+    assert_eq!(upd.key_hint, "4567");
     let rc = alice.ai_recap(&fin, None).await.unwrap();
     assert!(rc.summary.starts_with("Recap:"));
     {
         let reqs = prov.reqs.lock().unwrap();
         let last = reqs.last().unwrap();
         assert_eq!(last.0, "/v1/chat/completions");
-        assert_eq!(last.1.get("authorization").unwrap(), "Bearer sk-ant-fake-1234");
+        assert_eq!(last.1.get("authorization").unwrap(), "Bearer sk-ant-fake-1234567");
         assert_eq!(last.2["model"], "local-model");
     }
     // Recap respects membership and a time window.
@@ -795,8 +797,79 @@ async fn ai_is_off_by_default_and_works_with_a_fake_provider() {
     assert_eq!(carol.ai_recap(&fin, None).await.unwrap_err().code(), Some(ErrorCode::NotFound));
     let none = alice.ai_recap(&fin, Some(proto_now() + 60_000)).await.unwrap();
     assert_eq!(none.message_count, 0);
-    // Turning it off again.
-    s.admin.put_ai_settings(&AiSettingsUpdate { enabled: Some(false), ..Default::default() }).await.unwrap();
+    // Disabling the only provider turns the features off; deleting it removes it and its default pointers.
+    s.admin.update_ai_provider(&claude.id, &AiProviderUpdate { enabled: Some(false), ..Default::default() }).await.unwrap();
     assert!(!alice.refresh_server_meta().await.unwrap().ai_search_enabled);
     assert!(alice.ai_search("x", false).await.is_err());
+    let ov = s.admin.delete_ai_provider(&claude.id).await.unwrap();
+    assert!(ov.providers.is_empty() && ov.search_provider.is_none());
+}
+
+#[tokio::test]
+async fn ai_providers_route_per_feature_fail_over_and_migrate() {
+    let (prov_a, url_a) = Provider::start().await;
+    let (prov_b, url_b) = Provider::start().await;
+    let s = TestServer::start().await;
+    let (a_id, alice) = s.user("alice").await;
+    let ch = make_channel(&s, "finance", &[&a_id]).await;
+    wait_conv(&alice, &ch).await;
+    say(&alice, &ch, "invoice 7 sent").await;
+    let input = |name: &str, kind: &str, key: &str, base: &str| AiProviderInput { name: name.into(), kind: kind.into(), api_key: key.into(), base_url: Some(base.into()), ..Default::default() };
+    let a = s.admin.add_ai_provider(&input("Provider A", "anthropic", "key-aaaaaaaaaaaa", &url_a)).await.unwrap();
+    let b = s.admin.add_ai_provider(&input("Provider B", "openai-compatible", "key-bbbbbbbbbbbb", &url_b)).await.unwrap();
+    assert!(s.admin.add_ai_provider(&input("provider a", "anthropic", "k", &url_a)).await.is_err(), "names are unique");
+    assert_eq!(s.admin.ai_overview().await.unwrap().providers.len(), 2);
+    // Default: A for both. Then recap goes to B, search stays on A.
+    s.admin.put_ai_defaults(&AiDefaultsUpdate { recap_provider: Some(b.id.clone()), ..Default::default() }).await.unwrap();
+    assert!(s.admin.put_ai_defaults(&AiDefaultsUpdate { search_provider: Some("nope".into()), ..Default::default() }).await.is_err());
+    alice.ai_recap(&ch, None).await.unwrap();
+    assert_eq!(prov_a.reqs.lock().unwrap().len(), 0);
+    assert_eq!(prov_b.reqs.lock().unwrap().len(), 1);
+    assert_eq!(prov_b.reqs.lock().unwrap()[0].0, "/v1/chat/completions");
+    alice.ai_search("invoice", false).await.unwrap();
+    assert_eq!(prov_a.reqs.lock().unwrap().len(), 1);
+    assert_eq!(prov_a.reqs.lock().unwrap()[0].0, "/v1/messages");
+    assert_eq!(prov_b.reqs.lock().unwrap().len(), 1);
+    // Each provider can be tested on its own, even when disabled.
+    assert!(s.admin.test_ai_provider(&b.id).await.unwrap().ok);
+    // Failover: the default recap provider goes dark, the other one answers.
+    s.admin.update_ai_provider(&b.id, &AiProviderUpdate { base_url: Some("http://127.0.0.1:9".into()), ..Default::default() }).await.unwrap();
+    assert!(!s.admin.test_ai_provider(&b.id).await.unwrap().ok);
+    let before = prov_a.reqs.lock().unwrap().len();
+    let rc = alice.ai_recap(&ch, None).await.unwrap();
+    assert!(rc.summary.starts_with("Recap:"));
+    assert_eq!(prov_a.reqs.lock().unwrap().len(), before + 1, "fell back to provider A");
+    // Disabled providers are skipped; with none left the features refuse.
+    s.admin.update_ai_provider(&b.id, &AiProviderUpdate { enabled: Some(false), ..Default::default() }).await.unwrap();
+    s.admin.update_ai_provider(&a.id, &AiProviderUpdate { enabled: Some(false), ..Default::default() }).await.unwrap();
+    assert_eq!(alice.ai_recap(&ch, None).await.unwrap_err().code(), Some(ErrorCode::Forbidden));
+    // Provider list survives deletion of the default.
+    let ov = s.admin.delete_ai_provider(&a.id).await.unwrap();
+    assert_eq!(ov.providers.len(), 1);
+    assert!(ov.search_provider.is_none());
+}
+
+#[tokio::test]
+async fn single_provider_settings_of_1_0_migrate_into_the_list() {
+    let (prov, url) = Provider::start().await;
+    let s = TestServer::start().await;
+    let (a_id, alice) = s.user("alice").await;
+    let ch = make_channel(&s, "finance", &[&a_id]).await;
+    wait_conv(&alice, &ch).await;
+    say(&alice, &ch, "invoice 8 sent").await;
+    // The 1.0 record, written the way 1.0 stored it.
+    let old = json!({"enabled": true, "provider": "openai", "model": "legacy-model", "base_url": url, "api_key": "sk-legacy-123456789"}).to_string();
+    s.st.db.with(|c| atomic_server::db::set_setting(c, "ai_settings", &old)).unwrap();
+    let ov = s.admin.ai_overview().await.unwrap();
+    assert_eq!(ov.providers.len(), 1);
+    let p = &ov.providers[0];
+    assert_eq!((p.kind.as_str(), p.model.as_str(), p.enabled, p.has_key), ("openai", "legacy-model", true, true));
+    assert_eq!(ov.search_provider.as_deref(), Some(p.id.as_str()));
+    assert!(alice.refresh_server_meta().await.unwrap().ai_search_enabled);
+    alice.ai_recap(&ch, None).await.unwrap();
+    assert_eq!(prov.reqs.lock().unwrap()[0].1.get("authorization").unwrap(), "Bearer sk-legacy-123456789");
+    // Migrated once: the old record no longer holds the key.
+    let left = s.st.db.with(|c| atomic_server::db::get_setting(c, "ai_settings")).unwrap().unwrap();
+    assert!(!left.contains("sk-legacy"));
+    assert_eq!(s.admin.ai_overview().await.unwrap().providers.len(), 1);
 }

@@ -1,6 +1,6 @@
 // Admin pages for automation: bots (SV-15), webhooks (SV-16) and AI settings (SV-21).
 import { api } from "./api";
-import type { AdminBot, AdminConversation, AiSettings, IncomingWebhook, OutgoingWebhook, WebhooksOverview } from "./api-types";
+import type { AdminBot, AdminConversation, AiOverview, AiProvider, IncomingWebhook, OutgoingWebhook, WebhooksOverview } from "./api-types";
 import { copy, dialog, field, fmtDate, h, toast } from "./dom";
 
 type Fail = (e: unknown) => void;
@@ -162,28 +162,63 @@ function createOutgoingDialog(convs: AdminConversation[], reload: () => void) {
 
 // ------------------------------------------------------------------ AI
 
+const DEFAULT_MODEL: Record<string, string> = { anthropic: "claude-sonnet-5-5", openai: "gpt-4o-mini" };
+const KIND_LABEL: Record<string, string> = { anthropic: "Anthropic (Claude)", openai: "OpenAI-compatible" };
+
 export async function aiPage(el: HTMLElement, reload: () => void, fail: Fail): Promise<void> {
-  const s = await api<AiSettings>("GET", "/admin/ai");
-  const enabled = h("input", { type: "checkbox", checked: s.enabled, style: "width:auto", id: "ai-enabled", "aria-label": "Turn AI features on" });
-  const provider = h("select", { "aria-label": "Provider", id: "ai-provider" }, h("option", { value: "anthropic" }, "Anthropic (Claude)"), h("option", { value: "openai" }, "OpenAI-compatible"));
-  provider.value = s.provider;
-  const model = h("input", { value: s.model, "aria-label": "Model", id: "ai-model" });
-  const base = h("input", { value: s.base_url, placeholder: "default for the provider", "aria-label": "Base URL", id: "ai-base" });
-  const key = h("input", { type: "password", autocomplete: "new-password", placeholder: s.has_key ? `set (ends in ${s.key_hint}); leave empty to keep` : "paste the API key", "aria-label": "API key", id: "ai-key" });
-  const out = h("div", { class: "muted", id: "ai-status" });
-  const save = async () => {
-    const body: any = { enabled: enabled.checked, provider: provider.value, model: model.value, base_url: base.value };
-    if (key.value) body.api_key = key.value;
-    await api("PUT", "/admin/ai", body);
+  const s = await api<AiOverview>("GET", "/admin/ai");
+  const act = (fn: () => Promise<unknown>, msg: string) => async () => { try { await fn(); toast(msg); reload(); } catch (e) { fail(e); } };
+  const sel = (id: string, current: string | null | undefined, label: string) => {
+    const x = h("select", { id, "aria-label": label }, h("option", { value: "" }, "Automatic (first enabled provider)"),
+      ...s.providers.map((p) => h("option", { value: p.id }, p.name + (p.enabled ? "" : " (disabled)"))));
+    x.value = current ?? "";
+    return x;
   };
-  provider.addEventListener("change", () => { model.value = provider.value === "anthropic" ? "claude-sonnet-5-5" : "gpt-4o-mini"; });
-  el.append(h("div", { class: "card" }, h("h2", {}, "AI features"),
+  const search = sel("ai-search-provider", s.search_provider, "Provider for search");
+  const recap = sel("ai-recap-provider", s.recap_provider, "Provider for recaps");
+  el.append(h("div", { class: "card" },
+    h("div", { class: "row" }, h("h2", { style: "margin:0;flex:1" }, "AI providers"), h("button", { class: "primary", id: "ai-add", onclick: () => providerDialog(null, reload) }, "Add provider")),
     h("div", { class: "notice", role: "note", id: "ai-notice" }, h("b", {}, "Privacy: "), s.notice),
-    h("p", { class: "muted" }, "Off by default. When on, people get natural-language search (the question and the names of people and channels they can see are sent to the provider to build a search) and channel recaps (the text of the recapped messages is sent). The key is stored on this server and never shown again."),
-    h("label", { class: "radio" }, enabled, " Turn AI features on"),
-    h("div", { class: "grid" }, field("Provider", provider), field("Model", model), field("Base URL (optional)", base), field("API key", key)),
-    h("div", { class: "row", style: "margin-top:14px" },
-      h("button", { class: "primary", id: "ai-save", onclick: async () => { try { await save(); toast("AI settings saved"); reload(); } catch (e) { fail(e); } } }, "Save"),
-      h("button", { id: "ai-test", onclick: async () => { out.textContent = "Testing..."; try { await save(); const r = await api("POST", "/admin/ai/test", {}); out.textContent = (r.ok ? "OK. " : "Failed. ") + r.message; out.className = "pill " + (r.ok ? "ok" : "bad"); } catch (e) { fail(e); out.textContent = ""; } } }, "Save and test")),
-    out));
+    h("p", { class: "muted" }, "Off until you add and enable a provider. When on, people get natural-language search (the question and the names of people and channels they can see are sent to the provider to build a search) and channel recaps (the text of the recapped messages is sent). Keys are stored on this server and never shown again. If the chosen provider fails, the next enabled one is tried."),
+    s.providers.length === 0 ? h("p", { class: "muted", id: "ai-empty" }, "No providers yet.") : null),
+    ...s.providers.map((p) => providerCard(p, s, reload, fail)),
+    ...(s.providers.length === 0 ? [] : [h("div", { class: "card" }, h("h2", {}, "Which provider for what"),
+      h("div", { class: "grid" }, field("Search", search), field("Recap", recap)),
+      h("div", { class: "row", style: "margin-top:14px" },
+        h("button", { class: "primary", id: "ai-defaults-save", onclick: act(() => api("PUT", "/admin/ai/defaults", { search_provider: search.value, recap_provider: recap.value }), "Defaults saved") }, "Save")))]));
+}
+
+function providerCard(p: AiProvider, s: AiOverview, reload: () => void, fail: Fail): HTMLElement {
+  const out = h("div", { class: "muted", "data-ai-status": p.id });
+  const uses = [s.search_provider === p.id ? "search" : "", s.recap_provider === p.id ? "recap" : ""].filter(Boolean).join(" and ");
+  return h("div", { class: "card ai-provider", "data-provider": p.name },
+    h("div", { class: "row" }, h("h3", { style: "margin:0;flex:1" }, p.name),
+      h("span", { class: "pill " + (p.enabled ? "ok" : "") }, p.enabled ? "enabled" : "disabled"), uses ? h("span", { class: "pill" }, "default for " + uses) : null),
+    h("div", { class: "muted" }, `${KIND_LABEL[p.kind] ?? p.kind} - model ${p.model}${p.base_url ? " - " + p.base_url : ""} - key ${p.has_key ? (p.key_hint ? "ends in " + p.key_hint : "stored") : "missing"}`),
+    h("div", { class: "row", style: "margin-top:12px" },
+      h("button", { class: "ai-test", onclick: async () => { out.textContent = "Testing..."; out.className = "muted"; try { const r = await api<{ ok: boolean; message: string }>("POST", `/admin/ai/providers/${p.id}/test`, {}); out.textContent = (r.ok ? "OK. " : "Failed. ") + r.message; out.className = "pill " + (r.ok ? "ok" : "bad"); } catch (e) { fail(e); out.textContent = ""; } } }, "Test"),
+      h("button", { class: "ai-toggle", onclick: async () => { try { await api("PATCH", `/admin/ai/providers/${p.id}`, { enabled: !p.enabled }); toast(p.enabled ? "Provider disabled" : "Provider enabled"); reload(); } catch (e) { fail(e); } } }, p.enabled ? "Disable" : "Enable"),
+      h("button", { class: "ai-edit", onclick: () => providerDialog(p, reload) }, "Edit"),
+      h("button", { class: "danger ai-delete", onclick: () => dialog("Delete provider", h("p", {}, `Delete "${p.name}"? Its key is removed from this server.`), [{ label: "Delete", danger: true, action: async (close) => { await api("DELETE", `/admin/ai/providers/${p.id}`); close(); toast("Provider deleted"); reload(); } }]) }, "Delete")),
+    out);
+}
+
+function providerDialog(p: AiProvider | null, reload: () => void) {
+  const name = h("input", { value: p?.name ?? "", "aria-label": "Name", id: "ai-name", placeholder: "for example Claude or Local model" });
+  const kind = h("select", { "aria-label": "Kind", id: "ai-kind" }, h("option", { value: "anthropic" }, "Anthropic (Claude)"), h("option", { value: "openai" }, "OpenAI-compatible"));
+  kind.value = p?.kind ?? "anthropic";
+  const model = h("input", { value: p?.model ?? DEFAULT_MODEL[kind.value], "aria-label": "Model", id: "ai-model" });
+  const base = h("input", { value: p?.base_url ?? "", placeholder: "default for the kind", "aria-label": "Base URL", id: "ai-base" });
+  const key = h("input", { type: "password", autocomplete: "new-password", placeholder: p?.has_key ? `set${p.key_hint ? " (ends in " + p.key_hint + ")" : ""}; leave empty to keep` : "paste the API key", "aria-label": "API key", id: "ai-key" });
+  const enabled = h("input", { type: "checkbox", checked: p ? p.enabled : true, style: "width:auto", id: "ai-enabled", "aria-label": "Enabled" });
+  kind.addEventListener("change", () => { model.value = DEFAULT_MODEL[kind.value]; });
+  const body = h("div", { class: "grid" }, field("Name", name), field("Kind", kind), field("Model", model), field("Base URL (optional)", base), field("API key", key),
+    h("label", { class: "radio" }, enabled, " Enabled"));
+  dialog(p ? "Edit provider" : "Add provider", body, [{ label: "Save", primary: true, action: async (close) => {
+    const data: any = { name: name.value, kind: kind.value, model: model.value, base_url: base.value, enabled: enabled.checked };
+    if (key.value) data.api_key = key.value;
+    if (p) await api("PATCH", `/admin/ai/providers/${p.id}`, data);
+    else await api("POST", "/admin/ai/providers", { ...data, api_key: key.value });
+    close(); toast("Provider saved"); reload();
+  } }]);
 }

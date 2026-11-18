@@ -18,7 +18,7 @@ const require = createRequire((process.env.PLAYWRIGHT_DIR ?? process.cwd()) + "/
 const { chromium } = require("playwright-core");
 const PORT = 18312;
 const BASE = `http://127.0.0.1:${PORT}`;
-const data = fs.mkdtempSync(path.join(os.tmpdir(), "atomic-ui-auto-"));
+const data = fs.mkdtempSync(path.join(os.tmpdir(), "superchat-ui-auto-"));
 const shots = process.env.SHOT_DIR ?? path.join(data, "shots");
 fs.mkdirSync(shots, { recursive: true });
 
@@ -164,20 +164,49 @@ try {
   await page.click("a[href='#/ai']");
   await page.waitForSelector("#ai-notice");
   assert.match(await page.locator("#ai-notice").innerText(), /sent to the provider/);
-  assert.equal(await page.locator("#ai-enabled").isChecked(), false, "off by default");
-  assert.equal((await api("GET", "/meta")).ai_search_enabled, false);
-  await page.fill("#ai-key", "sk-test-fake-0000");
+  await page.waitForSelector("#ai-empty");
+  assert.equal((await api("GET", "/meta")).ai_search_enabled, false, "off by default");
+  // add a provider through the dialog
+  await page.click("#ai-add");
+  await page.fill("#ai-name", "Claude");
+  await page.fill("#ai-key", "sk-test-fake-0000000");
   await page.fill("#ai-base", FAKE);
-  await page.check("#ai-enabled");
-  await page.click("#ai-test");
-  await page.waitForSelector("#ai-status:has-text('OK')");
+  await page.click("dialog button:has-text('Save')");
+  await page.waitForSelector(".ai-provider[data-provider='Claude']");
   assert.equal((await api("GET", "/meta")).ai_search_enabled, true);
-  assert.ok(received.some((r) => r.url === "/v1/messages" && r.headers["x-api-key"] === "sk-test-fake-0000"));
-  await page.reload();
-  await page.waitForSelector("#ai-notice");
-  assert.equal(await page.locator("#ai-model").inputValue(), "claude-sonnet-5-5");
-  assert.equal(await page.locator("#ai-key").getAttribute("placeholder"), "set (ends in 0000); leave empty to keep");
+  await page.click(".ai-provider[data-provider='Claude'] .ai-test");
+  await page.waitForSelector(".ai-provider[data-provider='Claude'] [data-ai-status]:has-text('OK')");
+  assert.ok(received.some((r) => r.url === "/v1/messages" && r.headers["x-api-key"] === "sk-test-fake-0000000"));
+  assert.match(await page.locator(".ai-provider[data-provider='Claude']").innerText(), /ends in 0000/);
+  assert.doesNotMatch(await page.content(), /sk-test-fake-0000000/, "the key is never in the page");
+  // a second, OpenAI-compatible provider; recap goes to it
+  await page.click("#ai-add");
+  await page.fill("#ai-name", "Local");
+  await page.selectOption("#ai-kind", "openai");
+  assert.equal(await page.locator("#ai-model").inputValue(), "gpt-4o-mini");
+  await page.fill("#ai-key", "local-key-123456789");
+  await page.fill("#ai-base", FAKE);
+  await page.click("dialog button:has-text('Save')");
+  await page.waitForSelector(".ai-provider[data-provider='Local']");
+  await page.selectOption("#ai-recap-provider", { label: "Local" });
+  await page.click("#ai-defaults-save");
+  await sleep(500);
+  const ov = await api("GET", "/admin/ai", null, adm);
+  assert.equal(ov.providers.length, 2);
+  assert.equal(ov.recap_provider, ov.providers.find((p) => p.name === "Local").id);
+  assert.equal(ov.search_provider, ov.providers.find((p) => p.name === "Claude").id);
+  assert.ok(!JSON.stringify(ov).includes("local-key-123456789"));
+  // edit keeps the key when the field stays empty; disable and delete
+  await page.click(".ai-provider[data-provider='Local'] .ai-edit");
+  await page.fill("#ai-model", "local-model-2");
+  await page.click("dialog button:has-text('Save')");
+  await page.waitForSelector(".ai-provider[data-provider='Local']:has-text('local-model-2')");
+  await page.click(".ai-provider[data-provider='Local'] .ai-toggle");
+  await page.waitForSelector(".ai-provider[data-provider='Local'] .pill:has-text('disabled')");
   await shot("auto-4-ai");
+  await page.click(".ai-provider[data-provider='Local'] .ai-delete");
+  await page.click("dialog button:has-text('Delete')");
+  await page.waitForFunction(() => !document.querySelector(".ai-provider[data-provider='Local']"));
 
   // ---- user groups page
   await page.click("a[href='#/groups']");

@@ -259,12 +259,15 @@ export interface SuperChatAPI {
   admin_delete_messages: AdminDeleteMessagesRequest;
   admin_delete_messages_response: AdminDeleteMessagesResponse;
   admin_update_user: UpdateUserRequest;
+  ai_defaults_update: AiDefaultsUpdate;
+  ai_overview: AiOverview;
+  ai_provider: AiProvider;
+  ai_provider_input: AiProviderInput;
+  ai_provider_update: AiProviderUpdate;
   ai_recap_request: AiRecapRequest;
   ai_recap_response: AiRecapResponse;
   ai_search_request: AiSearchRequest;
   ai_search_response: AiSearchResponse;
-  ai_settings: AiSettings;
-  ai_settings_update: AiSettingsUpdate;
   ai_test: AiTestResponse;
   backup_settings: BackupSettings;
   backup_settings_update: BackupSettingsUpdate;
@@ -485,6 +488,69 @@ export interface UpdateUserRequest {
   privacy_controls_enabled?: boolean | null;
   role?: Role | null;
 }
+/**
+ * Which provider serves which feature. An empty string clears the choice (= automatic).
+ */
+export interface AiDefaultsUpdate {
+  recap_provider?: string | null;
+  search_provider?: string | null;
+}
+/**
+ * All providers plus which one serves which feature. `None` = the first enabled provider with a key.
+ */
+export interface AiOverview {
+  /**
+   * Shown by the admin panel: message text is sent to the provider.
+   */
+  notice: string;
+  providers: AiProvider[];
+  recap_provider?: string | null;
+  search_provider?: string | null;
+}
+/**
+ * One configured AI provider as the admin panel sees it. The API key is never returned.
+ */
+export interface AiProvider {
+  /**
+   * Overrides the provider's default API address (OpenAI-compatible servers, proxies).
+   */
+  base_url?: string;
+  enabled: boolean;
+  has_key: boolean;
+  id: string;
+  /**
+   * Last four characters of the key (only when the key is long enough for that to be safe).
+   */
+  key_hint?: string;
+  /**
+   * "anthropic" or "openai" (any OpenAI-compatible endpoint).
+   */
+  kind: string;
+  model: string;
+  name: string;
+}
+export interface AiProviderInput {
+  api_key: string;
+  base_url?: string | null;
+  enabled?: boolean | null;
+  /**
+   * "anthropic" or "openai" ("openai-compatible" is accepted as an alias).
+   */
+  kind: string;
+  model?: string | null;
+  name: string;
+}
+export interface AiProviderUpdate {
+  /**
+   * A new key; `None` or an empty string keeps the stored one.
+   */
+  api_key?: string | null;
+  base_url?: string | null;
+  enabled?: boolean | null;
+  kind?: string | null;
+  model?: string | null;
+  name?: string | null;
+}
 export interface AiRecapRequest {
   conv_id: string;
   /**
@@ -684,37 +750,6 @@ export interface ForwardInfo {
 export interface ReactionSummary {
   emoji: string;
   user_ids: string[];
-}
-export interface AiSettings {
-  /**
-   * Overrides the provider's default API address (OpenAI-compatible servers, proxies).
-   */
-  base_url?: string;
-  enabled: boolean;
-  /**
-   * The key is never returned; only whether one is stored and its last characters.
-   */
-  has_key: boolean;
-  key_hint?: string;
-  model: string;
-  /**
-   * Shown by the admin panel: message text is sent to the provider.
-   */
-  notice: string;
-  /**
-   * "anthropic" or "openai" (any OpenAI-compatible endpoint).
-   */
-  provider: string;
-}
-export interface AiSettingsUpdate {
-  /**
-   * Empty string removes the key.
-   */
-  api_key?: string | null;
-  base_url?: string | null;
-  enabled?: boolean | null;
-  model?: string | null;
-  provider?: string | null;
 }
 export interface AiTestResponse {
   message: string;

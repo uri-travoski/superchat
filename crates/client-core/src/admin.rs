@@ -300,12 +300,28 @@ impl AdminClient {
         self.call(Method::POST, &format!("/admin/webhooks/outgoing/{id}/test"), Some(serde_json::json!({}))).await
     }
 
-    pub async fn ai_settings(&self) -> Result<AiSettings> {
+    pub async fn ai_overview(&self) -> Result<AiOverview> {
         self.call(Method::GET, "/admin/ai", None).await
     }
 
-    pub async fn put_ai_settings(&self, u: &AiSettingsUpdate) -> Result<AiSettings> {
-        self.call(Method::PUT, "/admin/ai", Some(serde_json::to_value(u)?)).await
+    pub async fn add_ai_provider(&self, i: &AiProviderInput) -> Result<AiProvider> {
+        self.call(Method::POST, "/admin/ai/providers", Some(serde_json::to_value(i)?)).await
+    }
+
+    pub async fn update_ai_provider(&self, id: &str, u: &AiProviderUpdate) -> Result<AiProvider> {
+        self.call(Method::PATCH, &format!("/admin/ai/providers/{id}"), Some(serde_json::to_value(u)?)).await
+    }
+
+    pub async fn delete_ai_provider(&self, id: &str) -> Result<AiOverview> {
+        self.call(Method::DELETE, &format!("/admin/ai/providers/{id}"), None).await
+    }
+
+    pub async fn test_ai_provider(&self, id: &str) -> Result<AiTestResponse> {
+        self.call(Method::POST, &format!("/admin/ai/providers/{id}/test"), Some(serde_json::json!({}))).await
+    }
+
+    pub async fn put_ai_defaults(&self, u: &AiDefaultsUpdate) -> Result<AiOverview> {
+        self.call(Method::PUT, "/admin/ai/defaults", Some(serde_json::to_value(u)?)).await
     }
 }
 

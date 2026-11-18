@@ -235,7 +235,7 @@ async fn sv24_bots_webhooks_forms_schedule_ai() {
     assert!(!alice.refresh_server_meta().await.unwrap().ai_search_enabled, "AI is off by default");
     assert!(alice.ai_search("invoice", false).await.is_err());
     admin
-        .put_ai_settings(&AiSettingsUpdate { enabled: Some(true), api_key: Some("sk-fake-0000".into()), base_url: Some(host.clone()), ..Default::default() })
+        .add_ai_provider(&AiProviderInput { name: "Fake".into(), kind: "anthropic".into(), api_key: "sk-fake-0000".into(), base_url: Some(host.clone()), ..Default::default() })
         .await
         .unwrap();
     assert!(alice.refresh_server_meta().await.unwrap().ai_search_enabled);

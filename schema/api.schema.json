@@ -286,6 +286,24 @@
       ],
       "type": "object"
     },
+    "AiDefaultsUpdate": {
+      "description": "Which provider serves which feature. An empty string clears the choice (= automatic).",
+      "properties": {
+        "recap_provider": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "search_provider": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "AiInterpretation": {
       "properties": {
         "after_ms": {
@@ -327,6 +345,166 @@
       "required": [
         "q"
       ],
+      "type": "object"
+    },
+    "AiOverview": {
+      "description": "All providers plus which one serves which feature. `None` = the first enabled provider with a key.",
+      "properties": {
+        "notice": {
+          "description": "Shown by the admin panel: message text is sent to the provider.",
+          "type": "string"
+        },
+        "providers": {
+          "items": {
+            "$ref": "#/definitions/AiProvider"
+          },
+          "type": "array"
+        },
+        "recap_provider": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "search_provider": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "notice",
+        "providers"
+      ],
+      "type": "object"
+    },
+    "AiProvider": {
+      "description": "One configured AI provider as the admin panel sees it. The API key is never returned.",
+      "properties": {
+        "base_url": {
+          "default": "",
+          "description": "Overrides the provider's default API address (OpenAI-compatible servers, proxies).",
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "has_key": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "key_hint": {
+          "default": "",
+          "description": "Last four characters of the key (only when the key is long enough for that to be safe).",
+          "type": "string"
+        },
+        "kind": {
+          "description": "\"anthropic\" or \"openai\" (any OpenAI-compatible endpoint).",
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "enabled",
+        "has_key",
+        "id",
+        "kind",
+        "model",
+        "name"
+      ],
+      "type": "object"
+    },
+    "AiProviderInput": {
+      "properties": {
+        "api_key": {
+          "type": "string"
+        },
+        "base_url": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "enabled": {
+          "default": null,
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "kind": {
+          "description": "\"anthropic\" or \"openai\" (\"openai-compatible\" is accepted as an alias).",
+          "type": "string"
+        },
+        "model": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "api_key",
+        "kind",
+        "name"
+      ],
+      "type": "object"
+    },
+    "AiProviderUpdate": {
+      "properties": {
+        "api_key": {
+          "description": "A new key; `None` or an empty string keeps the stored one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "base_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "enabled": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "kind": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
       "type": "object"
     },
     "AiRecapRequest": {
@@ -400,81 +578,6 @@
         "interpreted",
         "results"
       ],
-      "type": "object"
-    },
-    "AiSettings": {
-      "properties": {
-        "base_url": {
-          "default": "",
-          "description": "Overrides the provider's default API address (OpenAI-compatible servers, proxies).",
-          "type": "string"
-        },
-        "enabled": {
-          "type": "boolean"
-        },
-        "has_key": {
-          "description": "The key is never returned; only whether one is stored and its last characters.",
-          "type": "boolean"
-        },
-        "key_hint": {
-          "default": "",
-          "type": "string"
-        },
-        "model": {
-          "type": "string"
-        },
-        "notice": {
-          "description": "Shown by the admin panel: message text is sent to the provider.",
-          "type": "string"
-        },
-        "provider": {
-          "description": "\"anthropic\" or \"openai\" (any OpenAI-compatible endpoint).",
-          "type": "string"
-        }
-      },
-      "required": [
-        "enabled",
-        "has_key",
-        "model",
-        "notice",
-        "provider"
-      ],
-      "type": "object"
-    },
-    "AiSettingsUpdate": {
-      "properties": {
-        "api_key": {
-          "description": "Empty string removes the key.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "base_url": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "enabled": {
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "model": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "provider": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
       "type": "object"
     },
     "AiTestResponse": {
@@ -4488,6 +4591,21 @@
     "admin_update_user": {
       "$ref": "#/definitions/UpdateUserRequest"
     },
+    "ai_defaults_update": {
+      "$ref": "#/definitions/AiDefaultsUpdate"
+    },
+    "ai_overview": {
+      "$ref": "#/definitions/AiOverview"
+    },
+    "ai_provider": {
+      "$ref": "#/definitions/AiProvider"
+    },
+    "ai_provider_input": {
+      "$ref": "#/definitions/AiProviderInput"
+    },
+    "ai_provider_update": {
+      "$ref": "#/definitions/AiProviderUpdate"
+    },
     "ai_recap_request": {
       "$ref": "#/definitions/AiRecapRequest"
     },
@@ -4499,12 +4617,6 @@
     },
     "ai_search_response": {
       "$ref": "#/definitions/AiSearchResponse"
-    },
-    "ai_settings": {
-      "$ref": "#/definitions/AiSettings"
-    },
-    "ai_settings_update": {
-      "$ref": "#/definitions/AiSettingsUpdate"
     },
     "ai_test": {
       "$ref": "#/definitions/AiTestResponse"
@@ -4719,12 +4831,15 @@
     "admin_delete_messages",
     "admin_delete_messages_response",
     "admin_update_user",
+    "ai_defaults_update",
+    "ai_overview",
+    "ai_provider",
+    "ai_provider_input",
+    "ai_provider_update",
     "ai_recap_request",
     "ai_recap_response",
     "ai_search_request",
     "ai_search_response",
-    "ai_settings",
-    "ai_settings_update",
     "ai_test",
     "backup_settings",
     "backup_settings_update",

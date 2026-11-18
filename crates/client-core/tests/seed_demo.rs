@@ -158,7 +158,7 @@ async fn seed_and_serve() {
     )
     .await;
     // AI search is on (pointing at nothing: the screenshots never run a query) so the toggle shows.
-    s.admin.put_ai_settings(&AiSettingsUpdate { enabled: Some(true), api_key: Some("sk-demo-0000".into()), base_url: Some("http://127.0.0.1:9".into()), ..Default::default() }).await.unwrap();
+    s.admin.add_ai_provider(&AiProviderInput { name: "Demo".into(), kind: "anthropic".into(), api_key: "sk-demo-0000".into(), base_url: Some("http://127.0.0.1:9".into()), ..Default::default() }).await.unwrap();
     let due = proto_now_ms() + 2 * 3_600_000;
     alice.schedule_message(&general, "Reminder: retro starts at 4 pm.", due, None).await.unwrap();
     alice.save_draft(&design, None, "Notes on the login screen spacing: tighten the gap under the logo");

@@ -589,6 +589,7 @@ dependencies = [
 name = "atomic-client-core"
 version = "1.1.0"
 dependencies = [
+ "argon2",
  "atomic-proto",
  "atomic-server",
  "axum",

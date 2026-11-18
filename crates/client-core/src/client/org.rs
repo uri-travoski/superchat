@@ -38,7 +38,8 @@ impl Client {
         if let Some(k) = &f.kind {
             q.push(format!("type={k}"));
         }
-        self.api()?.get(&format!("/search?{}", q.join("&"))).await
+        let r: SearchResponse = self.api()?.get(&format!("/search?{}", q.join("&"))).await?;
+        Ok(self.without_hidden_hits(r))
     }
 
     /// Finds a conversation id by id or case-insensitive name.
@@ -68,13 +69,17 @@ impl Client {
         if let Some(b) = before {
             p.push(format!("before={b}"));
         }
-        self.api()?.get(&format!("/files?{}", p.join("&"))).await
+        let mut v: Vec<FileHit> = self.api()?.get(&format!("/files?{}", p.join("&"))).await?;
+        v.retain(|f| !self.is_hidden(&f.conv_id));
+        Ok(v)
     }
 
     // ------------------------------------------------------------------ threads (M-05..07)
 
     pub fn threads(&self) -> Vec<ThreadSummary> {
-        self.inner.store.threads()
+        let mut v = self.inner.store.threads();
+        v.retain(|t| !self.is_hidden(&t.conv_id));
+        v
     }
 
     pub fn thread_unread_total(&self) -> i64 {
@@ -82,6 +87,9 @@ impl Client {
     }
 
     pub fn thread_replies(&self, conv_id: &str, root_id: &str) -> Vec<TimelineItem> {
+        if self.is_hidden(conv_id) {
+            return vec![];
+        }
         let me = self.my_id().unwrap_or_default();
         self.inner.store.thread_replies(conv_id, root_id, &me).unwrap_or_default()
     }
@@ -279,7 +287,9 @@ impl Client {
     }
 
     pub fn all_drafts(&self) -> Vec<DraftItem> {
-        self.inner.store.all_drafts()
+        let mut v = self.inner.store.all_drafts();
+        v.retain(|d| !self.is_hidden(&d.conv_id));
+        v
     }
 
     // ------------------------------------------------------------------ forward / permalink (M-19..22)
@@ -301,7 +311,10 @@ impl Client {
 
     /// Resolves a pasted permalink into a cached/fetched message and loads its surroundings.
     pub async fn open_permalink(&self, link: &str) -> Result<Message> {
-        let p = rules::parse_permalink(link).ok_or_else(|| ClientError::Local("That is not an SuperChat link.".into()))?;
+        let p = rules::parse_permalink(link).ok_or_else(|| ClientError::Local("That is not a SuperChat link.".into()))?;
+        if self.is_hidden(&p.conv_id) {
+            return Err(ClientError::Local("That message could not be found.".into()));
+        }
         let m: Message = self.api()?.get(&format!("/messages/{}", p.message_id)).await?;
         let h: HistoryResponse = self.api()?.get(&format!("/conversations/{}/messages?around_id={}&limit=40", m.conv_id, m.id)).await?;
         self.inner.store.put_messages(&h.messages)?;

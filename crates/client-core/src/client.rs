@@ -68,6 +68,7 @@ pub struct Inner {
     cfg: ClientConfig,
     pub store: Store,
     secrets: Arc<dyn SecretStore>,
+    applock: Arc<crate::applock::AppLock>,
     api: RwLock<Option<Arc<Api>>>,
     events: broadcast::Sender<ClientEvent>,
     handle: tokio::runtime::Handle,
@@ -100,11 +101,13 @@ impl Client {
             .clone()
             .unwrap_or_else(|| Arc::new(FileSecretStore::new(cfg.data_dir.join("secrets.json"))));
         let (events, _) = broadcast::channel(512);
+        let applock = Arc::new(crate::applock::AppLock::open(secrets.clone()));
         let inner = Arc::new_cyclic(|me| Inner {
             me: me.clone(),
             cfg,
             store,
             secrets,
+            applock,
             api: RwLock::new(None),
             events,
             handle,
@@ -270,8 +273,27 @@ impl Client {
 
     // ------------------------------------------------------------------ reads
 
+    /// Conversations the person may see right now: locked ones are left out while App Lock is engaged.
     pub fn conversations(&self) -> Vec<ConversationSummary> {
-        self.inner.store.conversations().unwrap_or_default()
+        let mut v = self.inner.store.conversations().unwrap_or_default();
+        v.retain(|c| !self.inner.applock.is_hidden(&c.conversation.id));
+        v
+    }
+
+    /// The App Lock (PIN, locked conversations, idle timeout).
+    pub fn applock(&self) -> &crate::applock::AppLock {
+        &self.inner.applock
+    }
+
+    /// True while this conversation must not appear anywhere (lists, search, counts, threads, drafts).
+    pub fn is_hidden(&self, conv_id: &str) -> bool {
+        self.inner.applock.is_hidden(conv_id)
+    }
+
+    /// True for conversations marked as locked, even while the app is unlocked: notifications about them never show
+    /// the conversation name or the text.
+    pub fn is_conv_locked(&self, conv_id: &str) -> bool {
+        self.inner.applock.is_conv_locked(conv_id)
     }
 
     pub fn users(&self) -> Vec<User> {
@@ -283,6 +305,9 @@ impl Client {
     }
 
     pub fn timeline(&self, conv_id: &str, limit: usize, before_seq: Option<i64>) -> Vec<TimelineItem> {
+        if self.is_hidden(conv_id) {
+            return vec![];
+        }
         let me = self.my_id().unwrap_or_default();
         self.inner.store.timeline(conv_id, limit, before_seq, &me).unwrap_or_default()
     }
@@ -322,7 +347,7 @@ impl Client {
     }
 
     pub fn unread_total(&self) -> i64 {
-        self.inner.store.unread_total()
+        self.conversations().iter().map(|c| c.unread).sum()
     }
 
     // ------------------------------------------------------------------ actions
@@ -498,11 +523,22 @@ impl Client {
     /// Server-side search (members-only results).
     pub async fn search(&self, q: &str) -> Result<SearchResponse> {
         let enc = url::form_urlencoded::byte_serialize(q.as_bytes()).collect::<String>();
-        self.api()?.get(&format!("/search?q={enc}")).await
+        let r: SearchResponse = self.api()?.get(&format!("/search?q={enc}")).await?;
+        Ok(self.without_hidden_hits(r))
+    }
+
+    /// Drops search results that belong to hidden (locked) conversations.
+    pub(crate) fn without_hidden_hits(&self, mut r: SearchResponse) -> SearchResponse {
+        r.hits.retain(|h| !self.is_hidden(&h.message.conv_id));
+        r.files.retain(|f| !self.is_hidden(&f.conv_id));
+        r.channels.retain(|c| !self.is_hidden(&c.conversation.id));
+        r
     }
 
     pub fn search_local(&self, q: &str) -> Vec<Message> {
-        self.inner.store.search_local(q, 50).unwrap_or_default()
+        let mut v = self.inner.store.search_local(q, 50).unwrap_or_default();
+        v.retain(|m| !self.is_hidden(&m.conv_id));
+        v
     }
 
     /// Typing indicator, throttled to once per 3 seconds per conversation (M-25).
@@ -820,6 +856,7 @@ impl Inner {
         let _ = std::fs::remove_dir_all(self.cfg.data_dir.join("files"));
         let _ = self.secrets.delete(SESSION_SECRET);
         let _ = self.secrets.delete(crate::api::LEGACY_SESSION_SECRET);
+        self.applock.clear();
         *self.api.write().unwrap_or_else(|e| e.into_inner()) = None;
         let msg = match code {
             Some(ErrorCode::AccountDisabled) => "Your account was disabled by an administrator. Local chats were removed from this device.".to_string(),

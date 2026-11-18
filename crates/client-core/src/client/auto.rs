@@ -12,6 +12,7 @@ impl Client {
     pub fn scheduled(&self) -> Vec<ScheduledMessage> {
         let mut v: Vec<ScheduledMessage> =
             self.inner.store.kv_get(SCHEDULED_KEY).ok().flatten().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        v.retain(|m| !self.is_hidden(&m.conv_id));
         v.sort_by_key(|m| (m.state != ScheduledState::Pending, m.due_ms));
         v
     }
@@ -95,7 +96,9 @@ impl Client {
     }
 
     pub async fn ai_search(&self, query: &str, answer: bool) -> Result<AiSearchResponse> {
-        self.api()?.post("/ai/search", &AiSearchRequest { query: query.to_string(), answer }).await
+        let mut r: AiSearchResponse = self.api()?.post("/ai/search", &AiSearchRequest { query: query.to_string(), answer }).await?;
+        r.results = self.without_hidden_hits(r.results);
+        Ok(r)
     }
 
     pub async fn ai_recap(&self, conv_id: &str, since_ms: Option<i64>) -> Result<AiRecapResponse> {

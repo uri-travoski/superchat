@@ -2,6 +2,7 @@
 
 pub mod admin;
 pub mod api;
+pub mod applock;
 pub mod client;
 pub mod error;
 pub mod logic;

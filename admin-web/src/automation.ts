@@ -103,7 +103,7 @@ export async function webhooksPage(el: HTMLElement, reload: () => void, fail: Fa
 
   el.append(h("div", { class: "card", id: "outgoing" },
     h("div", { class: "row" }, h("h2", { style: "margin:0;flex:1" }, "Outgoing webhooks"), h("button", { class: "primary", id: "new-outgoing", onclick: () => createOutgoingDialog(convs, reload) }, "Create outgoing webhook")),
-    h("p", { class: "muted" }, "Events are POSTed to your URL as JSON with X-Atomic-Timestamp and X-Atomic-Signature (sha256= HMAC of \"<timestamp>.<body>\" with the secret). Failed deliveries are retried with growing delays and survive a restart."),
+    h("p", { class: "muted" }, "Events are POSTed to your URL as JSON with X-SuperChat-Timestamp and X-SuperChat-Signature (sha256= HMAC of \"<timestamp>.<body>\" with the secret). Failed deliveries are retried with growing delays and survive a restart."),
     w.outgoing.length === 0 ? h("p", { class: "muted" }, "None yet.") : h("table", {}, h("thead", {}, h("tr", {}, ...["Name", "URL", "Events", "Status", ""].map((x) => h("th", {}, x)))),
       h("tbody", {}, ...w.outgoing.map((o) => outgoingRow(o, convName(o.conv_id), run))))));
 }

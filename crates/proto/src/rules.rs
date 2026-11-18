@@ -29,11 +29,17 @@ pub fn version_lt(a: &str, b: &str) -> bool {
     pa < pb
 }
 
-pub const LOGIN_LINK_SCHEME: &str = "atomic-chat";
+pub const LOGIN_LINK_SCHEME: &str = "superchat";
+/// Scheme of links made by 1.0 (Atomic Chat); still accepted.
+pub const LEGACY_LINK_SCHEME: &str = "atomic-chat";
 
-/// Builds the paste-able one-time login link: `atomic-chat://login?server=<url>&token=<token>`.
+pub fn is_link_scheme(s: &str) -> bool {
+    s == LOGIN_LINK_SCHEME || s == LEGACY_LINK_SCHEME
+}
+
+/// Builds the paste-able one-time login link: `superchat://login?server=<url>&token=<token>`.
 pub fn make_login_link(server_url: &str, token: &str) -> String {
-    let mut u = Url::parse("atomic-chat://login").expect("static url");
+    let mut u = Url::parse("superchat://login").expect("static url");
     u.query_pairs_mut()
         .append_pair("server", server_url.trim_end_matches('/'))
         .append_pair("token", token);
@@ -47,7 +53,7 @@ pub struct ParsedLink {
     pub token: String,
 }
 
-/// Accepts a full link (`atomic-chat://login?server=..&token=..`, or an `https://host/?token=..`
+/// Accepts a full link (`superchat://login?server=..&token=..`, or an `https://host/?token=..`
 /// style URL) or a bare token.
 pub fn parse_login_link(input: &str) -> Option<ParsedLink> {
     let s = input.trim();
@@ -55,7 +61,7 @@ pub fn parse_login_link(input: &str) -> Option<ParsedLink> {
         return None;
     }
     if let Ok(u) = Url::parse(s) {
-        if u.has_host() || u.scheme() == LOGIN_LINK_SCHEME {
+        if u.has_host() || is_link_scheme(u.scheme()) {
             let mut server = None;
             let mut token = None;
             for (k, v) in u.query_pairs() {
@@ -98,9 +104,9 @@ pub fn valid_username(u: &str) -> bool {
 
 // ---------------------------------------------------------------- permalinks (M-19)
 
-/// Deep link to a message: `atomic-chat://m?server=<url>&c=<conv>&m=<message>`.
+/// Deep link to a message: `superchat://m?server=<url>&c=<conv>&m=<message>`.
 pub fn make_permalink(server_url: &str, conv_id: &str, message_id: &str) -> String {
-    let mut u = Url::parse("atomic-chat://m").expect("static url");
+    let mut u = Url::parse("superchat://m").expect("static url");
     u.query_pairs_mut()
         .append_pair("server", server_url.trim_end_matches('/'))
         .append_pair("c", conv_id)
@@ -118,7 +124,7 @@ pub struct Permalink {
 /// Validates and parses a permalink; ids must be plain hex/alphanumerics (deep links are untrusted input).
 pub fn parse_permalink(input: &str) -> Option<Permalink> {
     let u = Url::parse(input.trim()).ok()?;
-    if u.scheme() != LOGIN_LINK_SCHEME || u.host_str() != Some("m") {
+    if !is_link_scheme(u.scheme()) || u.host_str() != Some("m") {
         return None;
     }
     let mut server = None;
@@ -252,7 +258,7 @@ mod tests {
         assert_eq!(p.server.as_deref(), Some("https://1.2.3.4:8443"));
         assert!(parse_login_link("hello world").is_none());
         assert!(parse_login_link("").is_none());
-        assert!(parse_login_link("atomic-chat://login?server=https%3A%2F%2Fx.org").is_none());
+        assert!(parse_login_link("superchat://login?server=https%3A%2F%2Fx.org").is_none());
     }
 
     #[test]
@@ -267,9 +273,10 @@ mod tests {
         let l = make_permalink("https://chat.example.com/", "c1", "m2");
         let p = parse_permalink(&l).unwrap();
         assert_eq!(p, Permalink { server: Some("https://chat.example.com".into()), conv_id: "c1".into(), message_id: "m2".into() });
-        assert!(parse_permalink("atomic-chat://m?c=a/b&m=x").is_none());
+        assert!(parse_permalink("superchat://m?c=a/b&m=x").is_none());
         assert!(parse_permalink("https://evil.example/m?c=a&m=b").is_none());
-        assert!(parse_permalink("atomic-chat://login?c=a&m=b").is_none());
+        assert!(parse_permalink("superchat://login?c=a&m=b").is_none());
+        assert!(parse_permalink("atomic-chat://m?c=aa&m=bb").is_some());
     }
 
     #[test]

@@ -3,7 +3,7 @@ name = "atomic-proto"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Atomic Chat shared API types (single source of truth for server, clients and the JSON schema)"
+description = "SuperChat shared API types (single source of truth for server, clients and the JSON schema)"
 
 [lib]
 name = "proto"

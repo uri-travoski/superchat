@@ -1,5 +1,5 @@
 // Playwright test of the admin chat viewer and backups pages (AD viewer, SV-20 UI).
-// Starts its own atomic-server (port 18311, temp data dir), seeds chats through the REST API, then
+// Starts its own superchat-server (port 18311, temp data dir), seeds chats through the REST API, then
 // drives the real admin web app in headless Chromium.
 //
 //   cargo build -p atomic-server && (cd admin-web && npm run build)
@@ -21,7 +21,7 @@ const data = fs.mkdtempSync(path.join(os.tmpdir(), "atomic-ui-"));
 const shots = process.env.SHOT_DIR ?? path.join(data, "shots");
 fs.mkdirSync(shots, { recursive: true });
 
-const server = spawn(path.join(root, "target/debug/atomic-server"), [], {
+const server = spawn(path.join(root, "target/debug/superchat-server"), [], {
   env: { ...process.env, ATOMIC_BIND: `127.0.0.1:${PORT}`, ATOMIC_DATA_DIR: path.join(data, "srv"), ATOMIC_ADMIN_DIR: path.join(root, "admin-web/dist"), ATOMIC_BACKUP_WORK_FACTOR: "10", RUST_LOG: "warn" },
   stdio: ["ignore", "inherit", "inherit"],
 });
@@ -35,7 +35,7 @@ async function api(method, p, body, token) {
   if (!res.ok) throw new Error(`${method} ${p}: ${res.status} ${t}`);
   return j;
 }
-const loginApi = async (u, p) => (await api("POST", "/login", { username: u, password: p, device_name: "ui-test", client_version: "1.0.0" })).access_token;
+const loginApi = async (u, p) => (await api("POST", "/login", { username: u, password: p, device_name: "ui-test", client_version: "1.1.0" })).access_token;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const uid = () => crypto.randomUUID().replaceAll("-", "");
 

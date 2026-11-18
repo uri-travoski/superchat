@@ -1,4 +1,4 @@
-# Builds every artifact when a tag like v1.0.0 is pushed and attaches them to the GitHub Release.
+# Builds every artifact when a tag like v1.1.0 is pushed and attaches them to the GitHub Release.
 # Android signing: set the repository secrets ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and
 # ANDROID_KEY_PASSWORD to sign with your own key. Without them CI generates a throw-away keystore (the APK installs,
 # but each release is signed with a different key, so it cannot update a previous install: set the secrets for real use).
@@ -45,7 +45,7 @@ jobs:
           cargo build --release -p atomic-desktop
           V="${VERSION#v}"
           mkdir -p dist
-          cp target/release/atomic-chat.exe "dist/Atomic_Chat-$V-x64-portable.exe"
+          cp target/release/superchat.exe "dist/superchat-$V-x64-portable.exe"
       - name: Installer (NSIS)
         shell: bash
         run: |
@@ -89,7 +89,7 @@ jobs:
             echo "No signing secrets: generating a throw-away keystore"
             PASS=$(openssl rand -hex 16)
             keytool -genkeypair -keystore "$RUNNER_TEMP/release.jks" -alias atomic -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass "$PASS" -keypass "$PASS" -dname "CN=Atomic Chat CI, O=Atomic Chat"
+              -storepass "$PASS" -keypass "$PASS" -dname "CN=SuperChat CI, O=SuperChat"
             echo "ATOMIC_KEY_ALIAS=atomic" >> "$GITHUB_ENV"
             echo "ATOMIC_KEY_PASSWORD=$PASS" >> "$GITHUB_ENV"
             echo "ATOMIC_KEYSTORE_PASSWORD=$PASS" >> "$GITHUB_ENV"
@@ -102,8 +102,8 @@ jobs:
       - run: |
           mkdir -p dist
           V="${VERSION#v}"
-          cp apps/android/app/build/outputs/apk/release/*.apk "dist/Atomic_Chat-$V-android.apk"
-          cd dist && sha256sum *.apk > "Atomic_Chat-$V-android.apk.sha256"
+          cp apps/android/app/build/outputs/apk/release/*.apk "dist/superchat-$V-android.apk"
+          cd dist && sha256sum *.apk > "superchat-$V-android.apk.sha256"
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
@@ -125,5 +125,5 @@ jobs:
           file: deploy/Dockerfile
           push: true
           tags: |
-            ghcr.io/uri-travoski/atomic-chat:${{ steps.v.outputs.ver }}
-            ghcr.io/uri-travoski/atomic-chat:latest
+            ghcr.io/uri-travoski/superchat-server:${{ steps.v.outputs.ver }}
+            ghcr.io/uri-travoski/superchat-server:latest

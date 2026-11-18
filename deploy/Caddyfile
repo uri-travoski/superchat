@@ -5,7 +5,7 @@
 {$ATOMIC_HOST} {
 	{$CADDY_TLS:}
 	encode zstd gzip
-	reverse_proxy atomic:8080 {
+	reverse_proxy superchat:8080 {
 		# WebSocket upgrades are passed through automatically.
 		flush_interval -1
 	}

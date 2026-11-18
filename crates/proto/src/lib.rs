@@ -1,4 +1,4 @@
-//! Atomic Chat API types.
+//! SuperChat API types.
 //!
 //! This crate is the single source of truth for every JSON shape exchanged between the
 //! server, the clients, the CLI and the admin panel. `cargo run -p atomic-proto --bin gen-schema`
@@ -118,4 +118,15 @@ pub struct AllTypes {
 /// The complete JSON Schema document for the API.
 pub fn api_schema() -> schemars::schema::RootSchema {
     schemars::schema_for!(AllTypes)
+}
+
+/// Reads a configuration variable. `SUPERCHAT_X` wins over the legacy `ATOMIC_X` (both spellings are
+/// accepted for every setting); a name that does not start with `ATOMIC_` is read as is.
+pub fn env_var(name: &str) -> Result<String, std::env::VarError> {
+    if let Some(rest) = name.strip_prefix("ATOMIC_") {
+        if let Ok(v) = std::env::var(format!("SUPERCHAT_{rest}")) {
+            return Ok(v);
+        }
+    }
+    std::env::var(name)
 }

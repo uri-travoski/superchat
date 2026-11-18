@@ -137,7 +137,7 @@ async fn send_ntfy(st: &St, s: &PushSettings, reg: &PushRegistration) -> Result<
     let resp = st
         .http
         .post(format!("{}/{}", base.trim_end_matches('/'), topic))
-        .header("Title", "Atomic Chat")
+        .header("Title", "SuperChat")
         .header("Priority", "default")
         .header("Tags", "wake")
         .body("wake")

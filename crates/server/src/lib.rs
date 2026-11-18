@@ -1,4 +1,4 @@
-//! Atomic Chat server library (the binary in `main.rs` only reads the environment and serves).
+//! SuperChat server library (the binary in `main.rs` only reads the environment and serves).
 
 pub mod admin;
 pub mod auth;
@@ -75,7 +75,7 @@ fn bootstrap_admin(st: &St) -> anyhow::Result<()> {
         return Ok(());
     }
     let hash = auth::hash_password(&p)?;
-    let email = std::env::var("ATOMIC_BOOTSTRAP_EMAIL").ok().filter(|e| !e.is_empty());
+    let email = proto::env_var("ATOMIC_BOOTSTRAP_EMAIL").ok().filter(|e| !e.is_empty());
     let hub = st.hub.clone();
     st.db.with(|c| {
         let mut em = emit::Emitter::new();

@@ -39,7 +39,7 @@ All paths are under `/api/v1`; types are in `crates/proto` and `schema/api.schem
   `all|mentions|nothing`), `GET|POST /sections`, `PATCH|DELETE /sections/{id}`. All synced to the user's other devices through events.
 * Drafts: `GET /drafts`, `PUT /conversations/{id}/draft` (optional `thread_root`).
 * `GET /messages/{id}`, `POST /messages/{id}/forward {conv_ids, comment}` (forwarded copies carry `forwarded` attribution).
-  Permalinks are `atomic-chat://m?server=&c=&m=`.
+  Permalinks are `superchat://m?server=&c=&m=`.
 * Push: `GET|PUT /me/push`, `DELETE /me/push/{id}` (device registration: `ntfy`, `fcm` or `apns`); admin `GET|PUT /admin/push` (secrets are masked on read).
   Pushes are content-free wakes: ntfy body `wake`, FCM/APNs data `type: wake`. They go only to offline, non-DND, non-muted members who want the notification.
 * Sessions: `DELETE /sessions/{id}`, `POST /sessions/revoke-others`.

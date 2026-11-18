@@ -251,7 +251,7 @@ export type ServerWsMsg =
 /**
  * Every public type, used only to produce one JSON Schema document with all definitions.
  */
-export interface AtomicChatAPI {
+export interface SuperChatAPI {
   admin_bot: AdminBot;
   admin_conversation: AdminConversation;
   admin_create_user: CreateUserRequest;

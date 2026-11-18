@@ -331,7 +331,7 @@ async fn backup_messages(st: &St, ids: &[String], scope: &str, user_id: Option<&
                 }
                 msgs.push(m);
             }
-            Ok(json!({"format": "atomic-chat-messages-backup", "version": 1, "created_ms": now_ms(), "scope": scope2, "user_id": uid2, "messages": msgs, "attachments": atts}))
+            Ok(json!({"format": "superchat-messages-backup", "version": 1, "created_ms": now_ms(), "scope": scope2, "user_id": uid2, "messages": msgs, "attachments": atts}))
         })
         .await
         .map_err(|e| fail(e.message))?;

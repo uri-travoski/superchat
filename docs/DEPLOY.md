@@ -1,4 +1,4 @@
-# Deploying Atomic Chat
+# Deploying SuperChat
 
 The server is one container (Rust binary plus the admin panel). Everything that must survive lives in one volume, `/data`
 (SQLite database, settings, local files if you use local storage, backups). Attachments normally live in your chosen
@@ -38,7 +38,7 @@ Alternatively set `ATOMIC_BOOTSTRAP_ADMIN=user:password` in `.env` to create the
 | Variable | Default | Meaning |
 |---|---|---|
 | `ATOMIC_PUBLIC_URL` | none | Address clients use; goes into one-time login links. |
-| `ATOMIC_NAME` | Atomic Chat | Server name shown in apps. |
+| `ATOMIC_NAME` | SuperChat | Server name shown in apps. |
 | `ATOMIC_BOOTSTRAP_ADMIN` | none | `user:password` of the owner to create when no users exist. |
 | `ATOMIC_MAX_UPLOAD_MB` | 100 | Largest single attachment. |
 | `ATOMIC_ACCESS_TTL_SECS` | 900 | Access token lifetime. |
@@ -65,7 +65,25 @@ Push (optional): ntfy needs only a URL. FCM needs a Google service account JSON 
 ## Building the image
 
 ```
-docker build -f deploy/Dockerfile -t atomic-chat-server .
+docker build -f deploy/Dockerfile -t superchat-server .
 ```
 The image is multi-stage (node for the admin panel, rust for the server, debian-slim runtime with ca-certificates and tini,
 non-root user, HEALTHCHECK). Updating: pull or rebuild, then `docker compose up -d`.
+
+## Names and upgrading from Atomic Chat 1.0
+
+The project was renamed from Atomic Chat to SuperChat in v1.1. What that changes for a server:
+
+* Image `ghcr.io/uri-travoski/superchat-server`, binary `superchat-server`, compose project `superchat`, service `superchat`
+  (Caddy and the tunnel point at `http://superchat:8080`).
+* **Environment variables**: every setting can be given as `SUPERCHAT_<NAME>` or as the legacy `ATOMIC_<NAME>`; when both are set
+  the `SUPERCHAT_` one wins inside the server and the apps. The compose file and `.env.example` keep using the `ATOMIC_*` spellings
+  (docker-compose substitutes only those), so an existing `.env` keeps working unchanged.
+* **Data volume**: the 1.0 compose project created the volume `atomic-chat_atomic-data`. To keep using it, add
+  `SUPERCHAT_DATA_VOLUME=atomic-chat_atomic-data` to `.env` before `docker-compose up -d`. New installs get `superchat-data`.
+  The database file inside is still called `atomic.db` (internal, nothing to do).
+* Login links now start with `superchat://`; links made by 1.0 (`atomic-chat://`) are still accepted by the apps.
+* The existing server name (stored in the database) is not changed; edit it in the admin panel if you want it to read SuperChat.
+* Desktop apps move `~/.local/share/atomic-chat` (Windows: `%APPDATA%\AtomicChat`) to the new SuperChat folder on first start and
+  still read sign-in secrets saved under the old name. The Android app has a new application id (`app.superchat`), so it installs
+  next to the old app and you sign in again with a new login link.

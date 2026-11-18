@@ -27,7 +27,7 @@ pub struct Config {
 }
 
 fn env(k: &str) -> Option<String> {
-    std::env::var(k).ok().filter(|v| !v.trim().is_empty())
+    proto::env_var(k).ok().filter(|v| !v.trim().is_empty())
 }
 
 impl Config {
@@ -49,7 +49,7 @@ impl Config {
             data_dir: env("ATOMIC_DATA_DIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("./data")),
             admin_dir,
             public_url: env("ATOMIC_PUBLIC_URL").map(|u| u.trim_end_matches('/').to_string()),
-            server_name: env("ATOMIC_NAME").unwrap_or_else(|| "Atomic Chat".into()),
+            server_name: env("ATOMIC_NAME").unwrap_or_else(|| "SuperChat".into()),
             max_upload_bytes: env("ATOMIC_MAX_UPLOAD_MB")
                 .and_then(|v| v.parse::<u64>().ok())
                 .map(|mb| mb * 1024 * 1024)
@@ -77,7 +77,7 @@ impl Config {
             data_dir,
             admin_dir: PathBuf::from("/nonexistent"),
             public_url: None,
-            server_name: "Atomic Chat (test)".into(),
+            server_name: "SuperChat (test)".into(),
             max_upload_bytes: 5 * 1024 * 1024,
             ntfy_url: None,
             bootstrap_admin: None,

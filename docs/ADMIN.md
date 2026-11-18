@@ -5,7 +5,7 @@ Open `https://your-server/admin` and sign in with an owner or admin account.
 * **Users**: create (optionally with a password; a one-time login link is always produced), disable (the person is signed out
   of every device immediately and their app wipes local data), enable, reset password (signs out all devices; produces a link if
   no password is typed), login link, back up, **clear history**, delete.
-* **One-time login link**: `atomic-chat://login?server=<url>&token=<token>`. The person pastes it on the app's sign-in page.
+* **One-time login link**: `superchat://login?server=<url>&token=<token>`. The person pastes it on the app's sign-in page.
   It works once and expires after 7 days. The app then asks them to choose a password.
 * **Clear history** always writes a per-user backup first and refuses to proceed if the backup fails. It removes only that
   person's copy of every chat (other participants keep theirs), moves files nobody else can see into

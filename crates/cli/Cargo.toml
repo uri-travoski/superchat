@@ -3,10 +3,10 @@ name = "atomic-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Headless Atomic Chat client for scripting and tests"
+description = "Headless SuperChat client for scripting and tests"
 
 [[bin]]
-name = "atomic"
+name = "superchat-cli"
 path = "src/main.rs"
 
 [dependencies]

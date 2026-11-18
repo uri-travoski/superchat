@@ -4792,7 +4792,7 @@
     "viewer_history",
     "webhooks"
   ],
-  "title": "Atomic Chat API",
+  "title": "SuperChat API",
   "type": "object",
   "x-api-version": 1,
   "x-min-client-version": "1.0.0"

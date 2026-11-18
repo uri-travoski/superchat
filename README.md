@@ -1,4 +1,6 @@
-# Atomic Chat
+# SuperChat
+
+_SuperChat was called Atomic Chat up to v1.0 (see "Upgrading from Atomic Chat 1.0" in [docs/DEPLOY.md](docs/DEPLOY.md))._
 
 A self-hosted, Slack-style team chat. One small Rust server (Docker), an admin web panel, and native apps for Linux, Windows and
 Android (one Slint UI shared by all three), plus a command-line client. Your data stays on your server and in the storage you choose
@@ -20,26 +22,26 @@ Android (one Slint UI shared by all three), plus a command-line client. Your dat
 ## Quick start (server)
 
 ```sh
-git clone https://github.com/uri-travoski/atomic-chat && cd atomic-chat/deploy
+git clone https://github.com/uri-travoski/superchat && cd superchat/deploy
 cp .env.example .env            # set ATOMIC_PUBLIC_URL
 docker-compose up -d            # or: docker compose up -d
 ```
 
 Open `http://<host>:8080/admin` and complete the setup wizard (owner account, attachment storage). Images are published to
-`ghcr.io/uri-travoski/atomic-chat` on each release; `docker-compose.yml` builds from source if you prefer.
+`ghcr.io/uri-travoski/superchat-server` on each release; `docker-compose.yml` builds from source if you prefer.
 
 | Situation | What to do |
 |---|---|
 | **A domain** | `.env`: `ATOMIC_HOST=chat.example.com`, `ATOMIC_PUBLIC_URL=https://chat.example.com`; run `docker compose --profile caddy up -d`. Caddy gets a certificate automatically (ports 80 and 443 open). |
 | **A bare IP, no domain** | `.env`: `ATOMIC_HOST=203.0.113.7`, `CADDY_TLS=tls internal`, `ATOMIC_PUBLIC_URL=https://203.0.113.7`; `--profile caddy`. Apps pin the certificate on first use (trust on first use) and warn if it changes. |
-| **Cloudflare Tunnel (no open ports)** | `.env`: `CLOUDFLARE_TUNNEL_TOKEN=...`; run `--profile tunnel`, and point the tunnel hostname at `http://atomic:8080`. |
+| **Cloudflare Tunnel (no open ports)** | `.env`: `CLOUDFLARE_TUNNEL_TOKEN=...`; run `--profile tunnel`, and point the tunnel hostname at `http://superchat:8080`. |
 
 More in [docs/DEPLOY.md](docs/DEPLOY.md), admin guide in [docs/ADMIN.md](docs/ADMIN.md), bots in [docs/BOTS.md](docs/BOTS.md), the
 HTTP API in [docs/API.md](docs/API.md).
 
 ## Download the apps
 
-From the [Releases](https://github.com/uri-travoski/atomic-chat/releases) page: Linux AppImage and `.deb`, Windows portable `.exe` and
+From the [Releases](https://github.com/uri-travoski/superchat/releases) page: Linux AppImage and `.deb`, Windows portable `.exe` and
 installer, Android APK. Sign in with the server address and the username/password (or one-time link) your admin gave you.
 
 ## Features
@@ -82,7 +84,7 @@ Needs Rust (stable), Node 22, and for Android the Android SDK + NDK 27, `cargo-n
 cargo test --workspace                          # unit and integration tests
 (cd admin-web && npm ci && npm run build)       # admin panel
 cargo build --release -p atomic-server          # server (serves admin-web/dist via ATOMIC_ADMIN_DIR)
-cargo build --release -p atomic-desktop         # desktop app: target/release/atomic-chat
+cargo build --release -p atomic-desktop         # desktop app: target/release/superchat
 tests/e2e/run.sh                                # end-to-end suite (needs docker)
 tests/ui/screenshots.sh                         # screenshots (private Xvfb, never your desktop)
 ```
@@ -93,7 +95,7 @@ Packages (output in `dist/`):
 cargo install cargo-deb && cargo deb -p atomic-desktop --output dist/     # .deb
 packaging/linux/build-appimage.sh                                         # AppImage
 (cd apps/android && ./gradlew assembleRelease)                            # APK (arm64-v8a + x86_64)
-docker build -f deploy/Dockerfile -t atomic-chat:1.0 .                    # server image
+docker build -f deploy/Dockerfile -t superchat:1.1 .                    # server image
 ```
 
 Windows (`.exe` and NSIS installer) and the published images are built by `.github/workflows/release.yml` when a `v*` tag is pushed.

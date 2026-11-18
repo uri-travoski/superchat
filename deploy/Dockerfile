@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Build context is the repository root:  docker build -f deploy/Dockerfile -t atomic-chat-server .
+# Build context is the repository root:  docker build -f deploy/Dockerfile -t superchat-server .
 
 # ---- admin panel (static files) ----
 FROM node:22-alpine AS admin
@@ -24,18 +24,18 @@ RUN mkdir -p apps/desktop/src apps/android/src tests/e2e/src \
  && touch apps/desktop/src/lib.rs apps/desktop/src/main.rs apps/android/src/lib.rs tests/e2e/src/lib.rs
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/w/target \
-    cargo build --release -p atomic-server --bin atomic-server \
- && cp target/release/atomic-server /atomic-server
+    cargo build --release -p atomic-server --bin superchat-server \
+ && cp target/release/superchat-server /superchat-server
 
 # ---- runtime ----
 FROM debian:trixie-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tini && rm -rf /var/lib/apt/lists/* \
- && useradd --system --uid 10001 --home-dir /data atomic && mkdir -p /data /srv/admin && chown atomic /data
-COPY --from=build /atomic-server /usr/local/bin/atomic-server
+ && useradd --system --uid 10001 --home-dir /data superchat && mkdir -p /data /srv/admin && chown superchat /data
+COPY --from=build /superchat-server /usr/local/bin/superchat-server
 COPY --from=admin /w/admin-web/dist /srv/admin
 ENV ATOMIC_BIND=0.0.0.0:8080 ATOMIC_DATA_DIR=/data ATOMIC_ADMIN_DIR=/srv/admin
-USER atomic
+USER superchat
 VOLUME /data
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s CMD ["/usr/local/bin/atomic-server", "healthcheck"]
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/atomic-server"]
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s CMD ["/usr/local/bin/superchat-server", "healthcheck"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/superchat-server"]

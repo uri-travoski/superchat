@@ -37,7 +37,7 @@ component Overlay inherits Rectangle {
 }
 
 export component AppWindow inherits Window {
-    title: "Atomic Chat";
+    title: "SuperChat";
     icon: @image-url("assets/icon.png");
     preferred-width: 1000px;
     preferred-height: 700px;
@@ -292,7 +292,7 @@ export component AppWindow inherits Window {
                             max-width: 420px;
                             VerticalLayout {
                                 spacing: 10px;
-                                Text { text: "Atomic Chat"; font-size: Theme.fs-title * 1.3; font-weight: 800; horizontal-alignment: center; }
+                                Text { text: "SuperChat"; font-size: Theme.fs-title * 1.3; font-weight: 800; horizontal-alignment: center; }
                                 Text { text: "Sign in to your team's server"; color: Theme.muted; font-size: Theme.fs; horizontal-alignment: center; }
                                 LineEdit { text <=> root.f-server; placeholder-text: "Server address (https://chat.example.com)"; font-size: Theme.fs; accessible-label: "Server address"; }
                                 if !root.use-link: LineEdit { text <=> root.f-user; placeholder-text: "Username"; font-size: Theme.fs; accessible-label: "Username"; }
@@ -1230,16 +1230,16 @@ export component AppWindow inherits Window {
 }
 
 // The system tray icon (E-08): click to show the window, menu to open or quit.
-export component AtomicTray inherits SystemTrayIcon {
+export component SuperChatTray inherits SystemTrayIcon {
     in property <int> unread: 0;
     callback open-app;
     callback quit-app;
     icon: @image-url("assets/icon.png");
-    title: "Atomic Chat";
+    title: "SuperChat";
     clicked => { root.open-app(); }
-    tooltip: root.unread > 0 ? "Atomic Chat - " + root.unread + " unread" : "Atomic Chat";
+    tooltip: root.unread > 0 ? "SuperChat - " + root.unread + " unread" : "SuperChat";
     Menu {
-        MenuItem { title: "Open Atomic Chat"; activated => { root.open-app(); } }
+        MenuItem { title: "Open SuperChat"; activated => { root.open-app(); } }
         MenuItem { title: "Quit"; activated => { root.quit-app(); } }
     }
 }

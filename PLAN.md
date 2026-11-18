@@ -1,4 +1,4 @@
-# Atomic Chat — build plan for v1.0
+# SuperChat — build plan for v1.0
 
 Source specs (read them fully): `Server` (owner's server notes) and `Client Apps.md` (the PRD).
 Where they conflict, the decisions below win.
@@ -7,7 +7,7 @@ Where they conflict, the decisions below win.
 1. **No end-to-end encryption.** TLS in transit; messages readable on the server by admins (needed for admin chat viewer, search). The database file is encrypted at rest only via the backup encryption (backups are encrypted with a passphrase; age/AES-256-GCM).
 2. **v1.0 scope = PRD phases 0–3** plus everything in the `Server` doc. **Calls (SV-18, CL-01) are deferred to v1.1**; keep a stub signalling message type in the protocol only.
 3. **Attachment storage backends:** local disk (for testing/dev), S3, Cloudflare R2, Backblaze B2 (all three via the S3 API), Google Drive (OAuth refresh token, drive.file scope). Chosen at first-run setup in the admin panel; changeable later with "move all files to storage X" + a verification pass that every attachment is still resolvable. Only config, accounts and the text DB live on the server disk when a cloud backend is selected.
-4. **GitHub repo:** `uri-travoski/atomic-chat`, **public**. NEVER commit `credentials.md` (gitignore it). Release tag `v1.0`, release title "Atomic Chat v1.0", crate versions 1.0.0. Pushing/release is done by the orchestrator (Opus), not the builder agents — builders commit locally only.
+4. **GitHub repo:** `uri-travoski/superchat`, **public**. NEVER commit `credentials.md` (gitignore it). Release tag `v1.0`, release title "SuperChat v1.0", crate versions 1.0.0. Pushing/release is done by the orchestrator (Opus), not the builder agents — builders commit locally only.
 
 ## Reconciled server requirements (from the `Server` doc, on top of PRD SV-01..SV-24)
 - Works behind Cloudflare Tunnel **or** directly; domain or bare IP; nothing hard-coded. Compose ships an optional `cloudflared` service (profile `tunnel`) so the VPS needs **no open inbound port** when using the tunnel. Without a tunnel: Caddy profile for automatic TLS on a domain, or self-signed cert for IP (client does TOFU fingerprint pinning, X-01).
@@ -26,7 +26,7 @@ Where they conflict, the decisions below win.
 ## Architecture
 Cargo workspace (Rust, edition 2021, rustc 1.99 via `~/.cargo/bin`):
 ```
-atomic-chat/
+superchat/
   crates/proto/        # shared API types (serde + schemars); `cargo run -p proto --bin gen-schema` writes schema/api.schema.json; API_VERSION, error codes
   crates/server/       # axum + tokio + rusqlite (bundled, WAL, FTS5) + argon2 + object_store-like Storage trait
   crates/client-core/  # headless client: reqwest(rustls) + tokio-tungstenite + rusqlite cache + sync engine + outbox
@@ -56,7 +56,7 @@ atomic-chat/
 - Admin web: Playwright (playwright-core + `~/.cache/ms-playwright/chromium-*`).
 - Do not bulk-hit any external service. Fakes for FCM/APNs/GDrive in tests.
 - Linking quirk: `~/.local/bin/cc` is a broken distrobox shim → build with `CC=/usr/bin/cc CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=/usr/bin/cc` and `PATH=$HOME/.cargo/bin:$PATH`.
-- Docker: run compose/bind mounts from `/home/owner/distrobox-homes/devbox/Projects/Atomic Chat/...` paths, never `/run/host/...`. Build images with `docker build`, then `docker-compose up --no-build`.
+- Docker: run compose/bind mounts from `/home/owner/distrobox-homes/devbox/Projects/SuperChat/...` paths, never `/run/host/...`. Build images with `docker build`, then `docker-compose up --no-build`.
 - Test admin login for local instances: username `admin`, password `test-admin-pw`.
 
 ## Status

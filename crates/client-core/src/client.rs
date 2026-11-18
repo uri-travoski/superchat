@@ -29,7 +29,7 @@ impl ClientConfig {
     pub fn new(data_dir: impl Into<PathBuf>) -> ClientConfig {
         ClientConfig {
             data_dir: data_dir.into(),
-            device_name: "Atomic Chat".into(),
+            device_name: "SuperChat".into(),
             client_version: crate::CLIENT_VERSION.into(),
             allow_insecure_http: false,
             secrets: None,
@@ -766,7 +766,17 @@ impl Inner {
     }
 
     fn restore_session(self: &Arc<Self>) -> Result<()> {
-        let Some(raw) = self.secrets.get(SESSION_SECRET)? else { return Ok(()) };
+        let raw = match self.secrets.get(SESSION_SECRET)? {
+            Some(r) => r,
+            None => match self.secrets.get(crate::api::LEGACY_SESSION_SECRET)? {
+                Some(r) => {
+                    let _ = self.secrets.set(SESSION_SECRET, &r);
+                    let _ = self.secrets.delete(crate::api::LEGACY_SESSION_SECRET);
+                    r
+                }
+                None => return Ok(()),
+            },
+        };
         let Ok(sess) = serde_json::from_str::<Session>(&raw) else { return Ok(()) };
         let api = Arc::new(Api::new(&sess.server, sess.pin.clone(), self.secrets.clone(), &self.cfg.client_version)?);
         api.set_session(Some(sess));
@@ -809,6 +819,7 @@ impl Inner {
         let _ = self.store.wipe();
         let _ = std::fs::remove_dir_all(self.cfg.data_dir.join("files"));
         let _ = self.secrets.delete(SESSION_SECRET);
+        let _ = self.secrets.delete(crate::api::LEGACY_SESSION_SECRET);
         *self.api.write().unwrap_or_else(|e| e.into_inner()) = None;
         let msg = match code {
             Some(ErrorCode::AccountDisabled) => "Your account was disabled by an administrator. Local chats were removed from this device.".to_string(),

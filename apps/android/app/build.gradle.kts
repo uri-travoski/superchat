@@ -25,15 +25,15 @@ val cargoNdk by tasks.registering(Exec::class) {
 val fcmEnabled = file("src/fcm/assets/fcm-config.json").exists()
 
 android {
-    namespace = "app.atomicchat"
+    namespace = "app.superchat"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "app.atomicchat"
+        applicationId = "app.superchat"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
         resourceConfigurations += listOf("en")
     }
 

@@ -7,7 +7,7 @@ export class ApiError extends Error {
   }
 }
 
-const KEY = "atomic-admin-session";
+const KEY = "superchat-admin-session";
 
 interface Saved { access: string; refresh: string; expires: number; username: string }
 
@@ -70,7 +70,7 @@ export async function api<T = any>(method: string, path: string, body?: unknown)
 export const meta = () => api<ServerMeta>("GET", "/meta");
 
 export async function login(user: string, password: string): Promise<LoginResponse> {
-  const res = await fetch("/api/v1/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: user, password, device_name: "Admin panel", client_version: "1.0.0" }) });
+  const res = await fetch("/api/v1/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: user, password, device_name: "Admin panel", client_version: "1.1.0" }) });
   const r: LoginResponse = await parse(res);
   useLogin(r);
   return r;

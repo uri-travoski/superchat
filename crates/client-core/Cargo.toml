@@ -3,7 +3,7 @@ name = "atomic-client-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Atomic Chat headless client: login, sync by cursor, local cache, outbox"
+description = "SuperChat headless client: login, sync by cursor, local cache, outbox"
 
 [lib]
 name = "client_core"

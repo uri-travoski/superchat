@@ -172,7 +172,7 @@ async fn fcm_http_v1_and_apns_are_content_free() {
             apns_key_pem: Some(include_str!("fixtures/test_ec_pkcs8.pem").to_string()),
             apns_key_id: Some("KEY123".into()),
             apns_team_id: Some("TEAM123".into()),
-            apns_topic: Some("au.sam.atomicchat".into()),
+            apns_topic: Some("au.superchat".into()),
             apns_api_base: Some(url.clone()),
             ..Default::default()
         })
@@ -212,7 +212,7 @@ async fn fcm_http_v1_and_apns_are_content_free() {
     let hv = |n: &str| apns.headers.iter().find(|(k, _)| k == n).map(|(_, v)| v.clone()).unwrap_or_default();
     assert!(hv("authorization").starts_with("bearer ") && hv("authorization").matches('.').count() == 2);
     assert_eq!(hv("apns-push-type"), "background");
-    assert_eq!(hv("apns-topic"), "au.sam.atomicchat");
+    assert_eq!(hv("apns-topic"), "au.superchat");
     let j: serde_json::Value = serde_json::from_str(&apns.body).unwrap();
     assert_eq!(j["aps"]["content-available"], 1);
     assert!(j["aps"].get("alert").is_none());

@@ -23,7 +23,9 @@ pub struct Session {
     pub pin: Option<String>,
 }
 
-pub const SESSION_SECRET: &str = "atomic-chat.session";
+pub const SESSION_SECRET: &str = "superchat.session";
+/// Key used by Atomic Chat 1.0; read once and rewritten under the new name.
+pub const LEGACY_SESSION_SECRET: &str = "atomic-chat.session";
 
 pub fn now_ms() -> i64 {
     std::time::SystemTime::now()
@@ -59,7 +61,7 @@ pub fn normalize_server_url(input: &str, allow_insecure_http: bool) -> Result<St
         "http" if allow_insecure_http || u.host_str().map(is_private_host).unwrap_or(false) => {}
         "http" => {
             return Err(ClientError::Local(
-                "this server address uses http. Atomic Chat requires https unless the server is on your local network (192.168.x.x, 10.x.x.x, localhost).".into(),
+                "this server address uses http. SuperChat requires https unless the server is on your local network (192.168.x.x, 10.x.x.x, localhost).".into(),
             ))
         }
         _ => return Err(ClientError::Local("the server address must start with https://".into())),
@@ -89,7 +91,7 @@ impl Api {
             .use_preconfigured_tls((*cfg).clone())
             .connect_timeout(std::time::Duration::from_secs(15))
             .timeout(std::time::Duration::from_secs(60))
-            .user_agent(format!("atomic-chat/{version}"))
+            .user_agent(format!("superchat/{version}"))
             .build()
             .map_err(|e| ClientError::Local(format!("http client: {e}")))?;
         Ok(Api {

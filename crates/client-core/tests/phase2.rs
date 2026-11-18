@@ -315,7 +315,7 @@ async fn forwarding_quote_reply_and_permalinks() {
     // Permalinks resolve for members only.
     let m = say(&alice, &dst, "see here").await;
     let link = alice.permalink(&m);
-    assert!(link.starts_with("atomic-chat://m?"));
+    assert!(link.starts_with("superchat://m?"));
     let opened = carol.open_permalink(&link).await.unwrap();
     assert_eq!(opened.id, m.id);
     let err = bob.open_permalink(&link).await.unwrap_err();

@@ -1,4 +1,4 @@
-package app.atomicchat
+package app.superchat
 
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions

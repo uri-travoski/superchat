@@ -1,4 +1,4 @@
-package app.atomicchat
+package app.superchat
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -35,7 +35,7 @@ class SyncService : Service() {
         if (Build.VERSION.SDK_INT >= 26) {
             nm.createNotificationChannel(
                 NotificationChannel("sync", "Connection", NotificationManager.IMPORTANCE_MIN).apply {
-                    description = "Keeps Atomic Chat connected"
+                    description = "Keeps SuperChat connected"
                     setShowBadge(false)
                 }
             )
@@ -45,7 +45,7 @@ class SyncService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
         val n: Notification = Notification.Builder(this, "sync")
-            .setContentTitle("Atomic Chat")
+            .setContentTitle("SuperChat")
             .setContentText("Connected")
             .setSmallIcon(android.R.drawable.stat_notify_chat)
             .setContentIntent(open)

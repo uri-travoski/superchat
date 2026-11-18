@@ -62,7 +62,7 @@ Not verified: real-device performance, IME composition for CJK, accessibility (T
 * Passwords: argon2id. Login lockout per username and per IP, token-bucket rate limiting, and a dummy hash so unknown users cost the same time.
 * Disabled account: sessions revoked with reason `account_disabled`, sockets closed with 4403, the client receives `SignedOut{code}` and
   wipes the cache, drafts, outbox and secrets (X-05). Re-enabling restores the history (cloud chats).
-* One-time login links: `atomic-chat://login?server=<url>&token=<token>`; token hashed, single use, 7-day expiry. The app also accepts a pasted https
+* One-time login links: `superchat://login?server=<url>&token=<token>`; token hashed, single use, 7-day expiry. The app also accepts a pasted https
   link or a bare token.
 * No public registration. First-run `setup` creates the owner and is refused afterwards (`setup_done`).
 
@@ -114,7 +114,7 @@ Not verified: real-device performance, IME composition for CJK, accessibility (T
 
 ## Deployment
 
-* Image: multi-stage (node, rust, debian trixie-slim with ca-certificates + tini), non-root, HEALTHCHECK via `atomic-server healthcheck`
+* Image: multi-stage (node, rust, debian trixie-slim with ca-certificates + tini), non-root, HEALTHCHECK via `superchat-server healthcheck`
   (no curl needed), ~141 MB.
 * MinIO stopped publishing `minio/minio` on Docker Hub, so the dev profile and the e2e test use `bitnamilegacy/minio` (a MinIO build);
   override with `MINIO_IMAGE`. Legacy image: development/testing only.

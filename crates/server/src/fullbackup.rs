@@ -46,7 +46,7 @@ fn save_settings(conn: &Connection, s: &BackupSettings) -> AppResult<()> {
 
 /// The backup passphrase: `ATOMIC_BACKUP_PASSPHRASE`, else the 0600 file `<data>/backup.key`.
 pub fn passphrase(st: &St) -> Option<String> {
-    if let Some(p) = std::env::var("ATOMIC_BACKUP_PASSPHRASE").ok().filter(|p| !p.is_empty()) {
+    if let Some(p) = proto::env_var("ATOMIC_BACKUP_PASSPHRASE").ok().filter(|p| !p.is_empty()) {
         return Some(p);
     }
     std::fs::read_to_string(st.cfg.data_dir.join(PASS_FILE)).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
@@ -415,9 +415,9 @@ pub async fn import_snapshot(st: &St, snap: &std::path::Path) -> AppResult<Fresh
                 }
                 let has_users: i64 = probe
                     .query_row("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('users','messages','conversations')", [], |r| r.get(0))
-                    .map_err(|_| AppError::validation("the backup is not an Atomic Chat backup"))?;
+                    .map_err(|_| AppError::validation("the backup is not an SuperChat backup"))?;
                 if has_users != 3 {
-                    return Err(AppError::validation("the backup is not an Atomic Chat backup"));
+                    return Err(AppError::validation("the backup is not an SuperChat backup"));
                 }
             }
             c.execute("ATTACH DATABASE ?1 AS snap", [&path])?;

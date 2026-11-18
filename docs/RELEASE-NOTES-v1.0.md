@@ -1,4 +1,4 @@
-# Atomic Chat v1.0
+# SuperChat v1.0
 
 First release. Server, admin panel, Linux/Windows/Android apps, CLI.
 

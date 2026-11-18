@@ -69,7 +69,7 @@ curl -H 'Content-Type: application/json' $S/api/v1/hooks/$ID/$SECRET -d '{"text"
 ## Outgoing webhooks
 
 Events (`message.created`, `message.updated`, `message.deleted`, `form.submitted`) are POSTed as JSON with
-`X-Atomic-Event`, `X-Atomic-Delivery`, `X-Atomic-Timestamp` and `X-Atomic-Signature: sha256=<hex>` = HMAC-SHA256 of
+`X-SuperChat-Event`, `X-SuperChat-Delivery`, `X-SuperChat-Timestamp` and `X-SuperChat-Signature: sha256=<hex>` (the 1.0 names `X-Atomic-*` are still sent with the same values) = HMAC-SHA256 of
 `"<timestamp>.<body>"` with the webhook secret. Failures are retried with growing delays and survive a server restart.
 Reject deliveries with an old timestamp to stop replays.
 

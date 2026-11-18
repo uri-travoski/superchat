@@ -1,4 +1,4 @@
-//! Atomic Chat UI shared by the desktop binary and the Android shell.
+//! SuperChat UI shared by the desktop binary and the Android shell.
 //!
 //! The UI is declarative Slint (`ui/*.slint`); this file wires it to `client-core`, which owns all
 //! state (cache, outbox, sync). The UI thread only renders snapshots from the client.
@@ -122,7 +122,7 @@ impl Hooks {
         Hooks {
             secrets: Some(platform::desktop_secrets(&data_dir)),
             data_dir,
-            allow_insecure_http: std::env::var("ATOMIC_ALLOW_HTTP").is_ok(),
+            allow_insecure_http: proto::env_var("ATOMIC_ALLOW_HTTP").is_ok(),
             device_name: hostname(),
             system_scale: Box::new(|| 1.0),
             take_open_conv: Box::new(|| None),
@@ -138,16 +138,29 @@ fn hostname() -> String {
 }
 
 pub fn default_data_dir() -> PathBuf {
-    if let Ok(d) = std::env::var("ATOMIC_DATA_DIR") {
+    if let Ok(d) = proto::env_var("ATOMIC_DATA_DIR") {
         return PathBuf::from(d);
     }
-    if let Ok(d) = std::env::var("XDG_DATA_HOME") {
-        return PathBuf::from(d).join("atomic-chat");
+    let (new, old) = if let Ok(d) = std::env::var("XDG_DATA_HOME") {
+        (PathBuf::from(&d).join("superchat"), PathBuf::from(d).join("atomic-chat"))
+    } else if let Ok(d) = std::env::var("APPDATA") {
+        (PathBuf::from(&d).join("SuperChat"), PathBuf::from(d).join("AtomicChat"))
+    } else {
+        let h = PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into())).join(".local/share");
+        (h.join("superchat"), h.join("atomic-chat"))
+    };
+    migrate_legacy_dir(&old, &new);
+    new
+}
+
+/// One-time move of the data folder used by Atomic Chat 1.0 to the SuperChat folder.
+pub fn migrate_legacy_dir(old: &std::path::Path, new: &std::path::Path) {
+    if old.is_dir() && !new.exists() {
+        if let Some(parent) = new.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::rename(old, new);
     }
-    if let Ok(d) = std::env::var("APPDATA") {
-        return PathBuf::from(d).join("AtomicChat");
-    }
-    PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into())).join(".local/share/atomic-chat")
 }
 
 static CLIENT: OnceLock<Client> = OnceLock::new();
@@ -755,7 +768,7 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
     ui.set_is_android(hooks.is_android);
     ui.set_can_record(hooks.media.can_record());
     ui.set_close_tray(sh.lock().unwrap().prefs.close_to_tray);
-    ui.set_version(format!("Atomic Chat {}", client_core::CLIENT_VERSION).into());
+    ui.set_version(format!("SuperChat {}", client_core::CLIENT_VERSION).into());
     ui.set_emoji_list(model(model::emoji_items(emoji::all())));
     {
         let g = sh.lock().unwrap();
@@ -777,12 +790,12 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
     // Test and demo helper: sign in from the environment and open a screen (used by the
     // screenshot script; nothing here is reachable from the UI).
     if !client.signed_in() {
-        if let (Ok(s), Ok(u), Ok(p)) = (std::env::var("ATOMIC_AUTOLOGIN_SERVER"), std::env::var("ATOMIC_AUTOLOGIN_USER"), std::env::var("ATOMIC_AUTOLOGIN_PASS")) {
+        if let (Ok(s), Ok(u), Ok(p)) = (proto::env_var("ATOMIC_AUTOLOGIN_SERVER"), proto::env_var("ATOMIC_AUTOLOGIN_USER"), proto::env_var("ATOMIC_AUTOLOGIN_PASS")) {
             ui.set_busy(true);
-            do_login(&ui, &client, &sh, s, u, p, String::new(), std::env::var("ATOMIC_AUTOLOGIN_PIN").ok());
+            do_login(&ui, &client, &sh, s, u, p, String::new(), proto::env_var("ATOMIC_AUTOLOGIN_PIN").ok());
         }
     }
-    if let Ok(what) = std::env::var("ATOMIC_UI_OPEN") {
+    if let Ok(what) = proto::env_var("ATOMIC_UI_OPEN") {
         let (wk, c, sh) = (ui.as_weak(), client.clone(), osh.clone());
         let t = slint::Timer::default();
         let what2 = what.clone();
@@ -850,7 +863,7 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
 
     // ---- tray icon (E-08), close to tray, file drop (F-02) -------------------------------------------------------------
     #[cfg(not(target_os = "android"))]
-    let tray = if hooks.is_android { None } else { AtomicTray::new().ok() };
+    let tray = if hooks.is_android { None } else { SuperChatTray::new().ok() };
     #[cfg(not(target_os = "android"))]
     {
         let has_tray = tray.is_some();
@@ -1442,7 +1455,7 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
         ui.on_open_link(move |url| {
             let u = url.to_string();
             if let Some(ui) = wk.upgrade() {
-                if u.starts_with("atomic-chat://") {
+                if u.starts_with("superchat://") || u.starts_with("atomic-chat://") {
                     let (wk, c2) = (ui.as_weak(), c.clone());
                     c.handle().spawn(async move {
                         let m = c2.open_permalink(&u).await;

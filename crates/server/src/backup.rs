@@ -69,7 +69,7 @@ pub fn build_user_doc(conn: &Connection, user_id: &str) -> AppResult<Value> {
         }
     }
     Ok(json!({
-        "format": "atomic-chat-user-backup",
+        "format": "superchat-user-backup",
         "version": 1,
         "created_ms": now_ms(),
         "user": {

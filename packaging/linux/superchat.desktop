@@ -1,11 +1,11 @@
 [Desktop Entry]
 Type=Application
-Name=Atomic Chat
+Name=SuperChat
 GenericName=Team chat
 Comment=Self-hosted team chat
-Exec=atomic-chat %U
-Icon=atomic-chat
+Exec=superchat %U
+Icon=superchat
 Terminal=false
 Categories=Network;Chat;InstantMessaging;
-MimeType=x-scheme-handler/atomic-chat;
-StartupWMClass=atomic-chat
+MimeType=x-scheme-handler/superchat;
+StartupWMClass=superchat

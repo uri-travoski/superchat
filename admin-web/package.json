@@ -1,6 +1,6 @@
 {
-  "name": "atomic-chat-admin",
-  "version": "1.0.0",
+  "name": "superchat-admin",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "scripts": {

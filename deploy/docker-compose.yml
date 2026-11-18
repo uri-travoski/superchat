@@ -1,29 +1,29 @@
-# Atomic Chat. From this folder:
+# SuperChat. From this folder:
 #   cp .env.example .env && edit .env
 #   docker compose up -d                          # server only, on http://localhost:${ATOMIC_PORT}
 #   docker compose --profile caddy up -d          # + Caddy with HTTPS (domain or bare IP)
 #   docker compose --profile tunnel up -d         # + Cloudflare Tunnel (no open ports)
 #   docker compose --profile minio up -d          # + local MinIO for trying S3 storage (dev only)
 #   docker compose --profile ntfy up -d           # + ntfy push server
-# Everything that must survive is in the `atomic-data` volume (database, config, local files, backups).
+# Everything that must survive is in the `superchat-data` volume (database, config, local files, backups).
 
-name: atomic-chat
+name: superchat
 
 services:
-  atomic:
-    image: ${ATOMIC_IMAGE:-ghcr.io/uri-travoski/atomic-chat-server:latest}
+  superchat:
+    image: ${ATOMIC_IMAGE:-ghcr.io/uri-travoski/superchat-server:latest}
     build:
       context: ..
       dockerfile: deploy/Dockerfile
     restart: unless-stopped
     environment:
       ATOMIC_PUBLIC_URL: ${ATOMIC_PUBLIC_URL:-}
-      ATOMIC_NAME: ${ATOMIC_NAME:-Atomic Chat}
+      ATOMIC_NAME: ${ATOMIC_NAME:-SuperChat}
       ATOMIC_BOOTSTRAP_ADMIN: ${ATOMIC_BOOTSTRAP_ADMIN:-}
       ATOMIC_MAX_UPLOAD_MB: ${ATOMIC_MAX_UPLOAD_MB:-100}
       ATOMIC_NTFY_URL: ${ATOMIC_NTFY_URL:-}
     volumes:
-      - atomic-data:/data
+      - superchat-data:/data
     ports:
       - "${ATOMIC_BIND_ADDR:-0.0.0.0}:${ATOMIC_PORT:-8080}:8080"
     extra_hosts:
@@ -33,7 +33,7 @@ services:
     profiles: ["caddy"]
     image: caddy:2-alpine
     restart: unless-stopped
-    depends_on: [atomic]
+    depends_on: [superchat]
     environment:
       ATOMIC_HOST: ${ATOMIC_HOST:?set ATOMIC_HOST in .env}
       CADDY_TLS: ${CADDY_TLS:-}
@@ -49,7 +49,7 @@ services:
     profiles: ["tunnel"]
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
-    depends_on: [atomic]
+    depends_on: [superchat]
     command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in .env}
@@ -70,19 +70,21 @@ services:
     image: ${MINIO_IMAGE:-bitnamilegacy/minio:latest}
     user: "0"
     restart: unless-stopped
-    entrypoint: ["/bin/sh", "-c", "mkdir -p /data/atomic && exec /opt/bitnami/minio/bin/minio server /data --console-address :9001"]
+    entrypoint: ["/bin/sh", "-c", "mkdir -p /data/superchat && exec /opt/bitnami/minio/bin/minio server /data --console-address :9001"]
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-atomicdev}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-superchatdev}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-me-dev-only}
     volumes:
       - minio-data:/data
     ports:
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:9001:9001"
-    # In the admin panel use endpoint http://minio:9000, bucket "atomic", path-style on, allow http on.
+    # In the admin panel use endpoint http://minio:9000, bucket "superchat", path-style on, allow http on.
 
 volumes:
-  atomic-data:
+  superchat-data:
+    # Upgrading from Atomic Chat 1.0? Keep your data: SUPERCHAT_DATA_VOLUME=atomic-chat_atomic-data in .env
+    name: ${SUPERCHAT_DATA_VOLUME:-superchat-data}
   caddy-data:
   caddy-config:
   ntfy-data:

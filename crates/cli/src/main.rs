@@ -1,7 +1,7 @@
-//! `atomic`: headless Atomic Chat client built on client-core.
+//! `superchat-cli`: headless SuperChat client built on client-core.
 //!
 //! Every command prints plain text, or JSON with `--json`. Sign-in state lives in the data
-//! directory (`--data-dir`, default `~/.local/share/atomic-chat-cli`).
+//! directory (`--data-dir`, default `~/.local/share/superchat-cli`).
 
 use client_core::admin::AdminClient;
 use client_core::logic::{datefmt, markup};
@@ -10,9 +10,9 @@ use proto::*;
 use std::path::PathBuf;
 use std::time::Duration;
 
-const HELP: &str = "atomic - Atomic Chat command line client
+const HELP: &str = "superchat-cli - SuperChat command line client
 
-USAGE: atomic [--data-dir DIR] [--json] [--insecure-http] <command> [args]
+USAGE: superchat-cli [--data-dir DIR] [--json] [--insecure-http] <command> [args]
 
 Account
   login <server> <username> <password>      sign in (https required; --insecure-http for test servers)
@@ -58,15 +58,21 @@ async fn main() {
     let _ = tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).try_init();
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     let mut o = Opts {
-        data_dir: std::env::var("ATOMIC_CLI_DIR").map(PathBuf::from).unwrap_or_else(|_| {
-            std::env::var("HOME").map(|h| PathBuf::from(h).join(".local/share/atomic-chat-cli")).unwrap_or_else(|_| PathBuf::from(".atomic-chat-cli"))
+        data_dir: proto::env_var("ATOMIC_CLI_DIR").map(PathBuf::from).unwrap_or_else(|_| {
+            std::env::var("HOME").map(|h| PathBuf::from(h).join(".local/share/superchat-cli")).unwrap_or_else(|_| PathBuf::from(".superchat-cli"))
         }),
         json: false,
-        insecure: std::env::var("ATOMIC_INSECURE_HTTP").is_ok(),
-        server: std::env::var("ATOMIC_SERVER").ok(),
-        admin_user: std::env::var("ATOMIC_ADMIN_USER").unwrap_or_else(|_| "admin".into()),
-        admin_password: std::env::var("ATOMIC_ADMIN_PASSWORD").unwrap_or_default(),
+        insecure: proto::env_var("ATOMIC_INSECURE_HTTP").is_ok(),
+        server: proto::env_var("ATOMIC_SERVER").ok(),
+        admin_user: proto::env_var("ATOMIC_ADMIN_USER").unwrap_or_else(|_| "admin".into()),
+        admin_password: proto::env_var("ATOMIC_ADMIN_PASSWORD").unwrap_or_default(),
     };
+    if let (Ok(h), true) = (std::env::var("HOME"), proto::env_var("ATOMIC_CLI_DIR").is_err()) {
+        let (old, new) = (PathBuf::from(&h).join(".local/share/atomic-chat-cli"), PathBuf::from(&h).join(".local/share/superchat-cli"));
+        if old.is_dir() && !new.exists() {
+            let _ = std::fs::rename(old, new);
+        }
+    }
     // Global flags may appear anywhere before the command.
     let mut rest = vec![];
     let mut i = 0;
@@ -116,7 +122,7 @@ async fn main() {
 fn open(o: &Opts) -> anyhow::Result<Client> {
     let mut cfg = ClientConfig::new(&o.data_dir);
     cfg.allow_insecure_http = o.insecure;
-    cfg.device_name = "atomic-cli".into();
+    cfg.device_name = "superchat-cli".into();
     Ok(Client::open(cfg)?)
 }
 
@@ -130,7 +136,7 @@ fn pretty<T: serde::Serialize>(o: &Opts, v: &T, text: impl FnOnce() -> String) {
 
 /// Starts sync and waits until the first catch-up completes (or `secs` pass).
 async fn online(c: &Client, secs: u64) -> anyhow::Result<()> {
-    anyhow::ensure!(c.signed_in(), "not signed in; run `atomic login` first");
+    anyhow::ensure!(c.signed_in(), "not signed in; run `superchat-cli login` first");
     c.start();
     for _ in 0..(secs * 10) {
         if c.connection() == client_core::ConnState::Online {
@@ -168,7 +174,7 @@ async fn user_id(a: &AdminClient, name: &str) -> anyhow::Result<String> {
 
 async fn run(o: &Opts, args: &[String]) -> anyhow::Result<()> {
     let cmd = args[0].as_str();
-    let a = |n: usize| -> anyhow::Result<&str> { args.get(n).map(String::as_str).ok_or_else(|| anyhow::anyhow!("missing argument; see `atomic help`")) };
+    let a = |n: usize| -> anyhow::Result<&str> { args.get(n).map(String::as_str).ok_or_else(|| anyhow::anyhow!("missing argument; see `superchat-cli help`")) };
     match cmd {
         "login" => {
             let c = open(o)?;
@@ -178,7 +184,7 @@ async fn run(o: &Opts, args: &[String]) -> anyhow::Result<()> {
         "link" => {
             let c = open(o)?;
             let me = c.login_with_link(a(1)?, args.get(2).map(String::as_str), None).await?;
-            pretty(o, &me, || format!("signed in as {} ({}); set a password with `atomic passwd`", me.user.display_name, me.user.username));
+            pretty(o, &me, || format!("signed in as {} ({}); set a password with `superchat-cli passwd`", me.user.display_name, me.user.username));
         }
         "passwd" => {
             let c = open(o)?;
@@ -337,7 +343,7 @@ async fn run(o: &Opts, args: &[String]) -> anyhow::Result<()> {
             }
         }
         "admin" => admin_cmd(o, args).await?,
-        _ => anyhow::bail!("unknown command '{cmd}'; try `atomic help`"),
+        _ => anyhow::bail!("unknown command '{cmd}'; try `superchat-cli help`"),
     }
     Ok(())
 }

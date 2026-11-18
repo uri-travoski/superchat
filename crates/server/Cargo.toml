@@ -3,10 +3,10 @@ name = "atomic-server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Atomic Chat server"
+description = "SuperChat server"
 
 [[bin]]
-name = "atomic-server"
+name = "superchat-server"
 path = "src/main.rs"
 
 [dependencies]

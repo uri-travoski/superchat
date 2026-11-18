@@ -50,7 +50,7 @@ pub trait Storage: Send + Sync {
     /// Writes, reads back and deletes a small probe object.
     async fn check(&self) -> AppResult<String> {
         let key = format!("probe/{}", crate::db::new_id());
-        let payload = Bytes::from(format!("atomic-chat probe {}", crate::db::now_ms()));
+        let payload = Bytes::from(format!("superchat probe {}", crate::db::now_ms()));
         self.put_bytes(&key, payload.clone(), "text/plain").await?;
         let back = self.get_all(&key).await?;
         let size = self.head(&key).await?;

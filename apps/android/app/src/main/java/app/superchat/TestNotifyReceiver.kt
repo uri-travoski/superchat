@@ -1,4 +1,4 @@
-package app.atomicchat
+package app.superchat
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -8,7 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 
-/** adb shell am broadcast -a app.atomicchat.TEST_NOTIFY --es conv_id abc --es title Dan --es text hi */
+/** adb shell am broadcast -a app.superchat.TEST_NOTIFY --es conv_id abc --es title Dan --es text hi */
 class TestNotifyReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         val conv = intent.getStringExtra("conv_id") ?: "unknown"
@@ -24,7 +24,7 @@ class TestNotifyReceiver : BroadcastReceiver() {
         nm.notify(
             conv.hashCode(),
             android.app.Notification.Builder(ctx, "messages")
-                .setContentTitle(intent.getStringExtra("title") ?: "Atomic Chat")
+                .setContentTitle(intent.getStringExtra("title") ?: "SuperChat")
                 .setContentText(intent.getStringExtra("text") ?: "New message")
                 .setSmallIcon(android.R.drawable.stat_notify_chat)
                 .setContentIntent(open)

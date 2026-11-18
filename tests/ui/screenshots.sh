@@ -80,10 +80,10 @@ for v in "${VARIANTS[@]}"; do
   export ATOMIC_DATA_DIR="$DATA" ATOMIC_AUTOLOGIN_SERVER="$URL" ATOMIC_AUTOLOGIN_USER=alice ATOMIC_AUTOLOGIN_PASS=password-123
   unset ATOMIC_UI_OPEN
   [ "$open" = none ] || export ATOMIC_UI_OPEN="$open"
-  "$ROOT/target/debug/atomic-chat" >"$WORK/app-$n.log" 2>&1 &
+  "$ROOT/target/debug/superchat" >"$WORK/app-$n.log" 2>&1 &
   APP_PID=$!
-  for _ in $(seq 1 40); do xdotool search --name "Atomic Chat" >/dev/null 2>&1 && break; sleep 0.25; done
-  WID="$(xdotool search --name "Atomic Chat" | head -1)"
+  for _ in $(seq 1 40); do xdotool search --name "SuperChat" >/dev/null 2>&1 && break; sleep 0.25; done
+  WID="$(xdotool search --name "SuperChat" | head -1)"
   xdotool windowsize "$WID" "$W" "$H"; xdotool windowmove "$WID" 0 0
   sleep 3
   xdotool windowsize "$WID" "$W" "$H"; xdotool windowmove "$WID" 0 0

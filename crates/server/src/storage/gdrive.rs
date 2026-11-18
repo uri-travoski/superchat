@@ -63,7 +63,7 @@ impl GDrive {
             client_id: client_id.clone(),
             client_secret: client_secret.clone(),
             refresh_token: refresh_token.clone(),
-            folder_name: folder_name.clone().filter(|s| !s.is_empty()).unwrap_or_else(|| "Atomic Chat".into()),
+            folder_name: folder_name.clone().filter(|s| !s.is_empty()).unwrap_or_else(|| "SuperChat".into()),
             api_base: api_base
                 .clone()
                 .filter(|s| !s.is_empty())

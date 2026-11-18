@@ -6,9 +6,9 @@ fn main() {
         #[cfg(windows)]
         {
             let mut res = winresource::WindowsResource::new();
-            res.set_icon("../../assets/icon/atomic-chat.ico");
-            res.set("ProductName", "Atomic Chat");
-            res.set("FileDescription", "Atomic Chat");
+            res.set_icon("../../assets/icon/superchat.ico");
+            res.set("ProductName", "SuperChat");
+            res.set("FileDescription", "SuperChat");
             res.compile().expect("embed windows icon");
         }
     }

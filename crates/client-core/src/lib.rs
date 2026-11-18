@@ -1,4 +1,4 @@
-//! Atomic Chat client core: everything except the UI.
+//! SuperChat client core: everything except the UI.
 
 pub mod admin;
 pub mod api;

@@ -28,15 +28,20 @@ impl KeyringStore {
 
 impl SecretStore for KeyringStore {
     fn get(&self, key: &str) -> Result<Option<String>> {
-        let out = Command::new("secret-tool").args(["lookup", "service", "atomic-chat", "key", key]).stderr(Stdio::null()).output();
-        match out {
-            Ok(o) if o.status.success() && !o.stdout.is_empty() => Ok(Some(String::from_utf8_lossy(&o.stdout).to_string())),
-            _ => Ok(None),
+        // "atomic-chat" is the service name of 1.0; entries there are still readable.
+        for service in ["superchat", "atomic-chat"] {
+            let out = Command::new("secret-tool").args(["lookup", "service", service, "key", key]).stderr(Stdio::null()).output();
+            if let Ok(o) = out {
+                if o.status.success() && !o.stdout.is_empty() {
+                    return Ok(Some(String::from_utf8_lossy(&o.stdout).to_string()));
+                }
+            }
         }
+        Ok(None)
     }
     fn set(&self, key: &str, value: &str) -> Result<()> {
         let mut child = Command::new("secret-tool")
-            .args(["store", "--label=Atomic Chat", "service", "atomic-chat", "key", key])
+            .args(["store", "--label=SuperChat", "service", "superchat", "key", key])
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -53,7 +58,9 @@ impl SecretStore for KeyringStore {
         }
     }
     fn delete(&self, key: &str) -> Result<()> {
-        let _ = Command::new("secret-tool").args(["clear", "service", "atomic-chat", "key", key]).stderr(Stdio::null()).status();
+        for service in ["superchat", "atomic-chat"] {
+            let _ = Command::new("secret-tool").args(["clear", "service", service, "key", key]).stderr(Stdio::null()).status();
+        }
         Ok(())
     }
 }
@@ -65,18 +72,21 @@ pub struct WindowsStore;
 #[cfg(windows)]
 impl SecretStore for WindowsStore {
     fn get(&self, key: &str) -> Result<Option<String>> {
-        let e = keyring::Entry::new("atomic-chat", key).map_err(|e| client_core::ClientError::Local(e.to_string()))?;
-        match e.get_password() {
-            Ok(v) => Ok(Some(v)),
-            Err(keyring::Error::NoEntry) => Ok(None),
-            Err(e) => Err(client_core::ClientError::Local(e.to_string())),
+        for service in ["superchat", "atomic-chat"] {
+            let e = keyring::Entry::new(service, key).map_err(|e| client_core::ClientError::Local(e.to_string()))?;
+            match e.get_password() {
+                Ok(v) => return Ok(Some(v)),
+                Err(keyring::Error::NoEntry) => {}
+                Err(e) => return Err(client_core::ClientError::Local(e.to_string())),
+            }
         }
+        Ok(None)
     }
     fn set(&self, key: &str, value: &str) -> Result<()> {
-        keyring::Entry::new("atomic-chat", key).and_then(|e| e.set_password(value)).map_err(|e| client_core::ClientError::Local(e.to_string()))
+        keyring::Entry::new("superchat", key).and_then(|e| e.set_password(value)).map_err(|e| client_core::ClientError::Local(e.to_string()))
     }
     fn delete(&self, key: &str) -> Result<()> {
-        let _ = keyring::Entry::new("atomic-chat", key).and_then(|e| e.delete_credential());
+        let _ = keyring::Entry::new("superchat", key).and_then(|e| e.delete_credential());
         Ok(())
     }
 }
@@ -93,7 +103,7 @@ pub fn desktop_secrets(data_dir: &Path) -> Arc<dyn SecretStore> {
             return Arc::new(WindowsStore);
         }
     }
-    if cfg!(not(windows)) && std::env::var("ATOMIC_NO_KEYRING").is_err() && KeyringStore::works() {
+    if cfg!(not(windows)) && proto::env_var("ATOMIC_NO_KEYRING").is_err() && KeyringStore::works() {
         Arc::new(KeyringStore)
     } else {
         Arc::new(FileSecretStore::new(data_dir.join("client").join("secrets.json")))
@@ -114,7 +124,7 @@ pub fn notify(title: &str, body: &str) {
         return;
     }
     #[cfg(not(windows))]
-    let _ = Command::new("notify-send").args(["--app-name=Atomic Chat", "--icon=mail-unread", title, body]).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+    let _ = Command::new("notify-send").args(["--app-name=SuperChat", "--icon=mail-unread", title, body]).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
 }
 
 /// The system "open" command: xdg-open on Linux, `cmd /C start` on Windows.
@@ -188,9 +198,9 @@ pub fn set_autostart(on: bool, minimised: bool) {
         if on {
             let exe = std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default();
             let val = format!("\"{exe}\"{}", if minimised { " --minimised" } else { "" });
-            let _ = Command::new("reg").args(["add", KEY, "/v", "AtomicChat", "/t", "REG_SZ", "/d", &val, "/f"]).stdout(Stdio::null()).stderr(Stdio::null()).status();
+            let _ = Command::new("reg").args(["add", KEY, "/v", "SuperChat", "/t", "REG_SZ", "/d", &val, "/f"]).stdout(Stdio::null()).stderr(Stdio::null()).status();
         } else {
-            let _ = Command::new("reg").args(["delete", KEY, "/v", "AtomicChat", "/f"]).stdout(Stdio::null()).stderr(Stdio::null()).status();
+            let _ = Command::new("reg").args(["delete", KEY, "/v", "SuperChat", "/f"]).stdout(Stdio::null()).stderr(Stdio::null()).status();
         }
         return;
     }
@@ -202,14 +212,14 @@ pub fn set_autostart(on: bool, minimised: bool) {
 fn set_autostart_xdg(on: bool, minimised: bool) {
     let Some(home) = std::env::var_os("HOME") else { return };
     let dir = PathBuf::from(home).join(".config/autostart");
-    let f = dir.join("atomic-chat.desktop");
+    let f = dir.join("superchat.desktop");
     if !on {
         let _ = std::fs::remove_file(f);
         return;
     }
-    let exe = std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_else(|_| "atomic-chat".into());
+    let exe = std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_else(|_| "superchat".into());
     let _ = std::fs::create_dir_all(&dir);
-    let _ = std::fs::write(f, format!("[Desktop Entry]\nType=Application\nName=Atomic Chat\nExec={exe}{}\nX-GNOME-Autostart-enabled=true\n", if minimised { " --minimised" } else { "" }));
+    let _ = std::fs::write(f, format!("[Desktop Entry]\nType=Application\nName=SuperChat\nExec={exe}{}\nX-GNOME-Autostart-enabled=true\n", if minimised { " --minimised" } else { "" }));
 }
 
 /// Image on the clipboard as a PNG file (F-02 paste), through wl-paste, xclip or PowerShell. None when there is no image.

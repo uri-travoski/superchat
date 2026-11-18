@@ -1,11 +1,11 @@
-; NSIS installer for Atomic Chat. Build:  makensis /DVERSION=1.0.0 packaging/windows/installer.nsi  (run from the repo root)
+; NSIS installer for SuperChat. Build:  makensis /DVERSION=1.1.0 packaging/windows/installer.nsi  (run from the repo root)
 !include "MUI2.nsh"
-Name "Atomic Chat"
-OutFile "..\..\dist\Atomic_Chat-${VERSION}-x64-setup.exe"
-InstallDir "$LOCALAPPDATA\Programs\Atomic Chat"
+Name "SuperChat"
+OutFile "..\..\dist\superchat-${VERSION}-x64-setup.exe"
+InstallDir "$LOCALAPPDATA\Programs\SuperChat"
 RequestExecutionLevel user
-!define MUI_ICON "..\..\assets\icon\atomic-chat.ico"
-!define MUI_UNICON "..\..\assets\icon\atomic-chat.ico"
+!define MUI_ICON "..\..\assets\icon\superchat.ico"
+!define MUI_UNICON "..\..\assets\icon\superchat.ico"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_UNPAGE_CONFIRM
@@ -14,22 +14,22 @@ RequestExecutionLevel user
 
 Section "Install"
   SetOutPath "$INSTDIR"
-  File "..\..\dist\Atomic_Chat-${VERSION}-x64-portable.exe"
-  Rename "$INSTDIR\Atomic_Chat-${VERSION}-x64-portable.exe" "$INSTDIR\atomic-chat.exe"
-  File "..\..\assets\icon\atomic-chat.ico"
+  File "..\..\dist\superchat-${VERSION}-x64-portable.exe"
+  Rename "$INSTDIR\superchat-${VERSION}-x64-portable.exe" "$INSTDIR\superchat.exe"
+  File "..\..\assets\icon\superchat.ico"
   WriteUninstaller "$INSTDIR\uninstall.exe"
-  CreateShortcut "$SMPROGRAMS\Atomic Chat.lnk" "$INSTDIR\atomic-chat.exe" "" "$INSTDIR\atomic-chat.ico"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AtomicChat" "DisplayName" "Atomic Chat"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AtomicChat" "DisplayVersion" "${VERSION}"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AtomicChat" "DisplayIcon" "$INSTDIR\atomic-chat.ico"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AtomicChat" "UninstallString" "$INSTDIR\uninstall.exe"
+  CreateShortcut "$SMPROGRAMS\SuperChat.lnk" "$INSTDIR\superchat.exe" "" "$INSTDIR\superchat.ico"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\SuperChat" "DisplayName" "SuperChat"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\SuperChat" "DisplayVersion" "${VERSION}"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\SuperChat" "DisplayIcon" "$INSTDIR\superchat.ico"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\SuperChat" "UninstallString" "$INSTDIR\uninstall.exe"
 SectionEnd
 
 Section "Uninstall"
-  Delete "$INSTDIR\atomic-chat.exe"
-  Delete "$INSTDIR\atomic-chat.ico"
+  Delete "$INSTDIR\superchat.exe"
+  Delete "$INSTDIR\superchat.ico"
   Delete "$INSTDIR\uninstall.exe"
-  Delete "$SMPROGRAMS\Atomic Chat.lnk"
+  Delete "$SMPROGRAMS\SuperChat.lnk"
   RMDir "$INSTDIR"
-  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AtomicChat"
+  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\SuperChat"
 SectionEnd

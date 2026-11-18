@@ -1,4 +1,4 @@
-package app.atomicchat
+package app.superchat
 
 import org.json.JSONObject
 import java.io.File

@@ -14,7 +14,7 @@ static VM: OnceLock<JavaVM> = OnceLock::new();
 static NATIVE: OnceLock<GlobalRef> = OnceLock::new();
 static SHARED: Mutex<Option<Shared>> = Mutex::new(None);
 
-/// Runs `f` on a JNI-attached thread with the `app.atomicchat.Native` class. None when the shell is not ready or Java threw.
+/// Runs `f` on a JNI-attached thread with the `app.superchat.Native` class. None when the shell is not ready or Java threw.
 fn with_env<R>(f: impl FnOnce(&mut JNIEnv, &JClass) -> Option<R>) -> Option<R> {
     let vm = VM.get()?;
     let cls = NATIVE.get()?;
@@ -143,7 +143,7 @@ static OPEN_CONV: Mutex<Option<String>> = Mutex::new(None);
 static FONT_SCALE_BITS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3f80_0000); // 1.0
 
 /// Plain http is refused unless this marker file exists in the app's private files dir
-/// (used only for emulator tests against a dev server: `run-as app.atomicchat touch files/allow_http`).
+/// (used only for emulator tests against a dev server: `run-as app.superchat touch files/allow_http`).
 fn insecure_allowed(dir: &std::path::Path) -> bool {
     dir.join("allow_http").exists()
 }
@@ -177,7 +177,7 @@ fn jstr(env: &mut JNIEnv, s: &JString) -> String {
 
 /// Called by `Native.init`: remembers the VM and the helper class so Rust can call back into Kotlin.
 #[no_mangle]
-pub extern "system" fn Java_app_atomicchat_Native_init(env: JNIEnv, class: JClass) {
+pub extern "system" fn Java_app_superchat_Native_init(env: JNIEnv, class: JClass) {
     if let Ok(vm) = env.get_java_vm() {
         let _ = VM.set(vm);
     }
@@ -189,7 +189,7 @@ pub extern "system" fn Java_app_atomicchat_Native_init(env: JNIEnv, class: JClas
 /// Called by the Kotlin foreground service: keeps the realtime connection alive outside the Activity and shows
 /// local notifications for incoming messages (N-01).
 #[no_mangle]
-pub extern "system" fn Java_app_atomicchat_SyncService_nativeStart(mut env: JNIEnv, _c: JClass, data_dir: JString) {
+pub extern "system" fn Java_app_superchat_SyncService_nativeStart(mut env: JNIEnv, _c: JClass, data_dir: JString) {
     let dir = PathBuf::from(jstr(&mut env, &data_dir));
     let client = client_for(&dir);
     if client.signed_in() {
@@ -227,7 +227,7 @@ pub extern "system" fn Java_app_atomicchat_SyncService_nativeStart(mut env: JNIE
 
 /// A push (ntfy or FCM) arrived: sync now. Pushes carry no message text.
 #[no_mangle]
-pub extern "system" fn Java_app_atomicchat_Native_nativeWake(mut env: JNIEnv, _c: JClass, data_dir: JString) {
+pub extern "system" fn Java_app_superchat_Native_nativeWake(mut env: JNIEnv, _c: JClass, data_dir: JString) {
     let dir = PathBuf::from(jstr(&mut env, &data_dir));
     let client = client_for(&dir);
     if client.signed_in() {
@@ -238,13 +238,13 @@ pub extern "system" fn Java_app_atomicchat_Native_nativeWake(mut env: JNIEnv, _c
 
 /// The Kotlin shell pushes the local UTC offset (chrono cannot read the zone on Android).
 #[no_mangle]
-pub extern "system" fn Java_app_atomicchat_Native_nativeTzOffset(_env: JNIEnv, _c: JClass, secs: i32) {
+pub extern "system" fn Java_app_superchat_Native_nativeTzOffset(_env: JNIEnv, _c: JClass, secs: i32) {
     atomic_ui::set_tz_offset(secs);
 }
 
 /// Text and file paths received through the share sheet (E-06); files are newline separated.
 #[no_mangle]
-pub extern "system" fn Java_app_atomicchat_Native_nativeShare(mut env: JNIEnv, _c: JClass, text: JString, files: JString) {
+pub extern "system" fn Java_app_superchat_Native_nativeShare(mut env: JNIEnv, _c: JClass, text: JString, files: JString) {
     let text = jstr(&mut env, &text);
     let files: Vec<PathBuf> = jstr(&mut env, &files).lines().filter(|l| !l.is_empty()).map(PathBuf::from).collect();
     if let Ok(mut g) = SHARED.lock() {
@@ -254,7 +254,7 @@ pub extern "system" fn Java_app_atomicchat_Native_nativeShare(mut env: JNIEnv, _
 
 /// Called by MainActivity when a notification is tapped.
 #[no_mangle]
-pub extern "system" fn Java_app_atomicchat_Native_nativeOpenConversation(mut env: JNIEnv, _c: JClass, conv: JString) {
+pub extern "system" fn Java_app_superchat_Native_nativeOpenConversation(mut env: JNIEnv, _c: JClass, conv: JString) {
     let conv = jstr(&mut env, &conv);
     log::info!("open conversation {conv}");
     if let Ok(mut g) = OPEN_CONV.lock() {
@@ -264,7 +264,7 @@ pub extern "system" fn Java_app_atomicchat_Native_nativeOpenConversation(mut env
 
 /// Android system font scale (Settings > Display > Font size), pushed by MainActivity.
 #[no_mangle]
-pub extern "system" fn Java_app_atomicchat_Native_nativeFontScale(_env: JNIEnv, _c: JClass, scale: f32) {
+pub extern "system" fn Java_app_superchat_Native_nativeFontScale(_env: JNIEnv, _c: JClass, scale: f32) {
     FONT_SCALE_BITS.store(scale.to_bits(), std::sync::atomic::Ordering::Relaxed);
 }
 

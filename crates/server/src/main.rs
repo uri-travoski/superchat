@@ -3,12 +3,12 @@ use atomic_server::config::Config;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     if std::env::args().any(|a| a == "--version" || a == "-V") {
-        println!("atomic-server {}", proto::VERSION);
+        println!("superchat-server {}", proto::VERSION);
         return Ok(());
     }
     if std::env::args().any(|a| a == "--help" || a == "-h") {
         println!(
-            "atomic-server {}\n\nConfigured by environment variables:\n  ATOMIC_BIND (0.0.0.0:8080)  ATOMIC_DATA_DIR (./data)  ATOMIC_PUBLIC_URL\n  ATOMIC_ADMIN_DIR  ATOMIC_BOOTSTRAP_ADMIN=user:password  ATOMIC_NTFY_URL\n  ATOMIC_MAX_UPLOAD_MB (100)  ATOMIC_NAME\nSee docs/DEPLOY.md.",
+            "superchat-server {}\n\nConfigured by environment variables (SUPERCHAT_* names; the legacy ATOMIC_* names also work, SUPERCHAT_ wins):\n  ATOMIC_BIND (0.0.0.0:8080)  ATOMIC_DATA_DIR (./data)  ATOMIC_PUBLIC_URL\n  ATOMIC_ADMIN_DIR  ATOMIC_BOOTSTRAP_ADMIN=user:password  ATOMIC_NTFY_URL\n  ATOMIC_MAX_UPLOAD_MB (100)  ATOMIC_NAME\nSee docs/DEPLOY.md.",
             proto::VERSION
         );
         return Ok(());
@@ -16,7 +16,7 @@ async fn main() -> anyhow::Result<()> {
     if std::env::args().nth(1).as_deref() == Some("healthcheck") {
         // Used by the container HEALTHCHECK: plain HTTP GET on loopback, exit 0 when healthy.
         use std::io::{Read, Write};
-        let bind = std::env::var("ATOMIC_BIND").unwrap_or_else(|_| "0.0.0.0:8080".into());
+        let bind = proto::env_var("ATOMIC_BIND").unwrap_or_else(|_| "0.0.0.0:8080".into());
         let port = bind.rsplit(':').next().unwrap_or("8080");
         let ok = std::net::TcpStream::connect(format!("127.0.0.1:{port}"))
             .and_then(|mut s| {
@@ -39,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
     atomic_server::spawn_background(st.clone());
     let app = atomic_server::router(st);
     let listener = tokio::net::TcpListener::bind(&bind).await?;
-    tracing::info!("Atomic Chat server {} listening on {bind}", proto::VERSION);
+    tracing::info!("SuperChat server {} listening on {bind}", proto::VERSION);
     axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
         .with_graceful_shutdown(async {
             #[cfg(unix)]

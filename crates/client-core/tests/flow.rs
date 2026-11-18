@@ -305,7 +305,7 @@ async fn disabled_account_is_kicked_and_wiped() {
     assert!(bob.conversations().is_empty());
     assert!(bob.users().is_empty());
     assert!(bob.store().cursor() == 0);
-    assert!(!bob.data_dir().join("secrets.json").exists() || !std::fs::read_to_string(bob.data_dir().join("secrets.json")).unwrap().contains("atomic-chat.session"));
+    assert!(!bob.data_dir().join("secrets.json").exists() || !std::fs::read_to_string(bob.data_dir().join("secrets.json")).unwrap().contains("superchat.session"));
     // Cannot sign in again while disabled.
     let c2 = s.new_client("bob");
     let err = c2.login(&s.url, "bob", "password-123", None).await.unwrap_err();
@@ -340,7 +340,7 @@ async fn one_time_login_link() {
     let s = TestServer::start().await;
     let r = s.admin.create_user("newbie", "New Person", None).await.unwrap();
     let link = r.login_link.expect("link created when no password is given");
-    assert!(link.link.starts_with("atomic-chat://login?server="));
+    assert!(link.link.starts_with("superchat://login?server="));
     assert!(!r.user.password_set);
     let c = s.new_client("newbie");
     let me = c.login_with_link(&link.link, None, None).await.unwrap();

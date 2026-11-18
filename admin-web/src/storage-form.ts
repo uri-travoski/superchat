@@ -40,7 +40,7 @@ export function storageForm(initial?: StorageConfig) {
         inp("client_id", "OAuth client ID", { value: gd?.client_id }),
         inp("client_secret", "OAuth client secret", { type: "password", value: gd?.client_secret }),
         inp("refresh_token", "Refresh token (scope drive.file)", { type: "password", value: gd?.refresh_token }),
-        inp("folder_name", "Folder name", { value: gd?.folder_name ?? "Atomic Chat" }),
+        inp("folder_name", "Folder name", { value: gd?.folder_name ?? "SuperChat" }),
         h("p", { class: "muted" }, "Files are stored in one app folder in your Drive. The token only reaches files this app created."));
     } else {
       const defaults: Record<string, { ep: string; region: string; style: boolean; hint: string }> = {

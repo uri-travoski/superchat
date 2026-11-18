@@ -6,7 +6,7 @@ Done: Phase 3 server (bots, webhooks, forms, App Home, scheduled messages, AI; S
 bookmarks, scheduled messages and APP tag in the viewer; Playwright `admin-automation.mjs`), desktop/Android UI for WF-01/A-03 (form card + modal), A-04 (Home tab),
 APP tag, M-23/M-24, SR-06, SR-07, bookmarks, colour emoji (picker and reactions), tray (E-08), drag-drop and paste (F-02), voice messages (M-30),
 Android: Keystore secrets (X-02), ntfy listener + local notifications + wake (N-01), time-zone fix, share target (E-06), RECORD_AUDIO recording.
-Release: README, docs/RELEASE-NOTES-v1.0.md, ci.yml, release.yml, packaging. Local artifacts in `dist/` (git-ignored): deb, AppImage, APK; image `atomic-chat:1.0`.
+Release: README, docs/RELEASE-NOTES-v1.0.md, ci.yml, release.yml, packaging. Local artifacts in `dist/` (git-ignored): deb, AppImage, APK; image `superchat:1.0`.
 
 Partial / not done: video recording (M-31: upload and system player only), no waveform or speed control, FCM compiled only with a Firebase config
 (never run against Google), Windows paths never run, arm64 APK never executed, emoji inside message text monochrome, Wayland drag-drop,
@@ -105,7 +105,7 @@ Server and core are covered by the tests listed at the top; "admin web" is the T
 | SV-11 user groups (`@oncall` style mentions) | tested | n/a | Mentions resolve on the server; no group management UI |
 | SV-12 favourites, sections, mute, notify level, sort, unread filter, hide muted | tested | done | Conversation menu (mute, notify level, mark unread, favourite, move to section): right-click a row on desktop, or "Options" in the conversation header (works on a phone); sections are created in Settings. Sort, unread-only and hide-muted pills sit above the list |
 | SV-13 push (ntfy, FCM, APNs wakes, content-free) | tested with fakes | partial | Android Settings stores the choice and ntfy address; registering with the server and ntfy/FCM delivery on the device are not built. Not tested against real ntfy/FCM/APNs |
-| SV-20 forward, permalinks, drafts, files list | tested | partial | Forward and copy-link done; permalinks open when pasted (`atomic-chat://m?...`); Files tab lists cached files |
+| SV-20 forward, permalinks, drafts, files list | tested | partial | Forward and copy-link done; permalinks open when pasted (`superchat://m?...`); Files tab lists cached files |
 | Encrypted backups (age, passphrase outside the backup), scheduled/full/per-user | tested | n/a | admin web Backups page |
 | Restore: fresh server, selective (merge/replace), attachments moved back | tested | n/a | e2e restores onto an empty second server |
 | Date-range delete, also other person's copy, mandatory backup first | tested | n/a | |
@@ -119,7 +119,7 @@ Server and core are covered by the tests listed at the top; "admin web" is the T
 
 * APK: build with `./gradlew assembleRelease` (or `assembleDebug -PatomicAbis=x86_64` for an emulator build; the debug build allows `run-as` to create the `files/allow_http` marker for http test servers). The Phase 2 UI was built for x86_64 and checked on emulator-5556: the conversation list and Settings render with the new layout; sign-in, chat and the organisation menus were verified on desktop only. Earlier size figure for two ABIs: 44.5 MB. Gradle project `apps/android` (`./gradlew assembleRelease`, ABIs `arm64-v8a` + `x86_64`, or `-PatomicAbis=x86_64`). Debug-signed. Run on the emulator
   only. arm64 compiles but was never executed.
-* Linux binary: `cargo build --release -p atomic-desktop` (binary `atomic-chat`). No AppImage/deb yet (Phase 4).
+* Linux binary: `cargo build --release -p atomic-desktop` (binary `superchat`). No AppImage/deb yet (Phase 4).
 * No Windows build yet (Phase 4).
 
 ## Known risks

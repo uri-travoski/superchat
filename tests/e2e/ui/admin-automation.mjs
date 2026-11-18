@@ -37,7 +37,7 @@ const fake = http.createServer((req, res) => {
 await new Promise((r) => fake.listen(0, "127.0.0.1", r));
 const FAKE = `http://127.0.0.1:${fake.address().port}`;
 
-const server = spawn(path.join(root, "target/debug/atomic-server"), [], {
+const server = spawn(path.join(root, "target/debug/superchat-server"), [], {
   env: { ...process.env, ATOMIC_BIND: `127.0.0.1:${PORT}`, ATOMIC_DATA_DIR: path.join(data, "srv"), ATOMIC_ADMIN_DIR: path.join(root, "admin-web/dist"), ATOMIC_BACKUP_WORK_FACTOR: "10", ATOMIC_WORKER_TICK_MS: "200", RUST_LOG: "warn" },
   stdio: ["ignore", "inherit", "inherit"],
 });
@@ -60,7 +60,7 @@ try {
   const adm = setup.access_token;
   const aliceId = (await api("POST", "/admin/users", { username: "alice", display_name: "Alice", password: "password-123", role: "member" }, adm)).user.id;
   const general = (await api("POST", "/conversations", { kind: "channel", name: "general", topic: null, members: [aliceId] }, adm)).id;
-  const alice = (await api("POST", "/login", { username: "alice", password: "password-123", device_name: "t", client_version: "1.0.0" })).access_token;
+  const alice = (await api("POST", "/login", { username: "alice", password: "password-123", device_name: "t", client_version: "1.1.0" })).access_token;
 
   const exe = fs.readdirSync(process.env.HOME + "/.cache/ms-playwright").filter((d) => d.startsWith("chromium-")).sort().pop();
   const browser = await chromium.launch({ executablePath: `${process.env.HOME}/.cache/ms-playwright/${exe}/chrome-linux64/chrome`, args: ["--no-sandbox"] });

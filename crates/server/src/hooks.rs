@@ -184,15 +184,18 @@ async fn send(st: &St, d: &Due) -> Result<u16, String> {
         .post(&d.url)
         .timeout(std::time::Duration::from_secs(10))
         .header("content-type", "application/json")
-        .header("user-agent", format!("atomic-chat/{}", proto::VERSION))
+        .header("user-agent", format!("superchat/{}", proto::VERSION))
         .header("x-atomic-event", &d.event)
-        .header("x-atomic-delivery", d.id.to_string());
+        .header("x-atomic-delivery", d.id.to_string())
+        .header("x-superchat-event", &d.event)
+        .header("x-superchat-delivery", d.id.to_string());
     if d.kind == "bot" {
         if let Some(s) = d.secret.as_deref().filter(|s| !s.is_empty()) {
             req = req.header("x-telegram-bot-api-secret-token", s);
         }
     } else if let Some(s) = d.secret.as_deref() {
-        req = req.header("x-atomic-timestamp", ts.to_string()).header("x-atomic-signature", sign(s, ts, &d.body));
+        let sig = sign(s, ts, &d.body);
+        req = req.header("x-atomic-timestamp", ts.to_string()).header("x-atomic-signature", sig.clone()).header("x-superchat-timestamp", ts.to_string()).header("x-superchat-signature", sig);
     }
     match req.body(d.body.clone()).send().await {
         Ok(r) => {

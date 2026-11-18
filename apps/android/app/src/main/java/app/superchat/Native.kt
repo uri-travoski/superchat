@@ -1,4 +1,4 @@
-package app.atomicchat
+package app.superchat
 
 import android.Manifest
 import android.app.Activity

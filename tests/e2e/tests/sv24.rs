@@ -22,7 +22,7 @@ use std::time::Duration;
 const SERVER_PORT: u16 = 18300;
 const MINIO_PORT: u16 = 18310;
 const SERVER2_PORT: u16 = 18301;
-const IMAGE: &str = "atomic-chat-server:e2e";
+const IMAGE: &str = "superchat-server:e2e";
 const MINIO_IMAGE: &str = "bitnamilegacy/minio:latest";
 
 fn sh(cmd: &str, args: &[&str]) -> (bool, String) {
@@ -37,7 +37,7 @@ impl Drop for Containers {
         for n in &self.0 {
             let _ = sh("docker", &["rm", "-f", "-v", n]);
         }
-        let _ = sh("docker", &["network", "rm", "atomic-e2e"]);
+        let _ = sh("docker", &["network", "rm", "superchat-e2e"]);
     }
 }
 
@@ -101,7 +101,7 @@ async fn sent(c: &Client, conv: &str, text: &str) {
 }
 
 fn minio_files() -> usize {
-    let (_, out) = sh("docker", &["exec", "atomic-e2e-minio", "sh", "-c", "find /data/atomic -name xl.meta | wc -l"]);
+    let (_, out) = sh("docker", &["exec", "superchat-e2e-minio", "sh", "-c", "find /data/superchat -name xl.meta | wc -l"]);
     out.trim().parse().unwrap_or(0)
 }
 
@@ -112,19 +112,19 @@ async fn sv24_full_scenario() {
         return;
     }
     let tmp = tempfile::tempdir().unwrap();
-    let _guard = Containers(vec!["atomic-e2e-minio".into(), "atomic-e2e-server".into(), "atomic-e2e-server2".into()]);
-    let _ = sh("docker", &["rm", "-f", "-v", "atomic-e2e-minio", "atomic-e2e-server", "atomic-e2e-server2"]);
-    let _ = sh("docker", &["network", "rm", "atomic-e2e"]);
-    let (ok, out) = sh("docker", &["network", "create", "atomic-e2e"]);
+    let _guard = Containers(vec!["superchat-e2e-minio".into(), "superchat-e2e-server".into(), "superchat-e2e-server2".into()]);
+    let _ = sh("docker", &["rm", "-f", "-v", "superchat-e2e-minio", "superchat-e2e-server", "superchat-e2e-server2"]);
+    let _ = sh("docker", &["network", "rm", "superchat-e2e"]);
+    let (ok, out) = sh("docker", &["network", "create", "superchat-e2e"]);
     assert!(ok, "network: {out}");
 
     // --- infrastructure -------------------------------------------------------------------------
     let (ok, out) = sh(
         "docker",
         &[
-            "run", "-d", "--name", "atomic-e2e-minio", "--network", "atomic-e2e", "--user", "0", "-p", &format!("127.0.0.1:{MINIO_PORT}:9000"),
+            "run", "-d", "--name", "superchat-e2e-minio", "--network", "superchat-e2e", "--user", "0", "-p", &format!("127.0.0.1:{MINIO_PORT}:9000"),
             "-e", "MINIO_ROOT_USER=e2eaccess", "-e", "MINIO_ROOT_PASSWORD=e2esecret-1234",
-            "--entrypoint", "sh", MINIO_IMAGE, "-c", "mkdir -p /data/atomic && exec /opt/bitnami/minio/bin/minio server /data",
+            "--entrypoint", "sh", MINIO_IMAGE, "-c", "mkdir -p /data/superchat && exec /opt/bitnami/minio/bin/minio server /data",
         ],
     );
     assert!(ok, "minio failed to start: {out}");
@@ -133,7 +133,7 @@ async fn sv24_full_scenario() {
     let (ok, out) = sh(
         "docker",
         &[
-            "run", "-d", "--name", "atomic-e2e-server", "--network", "atomic-e2e", "--add-host", "host.docker.internal:host-gateway",
+            "run", "-d", "--name", "superchat-e2e-server", "--network", "superchat-e2e", "--add-host", "host.docker.internal:host-gateway",
             "-p", &format!("127.0.0.1:{SERVER_PORT}:8080"), "-e", &format!("ATOMIC_PUBLIC_URL={public}"),
             "-e", "ATOMIC_LOCKOUT_THRESHOLD=50", IMAGE,
         ],
@@ -144,9 +144,9 @@ async fn sv24_full_scenario() {
 
     let s3 = StorageConfig::S3 {
         provider: S3Provider::Minio,
-        endpoint: Some("http://atomic-e2e-minio:9000".to_string()),
+        endpoint: Some("http://superchat-e2e-minio:9000".to_string()),
         region: "us-east-1".into(),
-        bucket: "atomic".into(),
+        bucket: "superchat".into(),
         access_key_id: "e2eaccess".into(),
         secret_access_key: "e2esecret-1234".into(),
         prefix: None,
@@ -157,7 +157,7 @@ async fn sv24_full_scenario() {
         client_id: "cid".into(),
         client_secret: "csecret".into(),
         refresh_token: "fake-refresh-token".into(),
-        folder_name: Some("Atomic Chat e2e".into()),
+        folder_name: Some("SuperChat e2e".into()),
         api_base: Some(format!("http://host.docker.internal:{gport}")),
         token_url: Some(format!("http://host.docker.internal:{gport}/token")),
     };
@@ -429,12 +429,12 @@ async fn phase2(
     let full = admin.backup_now().await.unwrap();
     assert!(full.encrypted && full.size > 0);
     // Objects in MinIO are encrypted: the plain-text message must not appear in any backup object.
-    let (_, grep) = sh("docker", &["exec", "atomic-e2e-minio", "sh", "-c", "grep -rl 'top secret wake test' /data/atomic/e2e-backups 2>/dev/null | wc -l"]);
+    let (_, grep) = sh("docker", &["exec", "superchat-e2e-minio", "sh", "-c", "grep -rl 'top secret wake test' /data/superchat/e2e-backups 2>/dev/null | wc -l"]);
     assert_eq!(grep.trim(), "0", "backup objects contain no plain text");
     let (ok, out) = sh(
         "docker",
         &[
-            "run", "-d", "--name", "atomic-e2e-server2", "--network", "atomic-e2e", "-p", &format!("127.0.0.1:{SERVER2_PORT}:8080"),
+            "run", "-d", "--name", "superchat-e2e-server2", "--network", "superchat-e2e", "-p", &format!("127.0.0.1:{SERVER2_PORT}:8080"),
             "-e", &format!("ATOMIC_PUBLIC_URL=http://127.0.0.1:{SERVER2_PORT}"), "-e", "ATOMIC_LOCKOUT_THRESHOLD=50", IMAGE,
         ],
     );

@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "atomic-chat-android"
+rootProject.name = "superchat-android"
 include(":app")

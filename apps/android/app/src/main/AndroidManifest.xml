@@ -47,7 +47,7 @@
         <!-- Spike aid: lets adb post a message notification that opens a conversation. -->
         <receiver android:name=".TestNotifyReceiver" android:exported="true">
             <intent-filter>
-                <action android:name="app.atomicchat.TEST_NOTIFY" />
+                <action android:name="app.superchat.TEST_NOTIFY" />
             </intent-filter>
         </receiver>
     </application>

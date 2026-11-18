@@ -24,8 +24,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 const PORT: u16 = 18302;
-const IMAGE: &str = "atomic-chat-server:e2e";
-const NAME: &str = "atomic-e2e-bots";
+const IMAGE: &str = "superchat-server:e2e";
+const NAME: &str = "superchat-e2e-bots";
 
 fn sh(args: &[&str]) -> (bool, String) {
     let o = Command::new("docker").args(args).output().expect("docker");

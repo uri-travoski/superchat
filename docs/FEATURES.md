@@ -1,4 +1,4 @@
-# What Atomic Chat does today (version 1.0.0, Phases 1 and 2)
+# What SuperChat does today (version 1.1.0, Phases 1 and 2)
 
 * Self-hosted team chat. One small server (Docker), apps for Linux and Android (Windows later), an admin web panel, and a command-line client.
 * **Accounts are created by admins only.** There is no sign-up. New people get a one-time login link (works once, expires in 7 days).

@@ -3,14 +3,14 @@ name = "atomic-desktop"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Atomic Chat UI (Slint) for Linux, Windows and, via apps/android, Android"
+description = "SuperChat UI (Slint) for Linux, Windows and, via apps/android, Android"
 
 [lib]
 name = "atomic_ui"
 path = "src/lib.rs"
 
 [[bin]]
-name = "atomic-chat"
+name = "superchat"
 path = "src/main.rs"
 
 [dependencies]
@@ -36,16 +36,16 @@ slint-build = "1.19"
 winresource = "0.1"
 
 [package.metadata.deb]
-copyright = "2026, Atomic Chat contributors (MIT)"
-name = "atomic-chat"
-maintainer = "Atomic Chat contributors <admin@example.com>"
+copyright = "2026, SuperChat contributors (MIT)"
+name = "superchat"
+maintainer = "SuperChat contributors <admin@example.com>"
 section = "net"
 priority = "optional"
 depends = "$auto, libc6"
-extended-description = "Self-hosted Slack-style team chat client. Connects to your own Atomic Chat server."
+extended-description = "Self-hosted Slack-style team chat client. Connects to your own SuperChat server."
 assets = [
-  ["../../target/release/atomic-chat", "usr/bin/", "755"],
-  ["../../packaging/linux/atomic-chat.desktop", "usr/share/applications/", "644"],
-  ["../../assets/icon/atomic-chat-256.png", "usr/share/icons/hicolor/256x256/apps/atomic-chat.png", "644"],
-  ["../../assets/icon/atomic-chat-48.png", "usr/share/icons/hicolor/48x48/apps/atomic-chat.png", "644"],
+  ["../../target/release/superchat", "usr/bin/", "755"],
+  ["../../packaging/linux/superchat.desktop", "usr/share/applications/", "644"],
+  ["../../assets/icon/superchat-256.png", "usr/share/icons/hicolor/256x256/apps/superchat.png", "644"],
+  ["../../assets/icon/superchat-48.png", "usr/share/icons/hicolor/48x48/apps/superchat.png", "644"],
 ]

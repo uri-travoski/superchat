@@ -301,7 +301,7 @@ impl Client {
 
     /// Resolves a pasted permalink into a cached/fetched message and loads its surroundings.
     pub async fn open_permalink(&self, link: &str) -> Result<Message> {
-        let p = rules::parse_permalink(link).ok_or_else(|| ClientError::Local("That is not an Atomic Chat link.".into()))?;
+        let p = rules::parse_permalink(link).ok_or_else(|| ClientError::Local("That is not an SuperChat link.".into()))?;
         let m: Message = self.api()?.get(&format!("/messages/{}", p.message_id)).await?;
         let h: HistoryResponse = self.api()?.get(&format!("/conversations/{}/messages?around_id={}&limit=40", m.conv_id, m.id)).await?;
         self.inner.store.put_messages(&h.messages)?;

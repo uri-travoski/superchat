@@ -1,4 +1,4 @@
-package app.atomicchat
+package app.superchat
 
 import android.Manifest
 import android.app.NativeActivity
@@ -23,7 +23,7 @@ class MainActivity : NativeActivity() {
         Native.pushTimeZone()
         // Google push is compiled in only when a config was bundled (see build.gradle.kts).
         runCatching {
-            val comp = Class.forName("app.atomicchat.FcmService").getField("Companion").get(null)!!
+            val comp = Class.forName("app.superchat.FcmService").getField("Companion").get(null)!!
             comp.javaClass.getMethod("init", android.content.Context::class.java).invoke(comp, this)
         }
         handleIntent(intent)

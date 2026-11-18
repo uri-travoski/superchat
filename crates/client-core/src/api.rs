@@ -32,8 +32,21 @@ pub fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-/// Turns what the user typed into a base URL. TLS is required: `http://` is only accepted when
-/// `allow_insecure_http` is set (test servers on a LAN / emulator).
+/// True for hosts that only exist on a local/private network (loopback, RFC 1918, link-local, `.local`).
+pub fn is_private_host(host: &str) -> bool {
+    let h = host.trim_start_matches('[').trim_end_matches(']').to_ascii_lowercase();
+    if h == "localhost" || h.ends_with(".local") || h.ends_with(".lan") {
+        return true;
+    }
+    match h.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(a)) => a.is_loopback() || a.is_private() || a.is_link_local(),
+        Ok(std::net::IpAddr::V6(a)) => a.is_loopback() || (a.segments()[0] & 0xfe00) == 0xfc00,
+        Err(_) => false,
+    }
+}
+
+/// Turns what the user typed into a base URL. TLS is required: `http://` is only accepted for
+/// private-network addresses (LAN, localhost) or when `allow_insecure_http` is set.
 pub fn normalize_server_url(input: &str, allow_insecure_http: bool) -> Result<String> {
     let s = input.trim().trim_end_matches('/');
     if s.is_empty() {
@@ -43,10 +56,10 @@ pub fn normalize_server_url(input: &str, allow_insecure_http: bool) -> Result<St
     let u = url::Url::parse(&with_scheme).map_err(|_| ClientError::Local("that server address is not valid".into()))?;
     match u.scheme() {
         "https" => {}
-        "http" if allow_insecure_http => {}
+        "http" if allow_insecure_http || u.host_str().map(is_private_host).unwrap_or(false) => {}
         "http" => {
             return Err(ClientError::Local(
-                "this server address uses http. Atomic Chat requires TLS (https) unless you explicitly allow an unencrypted test server.".into(),
+                "this server address uses http. Atomic Chat requires https unless the server is on your local network (192.168.x.x, 10.x.x.x, localhost).".into(),
             ))
         }
         _ => return Err(ClientError::Local("the server address must start with https://".into())),
@@ -327,5 +340,21 @@ impl Api {
 
     pub fn current_access_token(&self) -> Option<String> {
         self.session().map(|s| s.access_token)
+    }
+}
+
+#[cfg(test)]
+mod lan_http_tests {
+    use super::*;
+
+    #[test]
+    fn http_only_on_private_networks() {
+        for ok in ["http://192.168.8.101:8080", "http://10.0.0.5", "http://172.20.1.1:80", "http://localhost:8080", "http://chat.local"] {
+            assert!(normalize_server_url(ok, false).is_ok(), "{ok}");
+        }
+        for bad in ["http://example.com", "http://8.8.8.8", "http://172.32.0.1", "http://chat.example.org:8080"] {
+            assert!(normalize_server_url(bad, false).is_err(), "{bad}");
+        }
+        assert!(normalize_server_url("chat.example.com", false).unwrap().starts_with("https://"));
     }
 }

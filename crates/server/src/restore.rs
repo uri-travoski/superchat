@@ -353,6 +353,42 @@ pub fn apply_user_doc(conn: &mut Connection, hub: &Hub, doc: &Value, replace: bo
             resp.messages_hidden += extra.len() as i64;
         }
     }
+    // ---------------------------------------------------------------- labels and saved items
+    if replace {
+        tx.execute("DELETE FROM saved_labels WHERE user_id=?1", [&uid])?;
+        tx.execute("DELETE FROM saved_items WHERE user_id=?1", [&uid])?;
+        tx.execute("DELETE FROM labels WHERE user_id=?1", [&uid])?;
+    }
+    for l in doc["labels"].as_array().unwrap_or(&empty) {
+        let (Some(id), Some(name)) = (s(l, "id"), s(l, "name")) else { continue };
+        // A label id belongs to one user; a clash with someone else's label would be a corrupt file.
+        let other: i64 = tx.query_row("SELECT COUNT(*) FROM labels WHERE id=?1 AND user_id!=?2", params![id, uid], |r| r.get(0))?;
+        if other > 0 {
+            continue;
+        }
+        let dup: i64 = tx.query_row("SELECT COUNT(*) FROM labels WHERE user_id=?1 AND name=?2 COLLATE NOCASE AND id!=?3", params![uid, name, id], |r| r.get(0))?;
+        if dup > 0 {
+            continue;
+        }
+        tx.execute(
+            "INSERT OR IGNORE INTO labels(id,user_id,name,color,position) VALUES(?1,?2,?3,?4,?5)",
+            params![id, uid, name, s(l, "color").unwrap_or_else(|| "#0dbd8b".into()), i(l, "position").unwrap_or(0)],
+        )?;
+    }
+    for it in doc["saved"].as_array().unwrap_or(&empty) {
+        let (Some(mid), Some(ms)) = (s(it, "message_id"), i(it, "saved_ms")) else { continue };
+        let conv: Option<String> = tx.query_row("SELECT conv_id FROM messages WHERE id=?1", [&mid], |r| r.get(0)).optional()?;
+        let Some(conv) = conv else { continue };
+        tx.execute("INSERT OR IGNORE INTO saved_items(user_id,message_id,conv_id,saved_ms) VALUES(?1,?2,?3,?4)", params![uid, mid, conv, ms])?;
+        for lid in it["label_ids"].as_array().unwrap_or(&empty) {
+            if let Some(lid) = lid.as_str() {
+                let ok: i64 = tx.query_row("SELECT COUNT(*) FROM labels WHERE id=?1 AND user_id=?2", params![lid, uid], |r| r.get(0))?;
+                if ok > 0 {
+                    tx.execute("INSERT OR IGNORE INTO saved_labels(user_id,message_id,label_id) VALUES(?1,?2,?3)", params![uid, mid, lid])?;
+                }
+            }
+        }
+    }
     // ---------------------------------------------------------------- announce
     for conv in &touched {
         crate::routes::chat::upsert_for_members(&tx, &mut em, conv)?;

@@ -216,14 +216,14 @@ pub fn conv_summary(conn: &Connection, conv_id: &str, user_id: &str) -> AppResul
     let vis = visible_for("?3");
     let unread: i64 = conn.query_row(
         &format!(
-            "SELECT COUNT(*) FROM messages m WHERE m.conv_id=?1 AND m.seq>?2 AND m.sender_id!=?3 AND m.deleted=0 AND {vis}"
+            "SELECT COUNT(*) FROM messages m WHERE m.conv_id=?1 AND m.seq>?2 AND m.sender_id!=?3 AND m.deleted=0 AND m.kind!='system' AND {vis}"
         ),
         params![conv_id, last_read, user_id],
         |r| r.get(0),
     )?;
     let mentions: i64 = conn.query_row(
         &format!(
-            "SELECT COUNT(*) FROM messages m WHERE m.conv_id=?1 AND m.seq>?2 AND m.sender_id!=?3 AND m.deleted=0 AND m.mentions LIKE ?4 AND {vis}"
+            "SELECT COUNT(*) FROM messages m WHERE m.conv_id=?1 AND m.seq>?2 AND m.sender_id!=?3 AND m.deleted=0 AND m.kind!='system' AND m.mentions LIKE ?4 AND {vis}"
         ),
         params![conv_id, last_read, user_id, format!("%\"{user_id}\"%")],
         |r| r.get(0),

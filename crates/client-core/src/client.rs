@@ -62,6 +62,8 @@ pub enum ClientEvent {
 
 mod auto;
 mod org;
+mod social;
+pub use social::SavedView;
 
 pub struct Inner {
     me: Weak<Inner>,
@@ -961,6 +963,10 @@ impl Inner {
         if let Ok(v) = api.get::<Vec<ScheduledMessage>>("/scheduled").await {
             let _ = self.store.kv_set("scheduled", &serde_json::to_string(&v).unwrap_or_default());
         }
+        if let Ok(f) = api.get::<ActivityFeed>("/activity?limit=150").await {
+            let _ = self.store.put_activity(&f.items);
+            let _ = self.store.set_activity_read_ms(f.read_ms);
+        }
         self.emit(ClientEvent::Changed { conv_ids: b.conversations.iter().map(|c| c.conversation.id.clone()).collect(), users: true, me: true });
         Ok(())
     }
@@ -1059,6 +1065,18 @@ impl Inner {
                         self.fetch_conversation(&cid).await;
                         applied.conv_ids.push(cid);
                     }
+                }
+                if applied.activity_dirty {
+                    let me = self.clone();
+                    self.handle.spawn(async move {
+                        if let Ok(api) = me.api() {
+                            if let Ok(f) = api.get::<ActivityFeed>("/activity?limit=150").await {
+                                let _ = me.store.put_activity(&f.items);
+                                let _ = me.store.set_activity_read_ms(f.read_ms);
+                                me.emit(ClientEvent::Changed { conv_ids: vec![], users: false, me: false });
+                            }
+                        }
+                    });
                 }
                 if !applied.conv_ids.is_empty() || applied.users_changed || applied.me_changed || applied.org_changed {
                     if applied.me_changed {

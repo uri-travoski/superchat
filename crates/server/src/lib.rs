@@ -19,6 +19,7 @@ pub mod push;
 pub mod queries;
 pub mod restore;
 pub mod routes;
+pub mod saved;
 pub mod scheduled;
 pub mod state;
 pub mod storage;

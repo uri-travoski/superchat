@@ -82,6 +82,9 @@ pub async fn bootstrap(State(st): State<St>, auth: Auth) -> AppResult<Json<Boots
                     threads: o.threads,
                     pins: o.pins,
                     bookmarks: o.bookmarks,
+                    saved: crate::saved::load_saved(c, &auth.user_id)?,
+                    labels: crate::saved::load_labels(c, &auth.user_id)?,
+                    activity_read_ms: crate::saved::activity_read_ms(c, &auth.user_id)?,
                 })
             })
             .await?,

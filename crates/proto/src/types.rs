@@ -340,6 +340,14 @@ pub struct Bootstrap {
     pub pins: BTreeMap<String, Vec<Pin>>,
     #[serde(default)]
     pub bookmarks: BTreeMap<String, Vec<Bookmark>>,
+    /// Saved messages ("Later") and the user's labels (1.2).
+    #[serde(default)]
+    pub saved: Vec<SavedItem>,
+    #[serde(default)]
+    pub labels: Vec<Label>,
+    /// Activity items at or before this time are read (1.2).
+    #[serde(default)]
+    pub activity_read_ms: Ts,
 }
 
 /// A pinned message (C-09). At most 100 per conversation.
@@ -633,4 +641,71 @@ pub struct SetupRequest {
     pub email: Option<String>,
     #[serde(default)]
     pub storage: Option<crate::admin::StorageConfig>,
+}
+
+// ---------------------------------------------------------------- saved items and labels (1.2)
+
+/// A label the user created for organising saved messages. Private to the user.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Label {
+    pub id: String,
+    pub name: String,
+    /// `#rrggbb`.
+    pub color: String,
+    pub position: i64,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+pub struct LabelRequest {
+    pub name: Option<String>,
+    pub color: Option<String>,
+    pub position: Option<i64>,
+}
+
+/// A message the user saved for later. The message itself is read from the normal message cache.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct SavedItem {
+    pub message_id: String,
+    pub conv_id: String,
+    pub saved_ms: Ts,
+    #[serde(default)]
+    pub label_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+pub struct SaveRequest {
+    /// Optional labels to set while saving.
+    #[serde(default)]
+    pub label_ids: Option<Vec<String>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SavedLabelsRequest {
+    pub label_ids: Vec<String>,
+}
+
+/// One entry of the Activity feed (1.2): a mention, a reaction to your message or a reply in a thread you are in.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ActivityItem {
+    /// Stable id: `<kind>:<message id>[:<user id>:<emoji>]`.
+    pub id: String,
+    /// `mention`, `reaction` or `thread_reply`.
+    pub kind: String,
+    pub ts: Ts,
+    pub conv_id: String,
+    /// The message the item is about (your message for a reaction, the mentioning or replying message otherwise).
+    pub message_id: String,
+    pub actor_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emoji: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_root: Option<String>,
+    pub unread: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ActivityFeed {
+    pub items: Vec<ActivityItem>,
+    pub read_ms: Ts,
+    pub unread: i64,
 }

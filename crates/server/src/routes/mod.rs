@@ -8,6 +8,7 @@ pub mod chat;
 pub mod files;
 pub mod org;
 pub mod search;
+pub mod social;
 pub mod ws;
 
 use crate::state::St;
@@ -73,6 +74,16 @@ pub fn api_router() -> Router<St> {
         .route("/messages/{id}", get(org::get_message))
         .route("/messages/{id}/forward", post(org::forward_message))
         .route("/files", get(org::list_files))
+        // 1.2: membership, saved items, labels, activity
+        .route("/conversations/{id}/members", post(social::add_members))
+        .route("/conversations/{id}/members/{uid}", delete(social::remove_member))
+        .route("/saved", get(social::list_saved))
+        .route("/saved/{id}", put(social::save_message).delete(social::unsave_message))
+        .route("/saved/{id}/labels", put(social::set_saved_labels))
+        .route("/labels", get(social::list_labels).post(social::create_label))
+        .route("/labels/{id}", patch(social::update_label).delete(social::delete_label))
+        .route("/activity", get(social::activity))
+        .route("/activity/read", post(social::read_activity))
         // admin
         .route("/admin/overview", get(admin::overview))
         .route("/admin/users", get(admin::list_users).post(admin::create_user_route))

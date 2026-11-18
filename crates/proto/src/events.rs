@@ -43,6 +43,12 @@ pub enum EventData {
     DraftUpdate { draft: DraftItem },
     /// A scheduled message was created, sent, cancelled or failed (SV-10).
     ScheduledUpdate { item: ScheduledMessage },
+    /// A message was saved for later or its labels changed (1.2).
+    SavedUpdate { item: SavedItem },
+    SavedRemove { message_id: String },
+    LabelsUpdate { labels: Vec<Label> },
+    /// Activity was marked read (on any device).
+    ActivityRead { read_ms: Ts },
     /// The server restored data for this user; discard the cache and bootstrap again.
     Resync {},
 }
@@ -70,6 +76,10 @@ impl EventData {
             EventData::SectionsUpdate { .. } => "sections_update",
             EventData::DraftUpdate { .. } => "draft_update",
             EventData::ScheduledUpdate { .. } => "scheduled_update",
+            EventData::SavedUpdate { .. } => "saved_update",
+            EventData::SavedRemove { .. } => "saved_remove",
+            EventData::LabelsUpdate { .. } => "labels_update",
+            EventData::ActivityRead { .. } => "activity_read",
             EventData::Resync {} => "resync",
         }
     }

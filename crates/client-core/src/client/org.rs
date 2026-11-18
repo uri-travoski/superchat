@@ -10,7 +10,7 @@ fn enc(s: &str) -> String {
 }
 
 impl Client {
-    fn changed(&self, conv_ids: Vec<String>) {
+    pub(super) fn changed(&self, conv_ids: Vec<String>) {
         self.inner.emit(ClientEvent::Changed { conv_ids, users: false, me: false });
     }
 

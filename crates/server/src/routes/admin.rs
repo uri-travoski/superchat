@@ -6,7 +6,6 @@ use crate::db::now_ms;
 use crate::emit::Emitter;
 use crate::error::{AppError, AppResult};
 use crate::queries::*;
-use crate::routes::chat::upsert_for_members;
 use crate::state::St;
 use crate::storage::build_storage;
 use crate::users::*;
@@ -420,58 +419,14 @@ pub async fn list_conversations(State(st): State<St>, Admin(_a): Admin) -> J<Vec
     ))
 }
 
-pub async fn add_members(State(st): State<St>, Admin(_a): Admin, Path(id): Path<String>, Json(req): Json<MembersRequest>) -> J<Conversation> {
+pub async fn add_members(State(st): State<St>, Admin(auth): Admin, Path(id): Path<String>, Json(req): Json<MembersRequest>) -> J<Conversation> {
     let hub = st.hub.clone();
-    Ok(Json(
-        st.db
-            .call(move |c| {
-                let cr = conv_row(c, &id)?;
-                if !matches!(cr.kind, ConversationKind::Channel | ConversationKind::GroupDm) {
-                    return Err(AppError::validation("members can only be managed on channels and group DMs"));
-                }
-                let tx = c.transaction()?;
-                for uid in &req.user_ids {
-                    let u = get_user(&tx, uid)?;
-                    if u.disabled || u.deleted {
-                        return Err(AppError::validation("cannot add a disabled user"));
-                    }
-                    tx.execute(
-                        "INSERT OR IGNORE INTO members(conv_id,user_id,role,joined_ms) VALUES(?1,?2,'member',?3)",
-                        params![id, uid, now_ms()],
-                    )?;
-                }
-                let mut em = Emitter::new();
-                upsert_for_members(&tx, &mut em, &id)?;
-                tx.commit()?;
-                em.flush(&hub);
-                load_conversation(c, &id)
-            })
-            .await?,
-    ))
+    Ok(Json(st.db.call(move |c| crate::routes::social::add_members_tx(c, &hub, &auth, &id, &req.user_ids)).await?))
 }
 
-pub async fn remove_member(State(st): State<St>, Admin(_a): Admin, Path((id, uid)): Path<(String, String)>) -> J<Conversation> {
+pub async fn remove_member(State(st): State<St>, Admin(auth): Admin, Path((id, uid)): Path<(String, String)>) -> J<Conversation> {
     let hub = st.hub.clone();
-    Ok(Json(
-        st.db
-            .call(move |c| {
-                let cr = conv_row(c, &id)?;
-                if !matches!(cr.kind, ConversationKind::Channel | ConversationKind::GroupDm) {
-                    return Err(AppError::validation("members can only be managed on channels and group DMs"));
-                }
-                let tx = c.transaction()?;
-                let n = tx.execute("DELETE FROM members WHERE conv_id=?1 AND user_id=?2", params![id, uid])?;
-                let mut em = Emitter::new();
-                if n > 0 {
-                    em.emit(&tx, &uid, EventData::ConversationRemove { conv_id: id.clone() })?;
-                    upsert_for_members(&tx, &mut em, &id)?;
-                }
-                tx.commit()?;
-                em.flush(&hub);
-                load_conversation(c, &id)
-            })
-            .await?,
-    ))
+    Ok(Json(st.db.call(move |c| crate::routes::social::remove_member_tx(c, &hub, &auth, &id, &uid)).await?))
 }
 
 pub async fn delete_conversation(State(st): State<St>, Admin(_a): Admin, Path(id): Path<String>) -> J<serde_json::Value> {

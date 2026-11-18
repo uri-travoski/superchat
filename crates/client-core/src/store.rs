@@ -111,6 +111,8 @@ pub struct Applied {
     pub org_changed: bool,
     /// The server restored data for this account: discard the cache and bootstrap again.
     pub resync: bool,
+    /// A mention, reaction or thread reply arrived: the Activity feed should be fetched again.
+    pub activity_dirty: bool,
 }
 
 impl Applied {
@@ -131,6 +133,7 @@ impl Applied {
         self.attachment_removed.extend(o.attachment_removed);
         self.org_changed |= o.org_changed;
         self.resync |= o.resync;
+        self.activity_dirty |= o.activity_dirty;
     }
 }
 
@@ -226,13 +229,16 @@ impl Store {
         tx.execute("DELETE FROM convs", [])?;
         tx.execute("DELETE FROM messages", [])?;
         tx.execute("DELETE FROM threads", [])?;
-        for k in ["prefs", "sections", "groups"] {
+        for k in ["prefs", "sections", "groups", "saved", "labels", "activity_read_ms"] {
             tx.execute("DELETE FROM kv WHERE k=?1", [k])?;
         }
         tx.execute("DELETE FROM kv WHERE k LIKE 'pins:%' OR k LIKE 'bookmarks:%'", [])?;
         kv_put(&tx, "prefs", &serde_json::to_string(&b.prefs)?)?;
         kv_put(&tx, "sections", &serde_json::to_string(&b.sections)?)?;
         kv_put(&tx, "groups", &serde_json::to_string(&b.groups)?)?;
+        kv_put(&tx, "saved", &serde_json::to_string(&b.saved)?)?;
+        kv_put(&tx, "labels", &serde_json::to_string(&b.labels)?)?;
+        kv_put(&tx, "activity_read_ms", &b.activity_read_ms.to_string())?;
         for (conv, pins) in &b.pins {
             kv_put(&tx, &format!("pins:{conv}"), &serde_json::to_string(pins)?)?;
         }
@@ -319,20 +325,20 @@ impl Store {
                             cs.conversation.last_message_ts = Some(message.ts);
                         }
                         let mine = message.sender_id == my_id;
-                        if !existed && !mine && message.seq > cs.last_read_seq {
+                        if !existed && !mine && message.seq > cs.last_read_seq && message.kind != MessageKind::System {
                             cs.unread += 1;
                             if message.mentions.iter().any(|m| m == my_id) {
                                 cs.mentions += 1;
                             }
                         }
                         put_conv(&tx, &cs)?;
-                        if !existed && !mine {
+                        if !existed && !mine && message.kind != MessageKind::System {
                             out.incoming.push((message.clone(), Some(cs)));
                         }
                     }
                     None => {
                         out.unknown_convs.push(message.conv_id.clone());
-                        if !existed && message.sender_id != my_id {
+                        if !existed && message.sender_id != my_id && message.kind != MessageKind::System {
                             out.incoming.push((message.clone(), None));
                         }
                     }
@@ -457,6 +463,28 @@ impl Store {
                 merge_scheduled_tx(&tx, item)?;
                 out.org_changed = true;
             }
+            EventData::SavedUpdate { item } => {
+                let mut all: Vec<SavedItem> = kv_json(&tx, "saved");
+                all.retain(|x| x.message_id != item.message_id);
+                all.insert(0, item.clone());
+                all.sort_by(|a, b| b.saved_ms.cmp(&a.saved_ms));
+                kv_put(&tx, "saved", &serde_json::to_string(&all)?)?;
+                out.org_changed = true;
+            }
+            EventData::SavedRemove { message_id } => {
+                let mut all: Vec<SavedItem> = kv_json(&tx, "saved");
+                all.retain(|x| x.message_id != *message_id);
+                kv_put(&tx, "saved", &serde_json::to_string(&all)?)?;
+                out.org_changed = true;
+            }
+            EventData::LabelsUpdate { labels } => {
+                kv_put(&tx, "labels", &serde_json::to_string(labels)?)?;
+                out.org_changed = true;
+            }
+            EventData::ActivityRead { read_ms } => {
+                kv_put(&tx, "activity_read_ms", &read_ms.to_string())?;
+                out.org_changed = true;
+            }
             EventData::Resync {} => {
                 out.resync = true;
             }
@@ -466,6 +494,11 @@ impl Store {
                 out.me_changed = true;
                 out.users_changed = true;
             }
+        }
+        match &ev.event {
+            EventData::MessageNew { message } if message.sender_id != my_id && (message.mentions.iter().any(|m| m == my_id) || message.thread_root.is_some()) => out.activity_dirty = true,
+            EventData::ReactionUpdate { .. } | EventData::ThreadUpdate { .. } => out.activity_dirty = true,
+            _ => {}
         }
         tx.execute("INSERT INTO kv(k,v) VALUES('cursor',?1) ON CONFLICT(k) DO UPDATE SET v=excluded.v", [ev.cursor.to_string()])?;
         tx.commit()?;
@@ -652,6 +685,40 @@ impl Store {
         let mut v: Vec<Section> = kv_json(&self.c(), "sections");
         v.sort_by_key(|s| s.position);
         v
+    }
+
+    pub fn saved(&self) -> Vec<SavedItem> {
+        kv_json(&self.c(), "saved")
+    }
+
+    pub fn put_saved(&self, v: &[SavedItem]) -> Result<()> {
+        kv_put(&self.c(), "saved", &serde_json::to_string(v)?)
+    }
+
+    pub fn labels(&self) -> Vec<Label> {
+        let mut v: Vec<Label> = kv_json(&self.c(), "labels");
+        v.sort_by_key(|l| l.position);
+        v
+    }
+
+    pub fn put_labels(&self, v: &[Label]) -> Result<()> {
+        kv_put(&self.c(), "labels", &serde_json::to_string(v)?)
+    }
+
+    pub fn activity_read_ms(&self) -> i64 {
+        self.kv_get("activity_read_ms").ok().flatten().and_then(|v| v.parse().ok()).unwrap_or(0)
+    }
+
+    pub fn set_activity_read_ms(&self, ms: i64) -> Result<()> {
+        self.kv_set("activity_read_ms", &ms.to_string())
+    }
+
+    pub fn activity(&self) -> Vec<ActivityItem> {
+        kv_json(&self.c(), "activity")
+    }
+
+    pub fn put_activity(&self, v: &[ActivityItem]) -> Result<()> {
+        kv_put(&self.c(), "activity", &serde_json::to_string(v)?)
     }
 
     pub fn groups(&self) -> Vec<UserGroup> {

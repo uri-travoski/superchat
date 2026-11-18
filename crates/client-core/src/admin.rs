@@ -125,6 +125,10 @@ impl AdminClient {
         self.post("/conversations", &CreateConversation { kind: ConversationKind::GroupDm, name: name.into(), topic: None, members: members.to_vec() }).await
     }
 
+    pub async fn remove_member(&self, conv: &str, user: &str) -> Result<Conversation> {
+        self.call(Method::DELETE, &format!("/admin/conversations/{conv}/members/{user}"), None).await
+    }
+
     pub async fn add_members(&self, conv: &str, users: &[String]) -> Result<Conversation> {
         self.post(&format!("/admin/conversations/{conv}/members"), &MembersRequest { user_ids: users.to_vec() }).await
     }

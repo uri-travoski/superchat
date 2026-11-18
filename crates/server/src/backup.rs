@@ -24,6 +24,19 @@ fn backup_err(m: impl std::fmt::Display) -> AppError {
     AppError::new(ErrorCode::BackupFailed, format!("backup failed, nothing was changed: {m}"))
 }
 
+/// Every saved item of the user, including ones whose message is not visible right now (so a restore brings them back).
+fn saved_rows(conn: &Connection, user_id: &str) -> AppResult<Vec<Value>> {
+    let mut st = conn.prepare("SELECT message_id,conv_id,saved_ms FROM saved_items WHERE user_id=?1 ORDER BY saved_ms")?;
+    let rows = st.query_map([user_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?)))?.collect::<Result<Vec<_>, _>>()?;
+    let mut out = vec![];
+    for (mid, conv, ms) in rows {
+        let mut l = conn.prepare("SELECT label_id FROM saved_labels WHERE user_id=?1 AND message_id=?2")?;
+        let labels = l.query_map(params![user_id, mid], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
+        out.push(json!({"message_id": mid, "conv_id": conv, "saved_ms": ms, "label_ids": labels}));
+    }
+    Ok(out)
+}
+
 /// Builds the JSON document for one user: account, memberships, conversations, visible messages.
 pub fn build_user_doc(conn: &Connection, user_id: &str) -> AppResult<Value> {
     let u = get_user(conn, user_id)?;
@@ -79,6 +92,8 @@ pub fn build_user_doc(conn: &Connection, user_id: &str) -> AppResult<Value> {
             "created_ms": u.created_ms, "avatar": u.avatar
         },
         "conversations": convs,
+        "labels": crate::saved::load_labels(conn, user_id)?,
+        "saved": saved_rows(conn, user_id)?,
         "messages": messages,
         "attachments": atts,
     }))
@@ -330,6 +345,10 @@ pub async fn delete_user(st: &St, user_id: &str) -> AppResult<ClearHistoryRespon
                 "DELETE FROM conv_prefs WHERE user_id=?1",
                 "DELETE FROM sections WHERE user_id=?1",
                 "DELETE FROM thread_follows WHERE user_id=?1",
+                "DELETE FROM saved_items WHERE user_id=?1",
+                "DELETE FROM saved_labels WHERE user_id=?1",
+                "DELETE FROM labels WHERE user_id=?1",
+                "DELETE FROM activity_state WHERE user_id=?1",
                 "DELETE FROM user_group_members WHERE user_id=?1",
                 "DELETE FROM scheduled WHERE user_id=?1 AND state='pending'",
                 "DELETE FROM bots WHERE user_id=?1",

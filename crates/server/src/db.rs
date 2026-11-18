@@ -317,6 +317,31 @@ CREATE TABLE IF NOT EXISTS scheduled(
 );
 CREATE INDEX IF NOT EXISTS scheduled_due ON scheduled(state, due_ms);
 CREATE INDEX IF NOT EXISTS scheduled_user ON scheduled(user_id);
+CREATE TABLE IF NOT EXISTS labels(
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  color TEXT NOT NULL,
+  position INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS labels_user ON labels(user_id);
+CREATE TABLE IF NOT EXISTS saved_items(
+  user_id TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  conv_id TEXT NOT NULL,
+  saved_ms INTEGER NOT NULL,
+  PRIMARY KEY(user_id, message_id)
+);
+CREATE TABLE IF NOT EXISTS saved_labels(
+  user_id TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  label_id TEXT NOT NULL,
+  PRIMARY KEY(user_id, message_id, label_id)
+);
+CREATE TABLE IF NOT EXISTS activity_state(
+  user_id TEXT PRIMARY KEY,
+  read_ms INTEGER NOT NULL DEFAULT 0
+);
 CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(body, content='messages', content_rowid='rowid');
 CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
   INSERT INTO messages_fts(rowid, body) VALUES (new.rowid, new.body);

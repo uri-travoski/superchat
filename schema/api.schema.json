@@ -866,6 +866,12 @@
     },
     "Bootstrap": {
       "properties": {
+        "activity_read_ms": {
+          "default": 0,
+          "description": "Activity items at or before this time are read (1.2).",
+          "format": "int64",
+          "type": "integer"
+        },
         "bookmarks": {
           "additionalProperties": {
             "items": {
@@ -910,6 +916,13 @@
           "description": "Per conversation: true when older messages exist on the server.",
           "type": "object"
         },
+        "labels": {
+          "default": [],
+          "items": {
+            "$ref": "#/definitions/Label"
+          },
+          "type": "array"
+        },
         "me": {
           "$ref": "#/definitions/Me"
         },
@@ -939,6 +952,14 @@
           "description": "Per-conversation favourites, sections, mute and notification level (NV-01..NV-07, N-03).",
           "items": {
             "$ref": "#/definitions/ConvPref"
+          },
+          "type": "array"
+        },
+        "saved": {
+          "default": [],
+          "description": "Saved messages (\"Later\") and the user's labels (1.2).",
+          "items": {
+            "$ref": "#/definitions/SavedItem"
           },
           "type": "array"
         },
@@ -2241,6 +2262,84 @@
           "type": "object"
         },
         {
+          "description": "A message was saved for later or its labels changed (1.2).",
+          "properties": {
+            "item": {
+              "$ref": "#/definitions/SavedItem"
+            },
+            "type": {
+              "enum": [
+                "saved_update"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "item",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "message_id": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "saved_remove"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "message_id",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "labels": {
+              "items": {
+                "$ref": "#/definitions/Label"
+              },
+              "type": "array"
+            },
+            "type": {
+              "enum": [
+                "labels_update"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "labels",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Activity was marked read (on any device).",
+          "properties": {
+            "read_ms": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": {
+              "enum": [
+                "activity_read"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "read_ms",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
           "description": "The server restored data for this user; discard the cache and bootstrap again.",
           "properties": {
             "type": {
@@ -2809,6 +2908,32 @@
         "started_ms",
         "state",
         "total"
+      ],
+      "type": "object"
+    },
+    "Label": {
+      "description": "A label the user created for organising saved messages. Private to the user.",
+      "properties": {
+        "color": {
+          "description": "`#rrggbb`.",
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "position": {
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "color",
+        "id",
+        "name",
+        "position"
       ],
       "type": "object"
     },
@@ -3470,6 +3595,34 @@
         "other"
       ],
       "type": "string"
+    },
+    "SavedItem": {
+      "description": "A message the user saved for later. The message itself is read from the normal message cache.",
+      "properties": {
+        "conv_id": {
+          "type": "string"
+        },
+        "label_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "message_id": {
+          "type": "string"
+        },
+        "saved_ms": {
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "conv_id",
+        "message_id",
+        "saved_ms"
+      ],
+      "type": "object"
     },
     "ScheduleRequest": {
       "properties": {

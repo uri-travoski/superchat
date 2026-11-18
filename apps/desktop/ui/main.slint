@@ -232,6 +232,7 @@ export component AppWindow inherits Window {
     callback delete-msg(string);
     callback react(string, string);
     callback retry(string);
+    callback discard-send(string);
     callback search(string);
     callback open-search();
     callback open-threads();
@@ -608,7 +609,7 @@ export component AppWindow inherits Window {
                                         padding-right: 6px;
                                         spacing: 10px;
                                         if !root.wide: Rectangle {
-                                            width: min(34px * Theme.scale, 44px); height: self.width; y: (parent.height - self.height) / 2; border-radius: 7px; background: Theme.accent;
+                                            width: min(30px * Theme.scale, 40px); height: self.width; y: (parent.height - self.height) / 2; border-radius: 7px; background: Theme.accent;
                                             Text { text: root.server-initials; color: Theme.on-accent; font-weight: 700; font-size: Theme.fs * 0.9; horizontal-alignment: center; vertical-alignment: center; }
                                         }
                                         Rectangle {
@@ -945,6 +946,7 @@ export component AppWindow inherits Window {
                                         react(e) => { root.react(m.id, e); }
                                         more-reactions(x, y) => { root.menu-x = x; root.menu-y = y; root.picker-target = m.id; root.menu-kind = "emoji"; }
                                         retry => { root.retry(m.id); }
+                                        discard => { root.discard-send(m.id); }
                                         open-thread => { root.open-thread(m.id); }
                                         forward => { root.menu-msg = m.id; root.menu-kind = "forward"; }
                                         save => { root.save-msg(m.id); }
@@ -1104,6 +1106,7 @@ export component AppWindow inherits Window {
                                             react(e) => { root.react(m.id, e); }
                                             more-reactions(x, y) => { root.menu-x = x; root.menu-y = y; root.picker-target = m.id; root.menu-kind = "emoji"; }
                                             retry => { root.retry(m.id); }
+                                        discard => { root.discard-send(m.id); }
                                             save => { root.save-msg(m.id); }
                                             forward => { root.menu-msg = m.id; root.menu-kind = "forward"; }
                                             play-audio(f) => { root.play-audio(f); }

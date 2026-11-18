@@ -169,7 +169,9 @@ pub fn spawn_background(st: St) {
 
 /// Starts the server on an ephemeral port (used by tests). Returns the base URL.
 pub async fn serve_for_test(st: St) -> anyhow::Result<String> {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    // ATOMIC_TEST_BIND pins the address (screenshots and emulator runs need a known port).
+    let bind = std::env::var("ATOMIC_TEST_BIND").unwrap_or_else(|_| "127.0.0.1:0".into());
+    let listener = tokio::net::TcpListener::bind(bind).await?;
     let addr = listener.local_addr()?;
     spawn_workers(st.clone());
     let app = router(st);

@@ -252,6 +252,20 @@ pub fn msg_item(cx: &mut Ctx, t: &TimelineItem, day: String, divider: bool) -> M
     } else {
         (vec![], String::new())
     };
+    // F-01: a message with files that is still in the outbox shows its upload progress, or the error with Retry / Discard.
+    let upload: (i32, String, String) = match (t.local, m.client_id.as_deref()) {
+        (true, Some(cid)) if !m.attachments.is_empty() => match (t.state, cx.c.upload_progress(cid)) {
+            (SendState::Failed, _) => (-1, String::new(), t.error.clone().unwrap_or_else(|| "Could not upload".into())),
+            (_, Some(u)) => {
+                let pct = if u.total == 0 { 0 } else { (u.sent * 100 / u.total).min(100) as i32 };
+                let mb = |b: u64| format!("{:.1}", b as f64 / 1_048_576.0);
+                let which = if u.file_count > 1 { format!(" ({} of {})", u.file_index + 1, u.file_count) } else { String::new() };
+                (pct, format!("Uploading {}{} - {}% ({} of {} MB)", u.file_name, which, pct, mb(u.sent), mb(u.total)), String::new())
+            }
+            (_, None) => (0, "Waiting to upload...".into(), String::new()),
+        },
+        _ => (-1, String::new(), String::new()),
+    };
     let forwarded = m.forwarded.as_ref().map(|f| format!("Forwarded from {}", cx.c.display_name(&f.sender_id))).unwrap_or_default();
     MsgItem {
         id: m.id.clone().into(),
@@ -292,6 +306,9 @@ pub fn msg_item(cx: &mut Ctx, t: &TimelineItem, day: String, divider: bool) -> M
         reply_people: model(reply_people),
         reply_time: reply_time.into(),
         reply_unread: false,
+        upload_pct: upload.0,
+        upload_text: upload.1.into(),
+        upload_error: upload.2.into(),
     }
 }
 

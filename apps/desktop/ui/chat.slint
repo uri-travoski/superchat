@@ -120,6 +120,7 @@ export component MessageRow inherits Rectangle {
     callback react(string);
     callback more-reactions(length, length);
     callback retry;
+    callback discard;
     callback open-thread;
     callback forward;
     callback save;
@@ -204,12 +205,14 @@ export component MessageRow inherits Rectangle {
                         if m.saved: Icon { name: "bookmark"; size: 14px; filled: true; tint: Theme.accent-text; y: 3px; }
                         Rectangle { horizontal-stretch: 1; }
                         if m.state == 2: Link { text: "Retry"; clicked => { root.retry(); } }
+                        if m.state == 2: Link { text: "Discard"; clicked => { root.discard(); } }
                     }
                     if m.grouped && (m.state == 1 || m.state == 2 || m.pinned || m.saved): HorizontalLayout {
                         spacing: 6px;
                         if m.state == 1: Text { text: "sending..."; font-size: Theme.fs-small; color: Theme.muted; }
                         if m.state == 2: Text { text: "not sent"; font-size: Theme.fs-small; color: Theme.danger; }
                         if m.state == 2: Link { text: "Retry"; clicked => { root.retry(); } }
+                        if m.state == 2: Link { text: "Discard"; clicked => { root.discard(); } }
                         if m.pinned: Icon { name: "pin"; size: 14px; tint: Theme.icon-soft; }
                         if m.saved: Icon { name: "bookmark"; size: 14px; filled: true; tint: Theme.accent-text; }
                     }
@@ -307,6 +310,35 @@ export component MessageRow inherits Rectangle {
                                         if !f.removed: Text { text: f.kind == 3 ? (root.playing-id == f.id ? "Stop" : "Play") : (f.kind == 2 ? "Play" : "Open"); color: Theme.accent-text; font-size: Theme.fs-small; vertical-alignment: center; }
                                     }
                                     fta := TouchArea { enabled: !f.removed; clicked => { if f.kind == 3 { root.play-audio(f.id); } else { root.open-file(f.id); } } }
+                                }
+                            }
+                        }
+                        if m.upload-text != "" || m.upload-error != "": Rectangle {
+                            // F-01: progress bar with Cancel while uploading; the error with Retry / Discard when it failed.
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: m.upload-error != "" ? Theme.danger : Theme.line;
+                            background: Theme.surface;
+                            height: ub.preferred-height + 2px;
+                            accessible-role: progress-indicator;
+                            accessible-label: m.upload-error != "" ? m.upload-error : m.upload-text;
+                            accessible-value: "" + m.upload-pct;
+                            accessible-value-minimum: 0;
+                            accessible-value-maximum: 100;
+                            ub := VerticalLayout {
+                                padding: 10px;
+                                spacing: 6px;
+                                HorizontalLayout {
+                                    spacing: 10px;
+                                    Text { text: m.upload-error != "" ? m.upload-error : m.upload-text; font-size: Theme.fs-small; color: m.upload-error != "" ? Theme.danger : Theme.text; wrap: word-wrap; horizontal-stretch: 1; vertical-alignment: center; }
+                                    if m.upload-error != "": Link { text: "Retry"; clicked => { root.retry(); } }
+                                    Link { text: m.upload-error != "" ? "Discard" : "Cancel"; clicked => { root.discard(); } }
+                                }
+                                if m.upload-error == "": Rectangle {
+                                    height: 6px;
+                                    border-radius: 3px;
+                                    background: Theme.line;
+                                    Rectangle { x: 0; width: parent.width * max(0, m.upload-pct) / 100; height: parent.height; border-radius: 3px; background: Theme.accent; }
                                 }
                             }
                         }

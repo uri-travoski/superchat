@@ -1223,6 +1223,7 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
         let is_android = hooks.is_android;
         let mut rx = client.subscribe();
         client.handle().spawn(async move {
+            let mut last_progress = Instant::now() - Duration::from_secs(1);
             loop {
                 let ev = match rx.recv().await {
                     Ok(e) => e,
@@ -1268,7 +1269,9 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                             }
                         });
                     }
-                    ClientEvent::Changed { .. } | ClientEvent::SendFailed { .. } | ClientEvent::Connection(_) | ClientEvent::Presence { .. } => {
+                    ClientEvent::UploadProgress { .. } if last_progress.elapsed() < Duration::from_millis(150) => {}
+                    ClientEvent::Changed { .. } | ClientEvent::UploadProgress { .. } | ClientEvent::SendFailed { .. } | ClientEvent::Connection(_) | ClientEvent::Presence { .. } => {
+                        last_progress = Instant::now();
                         let (wk, c, sh) = (wk.clone(), c.clone(), sh.clone());
                         let _ = slint::invoke_from_event_loop(move || {
                             if let Some(ui) = wk.upgrade() {
@@ -1640,6 +1643,16 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
             c.clone().handle().spawn(async move {
                 let _ = c.react(&id, &emoji, !mine).await;
             });
+        });
+        let (c, sh) = (client.clone(), osh.clone());
+        ui.on_discard_send(move |id| {
+            if let Some(cid) = id.strip_prefix("local:") {
+                let _ = c.cancel_send(cid);
+            } else if let Some(cid) = c.store().message(&id).ok().flatten().and_then(|m| m.client_id) {
+                let _ = c.cancel_send(&cid);
+            } else {
+                let _ = sh;
+            }
         });
         let (c, sh) = (client.clone(), osh.clone());
         ui.on_retry(move |id| {

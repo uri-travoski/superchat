@@ -12,7 +12,7 @@ pub mod store;
 pub mod tls;
 
 pub use api::{normalize_server_url, Session};
-pub use client::{guess_content_type, Client, ClientConfig, ClientEvent, ConnState, SendOptions};
+pub use client::{guess_content_type, Client, ClientConfig, ClientEvent, ConnState, SendOptions, UploadState};
 pub use error::{ClientError, Result};
 pub use prefs::Prefs;
 pub use store::{SendState, TimelineItem};

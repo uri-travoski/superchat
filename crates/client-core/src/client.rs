@@ -81,7 +81,28 @@ pub struct Inner {
     state: Mutex<ConnState>,
     typing_sent: Mutex<HashMap<String, Instant>>,
     cancelled: Mutex<HashSet<String>>,
+    uploads: Mutex<HashMap<String, UploadState>>,
     server_meta: Mutex<Option<ServerMeta>>,
+}
+
+struct UploadCtx {
+    client_id: String,
+    inner: Arc<Inner>,
+    name: String,
+    index: usize,
+    count: usize,
+    base: u64,
+    total_all: u64,
+}
+
+/// F-01: where an outbox item's attachments are in their upload (all files of the message together).
+#[derive(Debug, Clone, PartialEq)]
+pub struct UploadState {
+    pub file_name: String,
+    pub file_index: usize,
+    pub file_count: usize,
+    pub sent: u64,
+    pub total: u64,
 }
 
 #[derive(Clone)]
@@ -120,6 +141,7 @@ impl Client {
             state: Mutex::new(ConnState::SignedOut),
             typing_sent: Mutex::new(HashMap::new()),
             cancelled: Mutex::new(HashSet::new()),
+            uploads: Mutex::new(HashMap::new()),
             server_meta: Mutex::new(None),
         });
         let client = Client { inner };
@@ -436,8 +458,14 @@ impl Client {
         Ok(())
     }
 
+    /// F-01: upload progress of a queued message with files, `None` when it is not uploading.
+    pub fn upload_progress(&self, client_id: &str) -> Option<UploadState> {
+        self.inner.uploads.lock().unwrap_or_else(|e| e.into_inner()).get(client_id).cloned()
+    }
+
     /// Cancels a queued or uploading message (F-01).
     pub fn cancel_send(&self, client_id: &str) -> Result<()> {
+        self.inner.uploads.lock().unwrap_or_else(|e| e.into_inner()).remove(client_id);
         self.inner.cancelled.lock().unwrap_or_else(|e| e.into_inner()).insert(client_id.to_string());
         self.inner.store.outbox_remove(client_id)?;
         self.inner.emit(ClientEvent::Changed { conv_ids: vec![], users: false, me: false });
@@ -639,14 +667,14 @@ impl Client {
 
     // ------------------------------------------------------------------ files
 
-    async fn upload_path(&self, path: &Path, name: &str, purpose: Option<&str>, progress: Option<(String, Arc<Inner>)>) -> Result<UploadResponse> {
+    async fn upload_path(&self, path: &Path, name: &str, purpose: Option<&str>, progress: Option<UploadCtx>) -> Result<UploadResponse> {
         let api = self.api()?;
         let file = tokio::fs::File::open(path).await?;
         let total = file.metadata().await?.len();
         let sent = Arc::new(std::sync::atomic::AtomicU64::new(0));
         let stream = tokio_util::io::ReaderStream::with_capacity(file, 64 * 1024);
-        let cid = progress.as_ref().map(|p| p.0.clone());
-        let inner = progress.map(|p| p.1);
+        let cid = progress.as_ref().map(|p| p.client_id.clone());
+        let ctx = progress;
         let cancelled = self.inner.clone();
         let sent2 = sent.clone();
         let mapped = stream.map(move |chunk| {
@@ -657,9 +685,16 @@ impl Client {
             }
             if let Ok(b) = &chunk {
                 let n = sent2.fetch_add(b.len() as u64, Ordering::Relaxed) + b.len() as u64;
-                if let (Some(c), Some(i)) = (&cid, &inner) {
-                    if n == total || n % (512 * 1024) < 64 * 1024 {
-                        i.emit(ClientEvent::UploadProgress { client_id: c.clone(), sent: n, total });
+                if let (Some(c), Some(x)) = (&cid, &ctx) {
+                    if n == total || n % (256 * 1024) < 64 * 1024 {
+                        let st = UploadState { file_name: x.name.clone(), file_index: x.index, file_count: x.count, sent: x.base + n, total: x.total_all };
+                        let mut map = x.inner.uploads.lock().unwrap_or_else(|e| e.into_inner());
+                        // A cancelled message must not reappear in the progress map.
+                        if !x.inner.cancelled.lock().unwrap_or_else(|e| e.into_inner()).contains(c) {
+                            map.insert(c.clone(), st.clone());
+                            drop(map);
+                            x.inner.emit(ClientEvent::UploadProgress { client_id: c.clone(), sent: st.sent, total: st.total });
+                        }
                     }
                 }
             }
@@ -1156,7 +1191,10 @@ impl Inner {
                     continue;
                 }
                 let f = item.files[i].clone();
-                let res = Client { inner: self.self_arc() }.upload_path(Path::new(&f.path), &f.name, None, Some((item.client_id.clone(), self.self_arc()))).await;
+                let base: u64 = item.files.iter().filter(|x| x.uploaded_id.is_some()).map(|x| x.size).sum();
+                let total_all: u64 = item.files.iter().map(|x| x.size).sum();
+                let ctx = UploadCtx { client_id: item.client_id.clone(), inner: self.self_arc(), name: f.name.clone(), index: i, count: item.files.len(), base, total_all };
+                let res = Client { inner: self.self_arc() }.upload_path(Path::new(&f.path), &f.name, None, Some(ctx)).await;
                 match res {
                     Ok(up) => {
                         item.files[i].uploaded_id = Some(up.attachment.id.clone());
@@ -1168,6 +1206,13 @@ impl Inner {
                         break;
                     }
                 }
+            }
+            self.uploads.lock().unwrap_or_else(|e| e.into_inner()).remove(&item.client_id);
+            if failed.is_some() && self.cancelled.lock().unwrap_or_else(|e| e.into_inner()).remove(&item.client_id) {
+                // Cancelled while uploading: the message is already gone from the outbox.
+                self.store.outbox_remove(&item.client_id)?;
+                self.emit(ClientEvent::Changed { conv_ids: vec![item.conv_id.clone()], users: false, me: false });
+                continue;
             }
             let result = match failed {
                 Some(e) => Err(e),

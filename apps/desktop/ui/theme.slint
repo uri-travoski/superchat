@@ -115,6 +115,10 @@ export struct MsgItem {
     reply-people: [PersonItem],
     reply-time: string,
     reply-unread: bool,
+    // F-01: upload progress of a message that is still being sent (-1 = not uploading, 0..100 = percent).
+    upload-pct: int,
+    upload-text: string,
+    upload-error: string,
 }
 
 // One row of a generic list: search results, threads, files, pins, sessions, quick switcher.

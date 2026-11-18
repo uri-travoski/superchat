@@ -105,10 +105,23 @@ pub fn router(st: St) -> Router {
         let serve = ServeDir::new(&admin_dir).fallback(ServeFile::new(admin_dir.join("index.html")));
         app = app.nest_service("/admin", serve);
     }
-    app.layer(SetResponseHeaderLayer::if_not_present(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff")))
+    app.layer(axum::middleware::from_fn(log_server_errors))
+        .layer(SetResponseHeaderLayer::if_not_present(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff")))
         .layer(SetResponseHeaderLayer::if_not_present(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY")))
         .layer(SetResponseHeaderLayer::if_not_present(header::REFERRER_POLICY, HeaderValue::from_static("no-referrer")))
         .with_state(st)
+}
+
+/// Logs every 5xx answer with the method and the route pattern (never the real path or query: bot tokens and
+/// webhook secrets travel there). The cause itself is logged where the error is created (`AppError::internal`).
+async fn log_server_errors(req: axum::extract::Request, next: axum::middleware::Next) -> axum::response::Response {
+    let method = req.method().clone();
+    let route = req.extensions().get::<axum::extract::MatchedPath>().map(|m| m.as_str().to_string()).unwrap_or_else(|| "(unmatched)".into());
+    let res = next.run(req).await;
+    if res.status().is_server_error() {
+        tracing::error!("{} {} -> {}", method, route, res.status().as_u16());
+    }
+    res
 }
 
 /// Prunes the per-user event log older than the retention period (clients behind it re-bootstrap).

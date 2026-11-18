@@ -318,8 +318,24 @@ pub async fn delete_user(st: &St, user_id: &str) -> AppResult<ClearHistoryRespon
             let hash = crate::auth::hash_password(&junk)?;
             tx.execute(
                 "UPDATE users SET deleted=1, disabled=1, username=?2, display_name='Deleted user', email=NULL, avatar_attachment=NULL, password_hash=?3 WHERE id=?1",
-                params![uid, format!("deleted-{}", &uid[..8.min(uid.len())]), hash],
+                params![uid, format!("deleted-{}", &uid[uid.len().saturating_sub(12)..]), hash],
             )?;
+            // Everything that belongs to the person alone goes; messages stay (the other side keeps its copy, the author
+            // shows as "Deleted user"). The unique placeholder name uses the random end of the id: the start of a v7 id
+            // is a timestamp, which made the second deletion collide and answer 500.
+            for sql in [
+                "DELETE FROM login_links WHERE user_id=?1",
+                "DELETE FROM push_registrations WHERE user_id=?1",
+                "DELETE FROM drafts WHERE user_id=?1",
+                "DELETE FROM conv_prefs WHERE user_id=?1",
+                "DELETE FROM sections WHERE user_id=?1",
+                "DELETE FROM thread_follows WHERE user_id=?1",
+                "DELETE FROM user_group_members WHERE user_id=?1",
+                "DELETE FROM scheduled WHERE user_id=?1 AND state='pending'",
+                "DELETE FROM bots WHERE user_id=?1",
+            ] {
+                tx.execute(sql, [&uid])?;
+            }
             let mut em = Emitter::new();
             // Leave channels and group DMs; DMs stay for the other person.
             let convs: Vec<String> = {

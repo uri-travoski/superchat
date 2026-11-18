@@ -146,6 +146,21 @@ fn file_kind(a: &Attachment) -> i32 {
     }
 }
 
+/// 83000 ms -> "1:23".
+pub fn clock_text(ms: u32) -> String {
+    let s = ms / 1000;
+    format!("{}:{:02}", s / 60, s % 60)
+}
+
+/// A video poster frame (small JPEG, base64) as a Slint image.
+fn poster_image(b64: &str) -> Option<slint::Image> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(b64).ok()?;
+    let img = image::load_from_memory(&bytes).ok()?.to_rgba8();
+    let buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(img.as_raw(), img.width(), img.height());
+    Some(slint::Image::from_rgba8(buf))
+}
+
 pub fn human_size(n: i64) -> String {
     let n = n.max(0) as f64;
     if n < 1024.0 {
@@ -209,7 +224,29 @@ pub fn msg_item(cx: &mut Ctx, t: &TimelineItem, day: String, divider: bool) -> M
                     None => {}
                 }
             }
-            FileItem { id: a.id.clone().into(), name: a.name.clone().into(), size: human_size(a.size).into(), kind, img, has_img: has, removed: a.removed }
+            let (mut poster, mut has_poster) = (slint::Image::default(), false);
+            if let Some(b64) = a.meta.as_ref().and_then(|m| m.poster_b64.as_deref()) {
+                if let Some(i) = poster_image(b64) {
+                    poster = i;
+                    has_poster = true;
+                }
+            }
+            let dur = a.meta.as_ref().and_then(|m| m.duration_ms).unwrap_or(0);
+            let ext = a.name.rsplit_once('.').map(|(_, e)| e.to_uppercase()).filter(|e| e.len() <= 4).unwrap_or_default();
+            FileItem {
+                id: a.id.clone().into(),
+                name: a.name.clone().into(),
+                size: human_size(a.size).into(),
+                kind,
+                img,
+                has_img: has,
+                removed: a.removed,
+                peaks: model(a.meta.as_ref().map(|m| m.peaks.iter().map(|p| *p as i32).collect::<Vec<_>>()).unwrap_or_default()),
+                dur_text: if dur > 0 { clock_text(dur).into() } else { SharedString::new() },
+                has_poster,
+                poster,
+                ext: ext.into(),
+            }
         })
         .collect();
     let mut by_emoji: Vec<ReactItem> = m

@@ -47,6 +47,7 @@ pub fn api_router() -> Router<St> {
         .route("/files", post(files::upload))
         .route("/files/{id}", get(files::download))
         .route("/files/{id}/url", get(files::signed_url))
+        .route("/files/{id}/meta", put(files::set_meta))
         .route("/search", get(search::search))
         .route("/ws", get(ws::ws_handler))
         .route("/me/push", get(crate::push::list).put(crate::push::register))

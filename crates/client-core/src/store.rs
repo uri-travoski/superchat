@@ -78,6 +78,9 @@ pub struct OutFile {
     pub size: u64,
     #[serde(default)]
     pub uploaded_id: Option<String>,
+    /// M-30/M-31: waveform / duration / poster computed before sending, attached to the file after it uploads.
+    #[serde(default)]
+    pub meta: Option<proto::AttachmentMeta>,
 }
 
 #[derive(Debug, Clone)]
@@ -968,7 +971,7 @@ fn outbox_message(o: &OutboxItem, my_id: &str, idx: i64) -> Message {
         attachments: o
             .files
             .iter()
-            .map(|f| Attachment { id: format!("local:{}", f.name), name: f.name.clone(), content_type: f.content_type.clone(), size: f.size as i64, removed: false })
+            .map(|f| Attachment { id: format!("local:{}", f.name), name: f.name.clone(), content_type: f.content_type.clone(), size: f.size as i64, removed: false, meta: f.meta.clone() })
             .collect(),
         reactions: vec![],
         delivered: false,

@@ -283,7 +283,7 @@ pub fn hydrate(conn: &Connection, mut msgs: Vec<Message>) -> AppResult<Vec<Messa
     let mut atts: HashMap<String, Vec<Attachment>> = HashMap::new();
     {
         let mut st = conn.prepare(
-            "SELECT ma.message_id, a.id, a.name, a.content_type, a.size, a.removed FROM message_attachments ma
+            "SELECT ma.message_id, a.id, a.name, a.content_type, a.size, a.removed, a.meta FROM message_attachments ma
              JOIN attachments a ON a.id=ma.attachment_id WHERE ma.message_id IN (SELECT value FROM json_each(?1))",
         )?;
         let rows = st.query_map([&ids], |r| {
@@ -295,6 +295,7 @@ pub fn hydrate(conn: &Connection, mut msgs: Vec<Message>) -> AppResult<Vec<Messa
                     content_type: r.get(3)?,
                     size: r.get(4)?,
                     removed: r.get::<_, i64>(5)? != 0,
+                    meta: r.get::<_, Option<String>>(6)?.and_then(|j| serde_json::from_str(&j).ok()),
                 },
             ))
         })?;

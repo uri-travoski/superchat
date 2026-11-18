@@ -389,8 +389,15 @@ impl Client {
 
     /// Queues a message with file attachments (F-01); files upload in the background.
     pub fn send_files(&self, conv_id: &str, body: &str, paths: &[PathBuf], opts: SendOptions) -> Result<String> {
+        let list: Vec<(PathBuf, Option<proto::AttachmentMeta>)> = paths.iter().map(|p| (p.clone(), None)).collect();
+        self.send_files_with(conv_id, body, &list, opts)
+    }
+
+    /// Like `send_files`, with media details the app already has (a video's poster frame and size). Audio files get
+    /// their duration and waveform computed here when no details are given (M-30).
+    pub fn send_files_with(&self, conv_id: &str, body: &str, paths: &[(PathBuf, Option<proto::AttachmentMeta>)], opts: SendOptions) -> Result<String> {
         let mut files = vec![];
-        for p in paths {
+        for (p, given) in paths {
             let meta = std::fs::metadata(p)?;
             let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "file".into());
             if let Some(m) = self.server_meta() {
@@ -401,7 +408,9 @@ impl Client {
                     });
                 }
             }
-            files.push(OutFile { path: p.to_string_lossy().to_string(), content_type: guess_content_type(&name), name, size: meta.len(), uploaded_id: None });
+            let ct = guess_content_type(&name);
+            let media_meta = given.clone().or_else(|| if ct.starts_with("audio/") { crate::media::analyze_audio(p) } else { None });
+            files.push(OutFile { path: p.to_string_lossy().to_string(), content_type: ct, name, size: meta.len(), uploaded_id: None, meta: media_meta });
         }
         self.send(conv_id, body, files, opts)
     }
@@ -1257,6 +1266,10 @@ impl Inner {
                 let res = Client { inner: self.self_arc() }.upload_path(Path::new(&f.path), &f.name, None, Some(ctx)).await;
                 match res {
                     Ok(up) => {
+                        if let Some(m) = &f.meta {
+                            // Waveform / poster are a bonus: a failure here never blocks the message.
+                            let _: Result<serde_json::Value> = api.put_json(&format!("/files/{}/meta", up.attachment.id), m).await;
+                        }
                         item.files[i].uploaded_id = Some(up.attachment.id.clone());
                         self.store.outbox_update_files(&item.client_id, &item.files)?;
                         attachment_ids.push(up.attachment.id);

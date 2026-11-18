@@ -122,7 +122,8 @@ CREATE TABLE IF NOT EXISTS attachments(
   purpose TEXT NOT NULL DEFAULT 'file',
   created_ms INTEGER NOT NULL,
   removed INTEGER NOT NULL DEFAULT 0,
-  backup_id TEXT
+  backup_id TEXT,
+  meta TEXT
 );
 CREATE TABLE IF NOT EXISTS message_attachments(
   message_id TEXT NOT NULL,
@@ -447,6 +448,9 @@ fn migrate(conn: &Connection) -> anyhow::Result<()> {
     }
     if !has_column(conn, "messages", "form")? {
         conn.execute("ALTER TABLE messages ADD COLUMN form TEXT", [])?;
+    }
+    if !has_column(conn, "attachments", "meta")? {
+        conn.execute("ALTER TABLE attachments ADD COLUMN meta TEXT", [])?;
     }
     Ok(())
 }

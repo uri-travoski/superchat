@@ -72,6 +72,41 @@ impl Media for AndroidMedia {
     fn play(&self, path: &Path) -> bool {
         call_string("play", &path.to_string_lossy()).map(|s| s == "ok").unwrap_or(false)
     }
+    fn play_from(&self, path: &Path, start_ms: u32, speed: f32) -> bool {
+        with_env(|env, c| {
+            let a = env.new_string(path.to_string_lossy().to_string()).ok()?;
+            let o = env
+                .call_static_method(c, "playFrom", "(Ljava/lang/String;IF)Ljava/lang/String;", &[JValue::Object(&a), JValue::Int(start_ms as i32), JValue::Float(speed)])
+                .ok()?
+                .l()
+                .ok()?;
+            if o.is_null() {
+                return Some(false);
+            }
+            let js: JString = o.into();
+            let s: String = env.get_string(&js).ok()?.into();
+            Some(s == "ok")
+        })
+        .unwrap_or(false)
+    }
+    fn seek(&self, ms: u32) -> bool {
+        with_env(|env, c| env.call_static_method(c, "seekTo", "(I)V", &[JValue::Int(ms as i32)]).ok().map(|_| ())).is_some()
+    }
+    fn set_speed(&self, speed: f32) {
+        with_env(|env, c| env.call_static_method(c, "setPlaybackSpeed", "(F)V", &[JValue::Float(speed)]).ok().map(|_| ()));
+    }
+    fn position_ms(&self) -> Option<u32> {
+        with_env(|env, c| env.call_static_method(c, "position", "()I", &[]).ok()?.i().ok()).filter(|p| *p >= 0).map(|p| p as u32)
+    }
+    fn pause(&self) {
+        with_env(|env, c| env.call_static_method(c, "pausePlayback", "()V", &[]).ok().map(|_| ()));
+    }
+    fn resume(&self) -> bool {
+        call_bool("resumePlayback")
+    }
+    fn active(&self) -> bool {
+        call_bool("isActive")
+    }
     fn stop(&self) {
         with_env(|env, c| env.call_static_method(c, "stop", "()V", &[]).ok().map(|_| ()));
     }

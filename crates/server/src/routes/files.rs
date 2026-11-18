@@ -131,7 +131,7 @@ pub async fn finalize_upload(
     let put = st.storage().put_file(&key, tmp, ct).await;
     let _ = tokio::fs::remove_file(tmp).await;
     put?;
-    let att = Attachment { id: id.to_string(), name: name.to_string(), content_type: ct.to_string(), size: size as i64, removed: false };
+    let att = Attachment { id: id.to_string(), name: name.to_string(), content_type: ct.to_string(), size: size as i64, removed: false, meta: None };
     let (a2, uid, sha, purpose) = (att.clone(), uploader.to_string(), sha.to_string(), purpose.to_string());
     st.db
         .call(move |c| {
@@ -143,6 +143,29 @@ pub async fn finalize_upload(
         })
         .await?;
     Ok(att)
+}
+
+/// M-30/M-31: the uploader attaches media details (duration, waveform peaks, poster frame) to a file of theirs.
+pub async fn set_meta(State(st): State<St>, auth: Auth, Path(id): Path<String>, body: axum::body::Bytes) -> AppResult<Json<serde_json::Value>> {
+    if body.len() > proto::AttachmentMeta::MAX_JSON_BYTES {
+        return Err(AppError::validation("attachment metadata is too large"));
+    }
+    let meta: proto::AttachmentMeta = serde_json::from_slice(&body).map_err(|e| AppError::validation(format!("bad metadata: {e}")))?;
+    if !meta.valid() {
+        return Err(AppError::validation("attachment metadata is out of range"));
+    }
+    let json = serde_json::to_string(&meta)?;
+    st.db
+        .call(move |c| {
+            let row = att_row(c, &id)?;
+            if row.uploader != auth.user_id {
+                return Err(AppError::forbidden("only the uploader can change a file's details"));
+            }
+            c.execute("UPDATE attachments SET meta=?2 WHERE id=?1", params![id, json])?;
+            Ok(())
+        })
+        .await?;
+    Ok(Json(serde_json::json!({"ok": true})))
 }
 
 pub struct AttRow {

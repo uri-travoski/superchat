@@ -161,6 +161,34 @@ pub struct Attachment {
     /// True when an admin removed the file; clients show "File removed".
     #[serde(default)]
     pub removed: bool,
+    /// M-30/M-31: duration, waveform peaks, size and poster frame of voice messages and videos (set by the uploader).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<AttachmentMeta>,
+}
+
+/// Media details the sender's app computes before sending: used to draw waveforms and video posters without
+/// downloading the file first. Everything is optional; the server only checks the size and field limits.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct AttachmentMeta {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u32>,
+    /// Loudness per slice of the recording, 0..=255, 64 values at most.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub peaks: Vec<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<u32>,
+    /// A small JPEG of the first video frame, base64 (at most about 40 KB).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub poster_b64: Option<String>,
+}
+
+impl AttachmentMeta {
+    pub const MAX_JSON_BYTES: usize = 64 * 1024;
+    pub fn valid(&self) -> bool {
+        self.peaks.len() <= 64 && self.poster_b64.as_ref().map(|p| p.len() <= 56 * 1024).unwrap_or(true) && self.duration_ms.map(|d| d <= 6 * 3_600_000).unwrap_or(true)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]

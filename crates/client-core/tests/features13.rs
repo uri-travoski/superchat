@@ -4,6 +4,16 @@ use client_core::{ClientEvent, SendOptions};
 use common::*;
 use std::time::Duration;
 
+async fn wait_until_msg(c: &client_core::Client, conv: &str, f: impl Fn(&proto::Message) -> bool) -> proto::Message {
+    for _ in 0..200 {
+        if let Some(t) = c.timeline(conv, 200, None).into_iter().find(|t| f(&t.message)) {
+            return t.message;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("message never arrived");
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn upload_reports_progress_and_can_be_cancelled_before_it_finishes() {
     let s = TestServer::start_with(|c| c.max_upload_bytes = 400 * 1024 * 1024).await;
@@ -136,4 +146,46 @@ async fn admin_deletes_a_channel_with_messages_files_and_saved_items() {
     assert_eq!(left.0, 0);
     assert_eq!(left.1, 0);
     assert_eq!(left.2, 0, "the uploaded file was released");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn voice_message_carries_duration_and_waveform_to_the_recipient() {
+    let s = TestServer::start().await;
+    let (alice_id, alice) = s.user("alice").await;
+    let (bob_id, bob) = s.user("bob").await;
+    let ch = make_channel(&s, "voice", &[&alice_id, &bob_id]).await;
+    wait_conv(&alice, &ch).await;
+    wait_conv(&bob, &ch).await;
+    // One second of a rising tone as a 16 kHz mono WAV.
+    let rate = 16_000u32;
+    let samples: Vec<i16> = (0..rate).map(|i| ((i as f32 / rate as f32) * 18000.0 * (i as f32 * 0.3).sin()) as i16).collect();
+    let mut w = vec![];
+    let dl = (samples.len() * 2) as u32;
+    w.extend_from_slice(b"RIFF");
+    w.extend_from_slice(&(36 + dl).to_le_bytes());
+    w.extend_from_slice(b"WAVEfmt ");
+    for v in [16u32.to_le_bytes().to_vec(), 1u16.to_le_bytes().to_vec(), 1u16.to_le_bytes().to_vec(), rate.to_le_bytes().to_vec(), (rate * 2).to_le_bytes().to_vec(), 2u16.to_le_bytes().to_vec(), 16u16.to_le_bytes().to_vec()] {
+        w.extend_from_slice(&v);
+    }
+    w.extend_from_slice(b"data");
+    w.extend_from_slice(&dl.to_le_bytes());
+    for x in samples {
+        w.extend_from_slice(&x.to_le_bytes());
+    }
+    let p = s.dir.path().join("voice-message-1.wav");
+    std::fs::write(&p, w).unwrap();
+    alice.send_files(&ch, "", &[p], SendOptions::default()).unwrap();
+    let m = wait_until_msg(&bob, &ch, |m| !m.attachments.is_empty()).await;
+    let meta = m.attachments[0].meta.clone().expect("metadata reached the recipient");
+    assert_eq!(meta.duration_ms, Some(1000));
+    assert_eq!(meta.peaks.len(), 64);
+    assert!(meta.peaks[60] > meta.peaks[4], "rising tone: {:?}", meta.peaks);
+    // Only the uploader may set details.
+    let att = m.attachments[0].id.clone();
+    let r: Result<serde_json::Value, _> = bob.api().unwrap().put_json(&format!("/files/{att}/meta"), &proto::AttachmentMeta { duration_ms: Some(5), ..Default::default() }).await;
+    assert!(r.is_err());
+    // Oversized details are refused.
+    let big = proto::AttachmentMeta { poster_b64: Some("x".repeat(60 * 1024)), ..Default::default() };
+    let r: Result<serde_json::Value, _> = alice.api().unwrap().put_json(&format!("/files/{att}/meta"), &big).await;
+    assert!(r.is_err());
 }

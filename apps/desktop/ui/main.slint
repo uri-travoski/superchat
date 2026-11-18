@@ -74,6 +74,12 @@ export component AppWindow inherits Window {
     in-out property <string> bm-url;
     in-out property <bool> is-bot-dm: false;
     in-out property <string> playing-id;
+    in-out property <string> audio-id;
+    in-out property <float> play-frac;
+    in-out property <string> play-time;
+    in-out property <string> play-speed: "1x";
+    callback seek-audio(string, float);
+    callback cycle-speed();
     in-out property <bool> recording: false;
     in-out property <bool> can-record: false;
     in-out property <bool> close-tray: true;
@@ -945,6 +951,9 @@ export component AppWindow inherits Window {
                                         wide: root.wide;
                                         quick: root.quick-emoji;
                                         playing-id: root.playing-id;
+                                        audio-id: root.audio-id; play-frac: root.play-frac; play-time: root.play-time; play-speed: root.play-speed;
+                                        seek-audio(f, x) => { root.seek-audio(f, x); }
+                                        cycle-speed => { root.cycle-speed(); }
                                         m: m;
                                         editing-id: root.editing-id;
                                         edit-text <=> root.edit-text;
@@ -1083,6 +1092,9 @@ export component AppWindow inherits Window {
                                             wide: root.wide;
                                             quick: root.quick-emoji;
                                             playing-id: root.playing-id;
+                                            audio-id: root.audio-id; play-frac: root.play-frac; play-time: root.play-time; play-speed: root.play-speed;
+                                            seek-audio(f, x) => { root.seek-audio(f, x); }
+                                            cycle-speed => { root.cycle-speed(); }
                                             m: root.thread-root;
                                             in-thread: true;
                                             play-audio(f) => { root.play-audio(f); }
@@ -1104,6 +1116,9 @@ export component AppWindow inherits Window {
                                             wide: root.wide;
                                             quick: root.quick-emoji;
                                             playing-id: root.playing-id;
+                                            audio-id: root.audio-id; play-frac: root.play-frac; play-time: root.play-time; play-speed: root.play-speed;
+                                            seek-audio(f, x) => { root.seek-audio(f, x); }
+                                            cycle-speed => { root.cycle-speed(); }
                                             m: m;
                                             in-thread: true;
                                             editing-id: root.editing-id;

@@ -11,6 +11,44 @@ use proto::*;
 use std::time::Duration;
 
 /// A small gradient PNG without extra crates (stored deflate blocks).
+/// A 3 second speech-like WAV (a tone whose loudness rises and falls in syllables).
+fn voice_wav() -> Vec<u8> {
+    let rate = 16_000u32;
+    let samples: Vec<i16> = (0..rate * 3)
+        .map(|i| {
+            let t = i as f32 / rate as f32;
+            let env = ((t * 9.0).sin().abs() * (1.0 - (t / 3.0 - 0.5).abs())).powf(1.2);
+            (env * 16000.0 * (t * 2.0 * std::f32::consts::PI * 180.0).sin()) as i16
+        })
+        .collect();
+    let dl = (samples.len() * 2) as u32;
+    let mut w = b"RIFF".to_vec();
+    w.extend((36 + dl).to_le_bytes());
+    w.extend(b"WAVEfmt ");
+    w.extend(16u32.to_le_bytes());
+    w.extend(1u16.to_le_bytes());
+    w.extend(1u16.to_le_bytes());
+    w.extend(rate.to_le_bytes());
+    w.extend((rate * 2).to_le_bytes());
+    w.extend(2u16.to_le_bytes());
+    w.extend(16u16.to_le_bytes());
+    w.extend(b"data");
+    w.extend(dl.to_le_bytes());
+    for x in samples {
+        w.extend(x.to_le_bytes());
+    }
+    w
+}
+
+/// A small JPEG gradient used as a video poster frame.
+fn poster_jpeg() -> String {
+    use base64::Engine as _;
+    let img = image::RgbImage::from_fn(320, 180, |x, y| image::Rgb([(40 + x / 3) as u8, (90 + y / 2) as u8, 160]));
+    let mut out = vec![];
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 70).encode_image(&img).unwrap();
+    base64::engine::general_purpose::STANDARD.encode(out)
+}
+
 fn png(w: u32, h: u32) -> Vec<u8> {
     fn crc(data: &[u8]) -> u32 {
         let mut c = 0xffff_ffffu32;
@@ -103,6 +141,13 @@ async fn seed_and_serve() {
     let pdf = s.dir.path().join("brief.pdf");
     std::fs::write(&pdf, b"%PDF-1.4 demo").unwrap();
     bob.send_files(&design, "Brief for review", &[pdf], SendOptions::default()).unwrap();
+    let wav = s.dir.path().join("voice-message-1.wav");
+    std::fs::write(&wav, voice_wav()).unwrap();
+    carol.send_files(&design, "", &[wav], SendOptions::default()).unwrap();
+    let mp4 = s.dir.path().join("walkthrough.mp4");
+    std::fs::write(&mp4, b"not a real video, only a demo").unwrap();
+    let vmeta = proto::AttachmentMeta { duration_ms: Some(48_000), width: Some(320), height: Some(180), poster_b64: Some(poster_jpeg()), ..Default::default() };
+    bob.send_files_with(&design, "Walkthrough of the new flow", &[(mp4, Some(vmeta))], SendOptions::default()).unwrap();
     wait_msg(&alice, &design, "Brief for review").await;
     // Unread in design for Alice, a DM and a group.
     say(&bob, &design, "Can you check the spacing on the *login screen*? @alice").await;

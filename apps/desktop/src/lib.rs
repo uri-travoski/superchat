@@ -26,53 +26,313 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-/// Audio playback and recording (M-30 voice messages). Desktop shells out to players/recorders; Android uses
-/// MediaPlayer and MediaRecorder through JNI.
+/// Audio playback and recording (M-30 voice messages). Desktop plays in-process with rodio (so it can seek and change
+/// the speed) and records with `arecord`; Android uses MediaPlayer and MediaRecorder through JNI.
 pub trait Media: Send + Sync {
     fn play(&self, path: &Path) -> bool;
+    /// Plays from `start_ms` at `speed` (1.0, 1.5, 2.0).
+    fn play_from(&self, path: &Path, start_ms: u32, speed: f32) -> bool {
+        let _ = (start_ms, speed);
+        self.play(path)
+    }
+    fn seek(&self, _ms: u32) -> bool {
+        false
+    }
+    fn set_speed(&self, _speed: f32) {}
+    /// Playback position of the current sound, None when nothing plays.
+    fn position_ms(&self) -> Option<u32> {
+        None
+    }
     fn stop(&self);
+    fn pause(&self) {
+        self.stop();
+    }
+    fn resume(&self) -> bool {
+        false
+    }
     fn playing(&self) -> bool;
+    /// Playing or paused (a sound is loaded and has not finished).
+    fn active(&self) -> bool {
+        self.playing()
+    }
     fn can_record(&self) -> bool;
     fn record_start(&self) -> bool;
     /// Stops recording and returns the finished file.
     fn record_stop(&self) -> Option<PathBuf>;
+    /// Plays a short notification sound file (N-04). The default reuses `play`.
+    fn play_sound(&self, path: &Path) -> bool {
+        self.play(path)
+    }
 }
 
-/// Desktop: ffplay/mpv/paplay for playback, `arecord` for recording when installed.
+/// Commands for the desktop audio thread (the audio output handle is not `Send`, so one thread owns it).
+enum AudioCmd {
+    Play { path: PathBuf, start_ms: u32, speed: f32, ui_sound: bool },
+    Seek(u32),
+    Speed(f32),
+    Pause,
+    Resume,
+    Stop,
+}
+
+#[derive(Default)]
+struct AudioState {
+    playing: bool,
+    paused: bool,
+    pos_ms: u32,
+    /// The last Play command found no output device and no fallback player.
+    failed: bool,
+}
+
+/// Desktop: rodio for playback (seek, speed), `arecord` for recording when installed. Set `ATOMIC_AUDIO_NULL=1` to run
+/// the player with a clock instead of a sound card (tests and screenshots on machines without audio).
 pub struct DesktopMedia {
-    player: Mutex<Option<std::process::Child>>,
+    tx: Mutex<std::sync::mpsc::Sender<AudioCmd>>,
+    state: Arc<Mutex<AudioState>>,
     recorder: Mutex<Option<(std::process::Child, PathBuf)>>,
     dir: PathBuf,
 }
 
+/// Playback without a sound card: a clock that behaves like a sink (tests, screenshots, machines without audio).
+struct SimPlayer {
+    started: Instant,
+    base_ms: u32,
+    speed: f32,
+    dur_ms: u32,
+    paused: bool,
+}
+
+impl SimPlayer {
+    fn pos(&self) -> u32 {
+        if self.paused {
+            self.base_ms
+        } else {
+            self.base_ms + (self.started.elapsed().as_millis() as f32 * self.speed) as u32
+        }
+    }
+    fn rebase(&mut self) {
+        self.base_ms = self.pos().min(self.dur_ms);
+        self.started = Instant::now();
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCmd>, state: Arc<Mutex<AudioState>>) {
+    use rodio::{Decoder, OutputStream, Sink};
+    let null = std::env::var("ATOMIC_AUDIO_NULL").is_ok();
+    let mut out: Option<(OutputStream, rodio::OutputStreamHandle)> = None;
+    let mut sink: Option<Sink> = None;
+    let mut sim: Option<SimPlayer> = None;
+    let mut ext: Option<std::process::Child> = None;
+    loop {
+        match rx.recv_timeout(Duration::from_millis(80)) {
+            Ok(AudioCmd::Play { path, start_ms, speed, ui_sound }) => {
+                if let Some(s) = sink.take() {
+                    s.stop();
+                }
+                sim = None;
+                if let Some(mut ch) = ext.take() {
+                    let _ = ch.kill();
+                }
+                let mut st = state.lock().unwrap();
+                st.failed = false;
+                st.playing = false;
+                st.paused = false;
+                if null {
+                    let dur = client_core::media::analyze_audio(&path).and_then(|m| m.duration_ms).unwrap_or(3000);
+                    sim = Some(SimPlayer { started: Instant::now(), base_ms: start_ms, speed, dur_ms: dur, paused: false });
+                    st.playing = true;
+                    st.pos_ms = start_ms;
+                    continue;
+                }
+                if out.is_none() {
+                    out = OutputStream::try_default().ok();
+                }
+                let started = out.as_ref().and_then(|(_, h)| {
+                    let file = std::fs::File::open(&path).ok()?;
+                    let src = Decoder::new(std::io::BufReader::new(file)).ok()?;
+                    let s = Sink::try_new(h).ok()?;
+                    s.set_speed(speed);
+                    s.append(src);
+                    if start_ms > 0 {
+                        let _ = s.try_seek(Duration::from_millis(start_ms as u64));
+                    }
+                    Some(s)
+                });
+                match started {
+                    Some(s) => {
+                        sink = Some(s);
+                        st.playing = true;
+                        st.pos_ms = start_ms;
+                    }
+                    None if !ui_sound => {
+                        // No sound card or an unsupported file: any installed command-line player (no seek or speed).
+                        ext = platform::play_audio(&path);
+                        st.playing = ext.is_some();
+                        st.failed = ext.is_none();
+                    }
+                    None => st.failed = true,
+                }
+            }
+            Ok(AudioCmd::Seek(ms)) => {
+                if let Some(s) = &sink {
+                    let _ = s.try_seek(Duration::from_millis(ms as u64));
+                } else if let Some(p) = sim.as_mut() {
+                    p.base_ms = ms.min(p.dur_ms);
+                    p.started = Instant::now();
+                }
+            }
+            Ok(AudioCmd::Speed(v)) => {
+                if let Some(s) = &sink {
+                    s.set_speed(v);
+                } else if let Some(p) = sim.as_mut() {
+                    p.rebase();
+                    p.speed = v;
+                }
+            }
+            Ok(AudioCmd::Pause) => {
+                if let Some(s) = &sink {
+                    s.pause();
+                } else if let Some(p) = sim.as_mut() {
+                    p.rebase();
+                    p.paused = true;
+                } else if let Some(mut ch) = ext.take() {
+                    // A command-line player cannot pause: stop it, the next press starts over.
+                    let _ = ch.kill();
+                    let mut st = state.lock().unwrap();
+                    st.playing = false;
+                    st.paused = false;
+                }
+            }
+            Ok(AudioCmd::Resume) => {
+                if let Some(s) = &sink {
+                    s.play();
+                } else if let Some(p) = sim.as_mut() {
+                    p.started = Instant::now();
+                    p.paused = false;
+                }
+            }
+            Ok(AudioCmd::Stop) => {
+                if let Some(s) = sink.take() {
+                    s.stop();
+                }
+                sim = None;
+                if let Some(mut ch) = ext.take() {
+                    let _ = ch.kill();
+                    let _ = ch.wait();
+                }
+                let mut st = state.lock().unwrap();
+                st.playing = false;
+                st.paused = false;
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            Err(_) => return,
+        }
+        let mut st = state.lock().unwrap();
+        if let Some(s) = &sink {
+            st.pos_ms = s.get_pos().as_millis() as u32;
+            if s.empty() {
+                st.playing = false;
+                st.paused = false;
+                sink = None;
+            }
+        } else if let Some(p) = &sim {
+            st.pos_ms = p.pos().min(p.dur_ms);
+            if p.pos() >= p.dur_ms {
+                st.playing = false;
+                st.paused = false;
+                sim = None;
+            }
+        } else if let Some(ch) = ext.as_mut() {
+            if !matches!(ch.try_wait(), Ok(None)) {
+                st.playing = false;
+                ext = None;
+            }
+        }
+    }
+}
+
 impl DesktopMedia {
     pub fn new(dir: PathBuf) -> DesktopMedia {
-        DesktopMedia { player: Mutex::new(None), recorder: Mutex::new(None), dir }
+        let (tx, rx) = std::sync::mpsc::channel();
+        let state = Arc::new(Mutex::new(AudioState::default()));
+        #[cfg(not(target_os = "android"))]
+        {
+            let st = state.clone();
+            std::thread::spawn(move || audio_thread(rx, st));
+        }
+        #[cfg(target_os = "android")]
+        drop(rx);
+        DesktopMedia { tx: Mutex::new(tx), state, recorder: Mutex::new(None), dir }
+    }
+    fn send(&self, c: AudioCmd) {
+        let _ = self.tx.lock().unwrap().send(c);
     }
 }
 
 impl Media for DesktopMedia {
     fn play(&self, path: &Path) -> bool {
-        self.stop();
-        match platform::play_audio(path) {
-            Some(ch) => {
-                *self.player.lock().unwrap() = Some(ch);
-                true
+        self.play_from(path, 0, 1.0)
+    }
+    fn play_from(&self, path: &Path, start_ms: u32, speed: f32) -> bool {
+        self.send(AudioCmd::Play { path: path.to_path_buf(), start_ms, speed, ui_sound: false });
+        // The audio thread answers within a few milliseconds; wait briefly so the caller can report a missing player.
+        for _ in 0..30 {
+            std::thread::sleep(Duration::from_millis(10));
+            let st = self.state.lock().unwrap();
+            if st.playing || st.failed {
+                return st.playing;
             }
-            None => false,
         }
+        true
+    }
+    fn play_sound(&self, path: &Path) -> bool {
+        self.send(AudioCmd::Play { path: path.to_path_buf(), start_ms: 0, speed: 1.0, ui_sound: true });
+        true
+    }
+    fn seek(&self, ms: u32) -> bool {
+        self.send(AudioCmd::Seek(ms));
+        true
+    }
+    fn set_speed(&self, speed: f32) {
+        self.send(AudioCmd::Speed(speed));
+    }
+    fn position_ms(&self) -> Option<u32> {
+        let st = self.state.lock().unwrap();
+        (st.playing || st.paused).then_some(st.pos_ms)
+    }
+    fn pause(&self) {
+        self.send(AudioCmd::Pause);
+        // Reflect the change at once so the button flips without waiting for the audio thread.
+        let mut st = self.state.lock().unwrap();
+        if st.playing {
+            st.playing = false;
+            st.paused = true;
+        }
+    }
+    fn resume(&self) -> bool {
+        let mut st = self.state.lock().unwrap();
+        if !st.paused {
+            return false;
+        }
+        st.paused = false;
+        st.playing = true;
+        drop(st);
+        self.send(AudioCmd::Resume);
+        true
+    }
+    fn active(&self) -> bool {
+        let st = self.state.lock().unwrap();
+        st.playing || st.paused
     }
     fn stop(&self) {
-        if let Some(mut ch) = self.player.lock().unwrap().take() {
-            let _ = ch.kill();
-            let _ = ch.wait();
-        }
+        self.send(AudioCmd::Stop);
+        let mut st = self.state.lock().unwrap();
+        st.playing = false;
+        st.paused = false;
     }
     fn playing(&self) -> bool {
-        match self.player.lock().unwrap().as_mut() {
-            Some(ch) => matches!(ch.try_wait(), Ok(None)),
-            None => false,
-        }
+        self.state.lock().unwrap().playing
     }
     fn can_record(&self) -> bool {
         cfg!(unix) && std::process::Command::new("arecord").arg("--version").stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().map(|s| s.success()).unwrap_or(false)
@@ -253,6 +513,9 @@ struct St {
     keep_scroll: Option<(f32, f32)>,
     form: Option<forms::FormState>,
     recording: bool,
+    /// M-30: playback speed chosen in the voice player (1.0, 1.5, 2.0), and the length of the sound being played.
+    play_speed: f32,
+    audio_dur_ms: u32,
     shared: Option<Shared>,
     home_bot: String,
     home_forms: Vec<proto::automation::Form>,
@@ -1349,8 +1612,24 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                     ui.global::<Theme>().set_scale(scale_of(&g));
                 }
             }
-            if !ui.get_playing_id().is_empty() && !h2.media.playing() {
-                ui.set_playing_id("".into());
+            if !ui.get_audio_id().is_empty() {
+                if !h2.media.active() {
+                    ui.set_playing_id("".into());
+                    ui.set_audio_id("".into());
+                    ui.set_play_frac(0.0);
+                } else {
+                    if ui.get_playing_id().is_empty() == h2.media.playing() {
+                        let id = ui.get_audio_id();
+                        ui.set_playing_id(if h2.media.playing() { id } else { "".into() });
+                    }
+                    if let Some(pos) = h2.media.position_ms() {
+                        let dur = sh.lock().unwrap().audio_dur_ms;
+                        if dur > 0 {
+                            ui.set_play_frac((pos as f32 / dur as f32).clamp(0.0, 1.0));
+                        }
+                        ui.set_play_time(model::clock_text(pos).into());
+                    }
+                }
             }
             if let Some(sharing) = (h2.take_shared)() {
                 if ui.get_signed_in() {
@@ -1937,29 +2216,78 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
         ui.on_play_audio(move |id| {
             let Some(ui) = wk.upgrade() else { return };
             let id = id.to_string();
-            if ui.get_playing_id().as_str() == id {
-                h2.media.stop();
-                ui.set_playing_id("".into());
+            let speed = {
+                let mut g = sh.lock().unwrap();
+                if g.play_speed <= 0.0 {
+                    g.play_speed = 1.0;
+                }
+                g.play_speed
+            };
+            if ui.get_audio_id().as_str() == id && h2.media.active() {
+                // Same message: the button toggles pause and resume.
+                if h2.media.playing() {
+                    h2.media.pause();
+                    ui.set_playing_id("".into());
+                } else if h2.media.resume() {
+                    ui.set_playing_id(id.into());
+                }
                 return;
             }
             let Some(a) = sh.lock().unwrap().atts.get(&id).cloned() else { return };
+            h2.media.stop();
+            sh.lock().unwrap().audio_dur_ms = a.meta.as_ref().and_then(|m| m.duration_ms).unwrap_or(0);
+            ui.set_audio_id(id.clone().into());
             ui.set_playing_id(id.clone().into());
+            ui.set_play_frac(0.0);
+            ui.set_play_time("0:00".into());
             let (wk, c2, media) = (ui.as_weak(), c.clone(), h2.media.clone());
             c.handle().spawn(async move {
                 let path = match c2.cached_attachment_path(&a) {
                     Some(p) => Some(p),
                     None => c2.download_attachment(&a).await.ok().and_then(|_| c2.cached_attachment_path(&a)),
                 };
-                let ok = path.map(|p| media.play(&p)).unwrap_or(false);
+                let ok = path.map(|p| media.play_from(&p, 0, speed)).unwrap_or(false);
                 let _ = slint::invoke_from_event_loop(move || {
                     if let Some(ui) = wk.upgrade() {
                         if !ok {
                             ui.set_playing_id("".into());
-                            toast(&ui, "No audio player was found. The file is saved in the downloads folder.");
+                            ui.set_audio_id("".into());
+                            toast(&ui, "This voice message could not be played (no audio output was found).");
                         }
                     }
                 });
             });
+        });
+        let (wk, sh, h2) = (ui.as_weak(), osh.clone(), hooks.clone());
+        ui.on_seek_audio(move |id, frac| {
+            let Some(ui) = wk.upgrade() else { return };
+            let dur = sh.lock().unwrap().audio_dur_ms;
+            if ui.get_audio_id().as_str() == id.as_str() && h2.media.active() && dur > 0 {
+                let ms = (frac.clamp(0.0, 1.0) * dur as f32) as u32;
+                h2.media.seek(ms);
+                ui.set_play_frac(frac.clamp(0.0, 1.0));
+                ui.set_play_time(model::clock_text(ms).into());
+            } else {
+                // A tap on the waveform of a message that is not playing starts it.
+                ui.invoke_play_audio(id);
+            }
+        });
+        let (wk, sh, h2) = (ui.as_weak(), osh.clone(), hooks.clone());
+        ui.on_cycle_speed(move || {
+            let Some(ui) = wk.upgrade() else { return };
+            let mut g = sh.lock().unwrap();
+            g.play_speed = match g.play_speed {
+                x if x >= 1.9 => 1.0,
+                x if x >= 1.4 => 2.0,
+                _ => 1.5,
+            };
+            ui.set_play_speed(match g.play_speed as i32 * 10 {
+                20 => "2x",
+                15 => "1.5x",
+                _ => "1x",
+            }
+            .into());
+            h2.media.set_speed(g.play_speed);
         });
         let (wk, c, sh, h2) = (ui.as_weak(), client.clone(), osh.clone(), hooks.clone());
         ui.on_record_toggle(move || {

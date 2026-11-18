@@ -6,6 +6,7 @@ pub mod applock;
 pub mod client;
 pub mod error;
 pub mod logic;
+pub mod media;
 pub mod prefs;
 pub mod secrets;
 pub mod store;

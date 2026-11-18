@@ -2,6 +2,7 @@
 import { TextEdit } from "std-widgets.slint";
 import { Theme, MsgItem, PersonItem, LabelItem, EmojiItem } from "theme.slint";
 import { Icon } from "icons.slint";
+import { AudioCard, VideoCard, FileCard } from "media.slint";
 import { Avatar, PressArea, Link, PrimaryButton, GhostButton, ToolButton, LabelChip, MenuRow, MenuDivider } from "components.slint";
 
 // One reaction under a message (emoji + count, highlighted when it is mine).
@@ -115,6 +116,10 @@ export component MessageRow inherits Rectangle {
     in property <bool> wide: false;
     in property <[EmojiItem]> quick;
     in property <string> playing-id;
+    in property <string> audio-id;
+    in property <float> play-frac;
+    in property <string> play-time;
+    in property <string> play-speed: "1x";
     in property <bool> highlight: false;
     callback actions(length, length);
     callback react(string);
@@ -128,6 +133,8 @@ export component MessageRow inherits Rectangle {
     callback open-link(string);
     callback form-action(string);
     callback play-audio(string);
+    callback seek-audio(string, float);
+    callback cycle-speed;
     callback edit-save(string);
     callback edit-cancel;
     in property <string> editing-id;
@@ -294,23 +301,19 @@ export component MessageRow inherits Rectangle {
                             }
                             HorizontalLayout {
                                 alignment: start;
-                                Rectangle {
-                                    height: max(40px, 34px * Theme.scale);
-                                    width: max(220px, fr.preferred-width + 24px);
-                                    border-radius: 8px;
-                                    border-width: 1px;
-                                    border-color: Theme.line;
-                                    background: fta.has-hover ? Theme.bubble-other : Theme.bg;
-                                    fr := HorizontalLayout {
-                                        padding-left: 10px;
-                                        padding-right: 10px;
-                                        spacing: 8px;
-                                        Icon { name: f.kind == 1 ? "image" : (f.kind == 3 ? "mic" : "file"); size: 20px; y: (parent.height - self.height) / 2; }
-                                        Text { text: f.removed ? "File removed" : f.name + "  (" + f.size + ")"; font-size: Theme.fs-small; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; color: Theme.text; }
-                                        if !f.removed: Text { text: f.kind == 3 ? (root.playing-id == f.id ? "Stop" : "Play") : (f.kind == 2 ? "Play" : "Open"); color: Theme.accent-text; font-size: Theme.fs-small; vertical-alignment: center; }
-                                    }
-                                    fta := TouchArea { enabled: !f.removed; clicked => { if f.kind == 3 { root.play-audio(f.id); } else { root.open-file(f.id); } } }
+                                if f.kind == 3 && !f.removed: AudioCard {
+                                    f: f;
+                                    active: root.audio-id == f.id;
+                                    playing: root.playing-id == f.id;
+                                    frac: root.audio-id == f.id ? root.play-frac : 0;
+                                    time-text: root.play-time;
+                                    speed-text: root.play-speed;
+                                    toggle => { root.play-audio(f.id); }
+                                    seek(x) => { root.seek-audio(f.id, x); }
+                                    speed => { root.cycle-speed(); }
                                 }
+                                if f.kind == 2 && !f.removed: VideoCard { f: f; open => { root.open-file(f.id); } }
+                                if !((f.kind == 3 || f.kind == 2) && !f.removed): FileCard { f: f; open => { root.open-file(f.id); } }
                             }
                         }
                         if m.upload-text != "" || m.upload-error != "": Rectangle {

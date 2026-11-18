@@ -34,7 +34,7 @@ DBUS_PID=$!
 for _ in $(seq 1 20); do [ -s "$WORK/dbus-addr" ] && break; sleep 0.2; done
 export DBUS_SESSION_BUS_ADDRESS="$(head -1 "$WORK/dbus-addr")"
 # Never touch the user's keyring or desktop session.
-export ATOMIC_NO_KEYRING=1 ATOMIC_ALLOW_HTTP=1 XDG_CONFIG_HOME="$WORK/config" HOME="$WORK/home"; mkdir -p "$HOME"
+export ATOMIC_AUDIO_NULL=1 ATOMIC_NO_KEYRING=1 ATOMIC_ALLOW_HTTP=1 XDG_CONFIG_HOME="$WORK/config" HOME="$WORK/home"; mkdir -p "$HOME"
 sleep 1
 
 SEED_URL_FILE="$WORK/url" SEED_STOP_FILE="$WORK/stop" "$SEED_BIN" --ignored --nocapture >"$WORK/seed.log" 2>&1 &
@@ -76,6 +76,8 @@ VARIANTS=(
   "desk-1280-light-regular-menu-more|1280x800|light|100|chat:general||mousemove 34 392 click 1"
   "desk-1280-light-regular-menu-avatar|1280x800|light|100|chat:general||mousemove 34 760 click 1"
   "desk-1280-light-regular-later-empty|1280x800|light|100|tab:later"
+  "desk-1280-light-regular-media-cards|1280x800|light|100|chat:design"
+  "desk-1280-dark-regular-media-cards|1280x800|dark|100|chat:design"
   # ---- desktop 1000x700 ----
   "desk-1000-light-regular-home|1000x700|light|100|chat:general"
   "desk-1000-dark-regular-home|1000x700|dark|100|chat:general"

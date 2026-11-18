@@ -69,6 +69,12 @@ export struct FileItem {
     img: image,
     has-img: bool,
     removed: bool,
+    // M-30 / M-31 / F-03: audio waveform and duration, video poster frame, file type label.
+    peaks: [int],
+    dur-text: string,
+    has-poster: bool,
+    poster: image,
+    ext: string,
 }
 
 export struct PersonItem {

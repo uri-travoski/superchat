@@ -173,9 +173,58 @@ object Native {
     @JvmStatic fun stop() {
         player?.let { try { it.stop() } catch (_: Exception) {}; it.release() }
         player = null
+        paused = false
     }
 
     @JvmStatic fun isPlaying(): Boolean = try { player?.isPlaying == true } catch (_: Exception) { false }
+
+    // Voice player: pause, seek and speed (1x, 1.5x, 2x). A paused player is still "active" so the UI keeps its place.
+    private var paused = false
+    private var speed = 1f
+
+    @JvmStatic fun playFrom(path: String, startMs: Int, spd: Float): String {
+        stop()
+        return try {
+            val p = MediaPlayer()
+            p.setDataSource(path)
+            p.setOnCompletionListener { stop() }
+            p.prepare()
+            if (startMs > 0) p.seekTo(startMs)
+            speed = spd
+            p.start()
+            if (spd != 1f) p.playbackParams = p.playbackParams.setSpeed(spd)
+            player = p
+            "ok"
+        } catch (e: Exception) { "" }
+    }
+
+    @JvmStatic fun pausePlayback() {
+        try { player?.let { if (it.isPlaying) { it.pause(); paused = true } } } catch (_: Exception) {}
+    }
+
+    @JvmStatic fun resumePlayback(): Boolean = try {
+        val p = player
+        if (p != null && paused) {
+            p.start()
+            if (speed != 1f) p.playbackParams = p.playbackParams.setSpeed(speed)
+            paused = false
+            true
+        } else false
+    } catch (e: Exception) { false }
+
+    @JvmStatic fun seekTo(ms: Int) {
+        try { player?.seekTo(ms) } catch (_: Exception) {}
+    }
+
+    @JvmStatic fun setPlaybackSpeed(spd: Float) {
+        speed = spd
+        // Changing the speed of a paused player would start it; the speed is applied on resume instead.
+        try { player?.let { if (it.isPlaying) it.playbackParams = it.playbackParams.setSpeed(spd) } } catch (_: Exception) {}
+    }
+
+    @JvmStatic fun position(): Int = try { player?.currentPosition ?: -1 } catch (e: Exception) { -1 }
+
+    @JvmStatic fun isActive(): Boolean = player != null
 
     @JvmStatic fun recordStart(): Boolean {
         if (app.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {

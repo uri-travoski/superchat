@@ -737,7 +737,7 @@ pub fn search_files(c: &rusqlite::Connection, user_id: &str, conv: Option<&str>,
     let rows = st
         .query_map(refs.as_slice(), |r| {
             Ok(FileHit {
-                attachment: Attachment { id: r.get(0)?, name: r.get(1)?, content_type: r.get(2)?, size: r.get(3)?, removed: r.get::<_, i64>(4)? != 0 },
+                attachment: Attachment { id: r.get(0)?, name: r.get(1)?, content_type: r.get(2)?, size: r.get(3)?, removed: r.get::<_, i64>(4)? != 0, meta: None },
                 message_id: r.get(5)?,
                 conv_id: r.get(6)?,
                 sender_id: r.get(7)?,

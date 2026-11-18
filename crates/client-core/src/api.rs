@@ -351,7 +351,7 @@ mod lan_http_tests {
 
     #[test]
     fn http_only_on_private_networks() {
-        for ok in ["http://192.168.8.101:8080", "http://10.0.0.5", "http://172.20.1.1:80", "http://localhost:8080", "http://chat.local"] {
+        for ok in ["http://192.168.1.10:8080", "http://10.0.0.5", "http://172.20.1.1:80", "http://localhost:8080", "http://chat.local"] {
             assert!(normalize_server_url(ok, false).is_ok(), "{ok}");
         }
         for bad in ["http://example.com", "http://8.8.8.8", "http://172.32.0.1", "http://chat.example.org:8080"] {

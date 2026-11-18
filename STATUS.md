@@ -1,4 +1,16 @@
-# Status: v1.1.3 (v1.0 plus the 1.1 changes below; calls are Phase 4, not built)
+# Status: v1.2.0 (Slack-style UI rebuild on 1.1.3; calls are Phase 4, not built)
+
+## v1.2.0 summary
+
+Done: Slack-style desktop shell and phone shell (one Slint UI), membership management in the apps, Save for later and labels, server-backed Activity feed, App Lock discoverability, one Back stack with a visible way back everywhere (`docs/UX-NAVIGATION.md`), rename/topic/archive in Details, quote reply, `@channel`/group mentions, search tabs and highlighting, global Files view, auto-away. Spec: `docs/UI-SPEC-1.2.md`. Feature audit: `docs/FEATURE-AUDIT.md`.
+
+Feature audit counts (130 rows): 101 works, 12 fixed now, 15 partial, 2 deferred.
+Partial: X-02 (no Windows credential manager), X-04 (no SQLCipher), M-30 (no waveform or speed), M-31 (no in-app video recording), C-06 (delete channel in the admin panel), NV-04 (no drag reorder), F-01 (no progress or cancel), F-02 (Wayland drop untested), F-03 (no PDF preview), N-01 (push only against fakes), N-04 (no per-channel sound), P-03 (other people's photos), E-05 (spell check is a switch), E-08 (no tray icon), SV-13 (push on device).
+Deferred: CL-01 and SV-18 (calls).
+
+Tests (final run for 1.2.0): `cargo test --workspace` 182 passed, 0 failed (1 ignored); `tests/e2e/run.sh` SV-24 passes (2 tests: full scenario including the new membership add/remove and saved-items/labels isolation block, and bots/webhooks/forms/schedule/AI); Playwright admin-roles, admin-viewer, admin-dialogs, admin-automation, admin-mobile all OK (run with a symlink from `~/.cache/ms-playwright/chromium-1/chrome-linux64/chrome` to the installed Chrome); `cargo clippy --workspace --all-targets`: 0 errors (style warnings only).
+Emulator (emulator-5556, debug APK x86_64, Regular and font scale 1.3 for Home): Home with sections, channel, long-press message sheet, Add label then Later with label filter, channel details > Files > back > details > back > chat, thread open, reply with "Also send to #channel", Back, Threads list, Activity tab, You tab (Saved items, Files, Preferences, App Lock), Settings > Privacy > App Lock set PIN, lock "random" (disappears), padlock > PIN (reappears), admin Add people to a channel, global Files from You > Files and Back to You. Screenshots: `docs/screenshots/android-1.2-*.png`.
+Not run on the emulator: Back-key run Activity tab > Home > leave app was covered by the nav unit tests only; the 1.3 font scale was exercised on Home only; layout polish items are listed in `docs/RELEASE-NOTES-v1.2.0.md`.
 
 ## v1.1.3 summary
 

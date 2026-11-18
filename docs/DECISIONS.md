@@ -202,3 +202,22 @@ Not verified: real-device performance, IME composition for CJK, accessibility (T
 * **QR root cause**: the Slint `scan-qr` callback had no handler. Scanner failures are reported through a `take_login_error` hook so they are text on the login screen, not toasts that can be missed.
 * **Admin dialogs**: one `dialog()` helper changed, so every dialog (including the login link) gets the X, Esc, backdrop and sticky footer.
 * **Left out on purpose**: bottom navigation (not wanted), reply swipe and pull to refresh (optional), group creation in the app, bubbles.
+
+## 1.2.0 decisions: Slack-style UI
+
+* **One UI, two layouts.** Width >= 720 px is "wide" (rail, sidebar, thread panel), narrower is "phone" (bottom tabs). Everything is Slint; no second UI was written for Android.
+* **"Also send to #channel" is client-side**: the client posts the thread reply and a channel message with `reply_to` set to the thread root. No new server endpoint.
+* **Group creation stays admin-only** (SV-03), so New message is a single pick that opens or creates a DM.
+* **No conversation-level permalink**; permalinks are per message (M-19).
+* **Search highlighting** is done by splitting the snippet into `pre`, `hit`, `post` in the row item; result tabs filter the same result list by kind.
+* **Sections**: custom sections use the server `collapsed` flag, built-in sections use `Prefs.collapsed_sections`. Archived is collapsed by default (a key in the list means expanded). A collapsed section still shows conversations with unread.
+* **Main-tab ids** are `home`, `dms`, `activity`, `later`, `you`. The phone Later page is reached from You > Saved items and Home > Later; its Back goes to where it came from.
+* **Quote reply** sends `reply_to` with the quoted message id; the UI shows a quote bar above the composer.
+* **Mention autocomplete** offers members, `@channel`, `@here`, `@everyone` and user groups.
+* **Saved items and labels are per user**, stored on the server, never visible to others, hidden for locked conversations while App Lock is engaged.
+* **App Lock**: the unlock screen stays generic on purpose; discoverability lives in Settings and in the row menus.
+* **Back stack**: every new overlay (people picker, label picker, details page, conversation tab, phone tab) is a layer in `nav.rs`; a unit test fails if a screen name has no layer.
+* **Auto-away (P-02)**: the 500 ms lock tick also reports idle when there was no input for 10 minutes (desktop) or the app is in the background (Android). It sends the existing `Idle` WebSocket message.
+* **Delete channel** stays in the admin panel (typed-name confirmation); the app links to it from Details > Settings > Admin tools.
+* **Left out on purpose**: calls, drag reorder of sections, SQLCipher, per-channel sounds, screen-reader work.
+

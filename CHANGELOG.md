@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.2.0
+
+A Slack-style rebuild of the desktop and phone UI (SuperChat's own theme, name, icon and icon set) plus the functions owners asked for. Additive server API; 1.0 to 1.1.x apps keep working with a 1.2 server (`min_client_version` is still 1.0.0).
+
+* **Desktop shell**: left rail (Home, DMs, Activity, Later, More, avatar and presence menu), top bar with back/forward, a centred "Search <server>" field and help; sidebar with server menu, Threads, Drafts & sent, Later, collapsible Channels, Direct messages and custom sections (bold unread, mention badges, dimmed muted, Archived), right-click row menu; flat message rows with a hover toolbar; resizable thread panel with "Also send to #channel"; composer with a formatting toolbar and `@` and `:emoji` autocomplete; channel details modal (About, Members with Add people and remove, Settings, Files, Pins) and conversation tabs Messages, Files, Pins, Bookmarks.
+* **Phone shell**: bottom navigation Home, DMs, Activity, You, each with its own Back stack; Home with search pill, sections and a New message button; conversation top bar; long-press sheet; Details screen (About, Members, Add people, Files, Pins, Bookmarks, Notifications, Mute, Lock) where every page has a back arrow to Details and then the chat; full-screen threads; You tab (status, Pause notifications, Saved items, Files, Preferences, App Lock, Devices, Sign out only when allowed, Admin panel for admins).
+* **Membership management**: owners and admins add and remove people in channels and groups from the app (`POST/DELETE /conversations/{id}/members` surfaced in client-core and both UIs).
+* **Save for later and labels**: per-user, private, synced saved messages with coloured labels; Later view with label filter; message sheet and hover toolbar actions.
+* **Activity**: server-backed feed (All, Mentions, Threads, Reactions) with unread state and Mark all read.
+* **App Lock discoverability**: Settings > Privacy & Security > App Lock explains that locked conversations are hidden until you unlock with your PIN, lists them with add and remove; row menus and Details offer Lock conversation or "Set up App Lock". The unlock screen stays generic.
+* **Way back everywhere**: one Back stack with 20 layers (people picker, label picker, details sub-pages, conversation tabs, phone tabs); audit in `docs/UX-NAVIGATION.md`, tests in `apps/desktop/src/nav.rs`.
+* **Admin tools in the app**: rename, topic, archive and unarchive channels (Details > Settings), Create channel, quote reply, `@channel` `@here` `@everyone` and group mentions, search highlighting and result tabs, global Files view, auto-away (P-02).
+* **Feature audit** against every original requirement: `docs/FEATURE-AUDIT.md`.
+* Version 1.2.0 everywhere (workspace, admin panel, Android versionName 1.2.0 / versionCode 6, installer, release workflow).
+
 ## 1.1.3
 
 A mobile-native UX pass (owner feedback). Server API is unchanged; 1.0 to 1.1.2 apps and servers stay compatible.

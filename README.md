@@ -11,7 +11,8 @@ Android (one Slint UI shared by all three), plus a command-line client. Your dat
 * No end-to-end encryption: TLS in transit, and admins can read messages (needed for the admin chat viewer and search). Backups are
   encrypted with a passphrase.
 * Bots and automation: Telegram-style bot API, webhooks, interactive forms, scheduled messages, optional AI search and recaps.
-* New in 1.1.3: a mobile-native UX pass (one Back stack, bottom sheets, decluttered list and chat, redesigned Settings, working Android QR scan, closable admin dialogs); see [docs/RELEASE-NOTES-v1.1.3.md](docs/RELEASE-NOTES-v1.1.3.md).
+* New in 1.2.0: a Slack-style rebuild of the desktop and phone UI (rail or bottom tabs, sidebar sections, thread panel, Activity, Later with labels), add people to channels from the app, Save for later, a discoverable App Lock and a way back from every screen; see [docs/RELEASE-NOTES-v1.2.0.md](docs/RELEASE-NOTES-v1.2.0.md) and [docs/FEATURE-AUDIT.md](docs/FEATURE-AUDIT.md).
+* In 1.1.3: a mobile-native UX pass (one Back stack, bottom sheets, decluttered list and chat, redesigned Settings, working Android QR scan, closable admin dialogs); see [docs/RELEASE-NOTES-v1.1.3.md](docs/RELEASE-NOTES-v1.1.3.md).
 * New in 1.1.2: self-service Sign out / Sign out of all devices exist only for users whose admin set Privacy options to Allow (see [docs/RELEASE-NOTES-v1.1.2.md](docs/RELEASE-NOTES-v1.1.2.md)).
 * New in 1.1: tap-to-sign-in links with a QR code, several AI providers, App Lock (PIN-hidden conversations), a phone-friendly admin panel. See [docs/RELEASE-NOTES-v1.1.md](docs/RELEASE-NOTES-v1.1.md). Calls (voice/video) are still planned.
 

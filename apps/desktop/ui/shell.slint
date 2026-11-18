@@ -134,7 +134,7 @@ export component SideItem {
     callback plus;
     callback menu(length, length);
     property <length> row-h: root.wide ? max(30px, 26px * Theme.scale) : max(52px, 46px * Theme.scale);
-    height: r.kind == 0 ? (root.wide ? max(32px, 28px * Theme.scale) : max(48px, 40px * Theme.scale)) : (r.kind == 3 ? 56px * Theme.scale : root.row-h);
+    height: r.kind == 0 ? (root.wide ? max(32px, 28px * Theme.scale) : max(48px, 40px * Theme.scale)) : (r.kind == 3 ? 56px * Theme.scale : (r.kind == 4 ? (root.wide ? 0px : 88px) : root.row-h));
     if r.kind == 0: Rectangle {
         accessible-role: button;
         accessible-label: r.title + (r.collapsed ? ", collapsed" : ", expanded");

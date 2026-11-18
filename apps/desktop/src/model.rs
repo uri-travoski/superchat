@@ -516,6 +516,8 @@ pub fn side_rows(c: &Client, o: &SideOpts, v: &View) -> Vec<SideRow> {
         // Archived conversations are read-only; the section starts collapsed (its key in the list means "expanded").
         push_section(&mut out, "sec:archived".into(), "Archived", "", !is("sec:archived"), &archived, "");
     }
+    // Phone: room under the last row so the New message button never covers a badge.
+    out.push(blank_row(4, "spacer", ""));
     out
 }
 

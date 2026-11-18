@@ -1,4 +1,4 @@
-# What SuperChat does today (version 1.1.3, Phases 1 and 2)
+# What SuperChat does today (version 1.2.0)
 
 * Self-hosted team chat. One small server (Docker), apps for Linux and Android (Windows later), an admin web panel, and a command-line client.
 * **Accounts are created by admins only.** There is no sign-up. New people get a one-time login link (works once, expires in 7 days): a web address that opens the app and signs them in, also as a QR code.
@@ -35,3 +35,11 @@ See `STATUS.md` for what is partly built.
 * **App Lock**: a 6-digit PIN kept on the device only; chosen conversations are hidden from the list, search, switcher, threads, counts, drafts and notifications until you unlock. Padlock at the top of the list; locks again after 5 idle minutes, 5 minutes in the background, or on tap.
 * **Phone-friendly admin panel** (cards, menu button, single-pane chat viewer).
 * **Friendlier login screen**: Username & password or Login link buttons, Paste button, a link pasted into the server field is recognised, exact error messages.
+
+## 1.2 additions
+
+* **Slack-style desktop and phone UI** (rail or bottom tabs, sidebar sections, hover toolbar, thread panel, details with tabs, Activity, Later, search tabs). SuperChat's own theme and icons.
+* **Add people to channels and groups** (owners and admins), remove people, rename, topic, archive from the app.
+* **Save for later with labels**, a Later view, and a server-backed Activity feed.
+* **App Lock** is discoverable: Settings explains it and lists locked conversations; row menus offer Lock conversation.
+* **A way back from every screen**; see `docs/UX-NAVIGATION.md`. The full feature-by-feature check is `docs/FEATURE-AUDIT.md`.

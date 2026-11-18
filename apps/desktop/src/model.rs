@@ -466,7 +466,12 @@ pub fn side_rows(c: &Client, o: &SideOpts, v: &View) -> Vec<SideRow> {
     // bucket index: 0 favourites, 1..=n custom, n+1 channels, n+2 direct messages
     let n = sections.len();
     let mut buckets: Vec<Vec<ConversationSummary>> = vec![vec![]; n + 3];
+    let mut archived: Vec<ConversationSummary> = vec![];
     for cs in list {
+        if cs.conversation.archived {
+            archived.push(cs);
+            continue;
+        }
         let p = c.pref(&cs.conversation.id);
         let idx = if p.favourite {
             0
@@ -507,6 +512,10 @@ pub fn side_rows(c: &Client, o: &SideOpts, v: &View) -> Vec<SideRow> {
     }
     push_section(&mut out, "sec:channels".into(), "Channels", "channel", is("sec:channels"), &buckets[n + 1], "No channels yet. An admin can add you to channels.");
     push_section(&mut out, "sec:dms".into(), "Direct messages", "dm", is("sec:dms"), &buckets[n + 2], "Start a conversation with the + button.");
+    if !archived.is_empty() {
+        // Archived conversations are read-only; the section starts collapsed (its key in the list means "expanded").
+        push_section(&mut out, "sec:archived".into(), "Archived", "", !is("sec:archived"), &archived, "");
+    }
     out
 }
 

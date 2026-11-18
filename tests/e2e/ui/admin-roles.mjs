@@ -147,7 +147,7 @@ try {
   assert.equal(await page.locator("select.role-select").count(), 0, "admins get no role menus");
   assert.ok((await page.locator("tbody").innerText()).match(/Owner/), "roles are shown as text");
   // Even a hand-made request is refused, with the server's message.
-  const alice = (await api("POST", "/login", { username: "alice", password: "password-123", device_name: "t", client_version: "1.1.3" })).access_token;
+  const alice = (await api("POST", "/login", { username: "alice", password: "password-123", device_name: "t", client_version: "1.2.0" })).access_token;
   await assert.rejects(api("PUT", `/admin/users/${ids.bob}/role`, { role: "admin" }, alice), /forbidden/);
   await browser.close();
   console.log("admin-roles UI test: OK");

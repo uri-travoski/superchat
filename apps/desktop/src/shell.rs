@@ -94,8 +94,9 @@ pub fn refresh_details(ui: &AppWindow, c: &Client, cs: &proto::types::Conversati
             })
             .collect(),
     ));
-    if ui.get_topic_edit().is_empty() || !ui.get_info_open() {
+    if !ui.get_info_open() {
         ui.set_topic_edit(conv.topic.clone().unwrap_or_default().into());
+        ui.set_name_edit(c.conversation_title(cs).into());
     }
 }
 
@@ -471,6 +472,43 @@ pub fn install(ui: &AppWindow, client: &Client, sh: &Sh) {
                 });
             });
         });
+        let (wk, c, sh2) = (ui.as_weak(), client.clone(), sh.clone());
+        ui.on_rename_conv(move |n| {
+            let cur = sh2.lock().unwrap().current.clone();
+            let (wk2, c2, n) = (wk.clone(), c.clone(), n.trim().to_string());
+            if n.is_empty() {
+                return;
+            }
+            c.handle().spawn(async move {
+                let r = c2.rename_conversation(&cur, &n).await;
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(ui) = wk2.upgrade() {
+                        toast(&ui, &match r {
+                            Ok(()) => "Renamed".to_string(),
+                            Err(e) => format!("Could not rename: {e}"),
+                        });
+                    }
+                });
+            });
+        });
+        let (wk, c, sh2) = (ui.as_weak(), client.clone(), sh.clone());
+        ui.on_archive_toggle(move || {
+            let cur = sh2.lock().unwrap().current.clone();
+            let archived = c.conversations().iter().any(|x| x.conversation.id == cur && x.conversation.archived);
+            let (wk2, c2) = (wk.clone(), c.clone());
+            c.handle().spawn(async move {
+                let r = c2.set_archived(&cur, !archived).await;
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(ui) = wk2.upgrade() {
+                        toast(&ui, &match r {
+                            Ok(()) if archived => "Unarchived".to_string(),
+                            Ok(()) => "Archived. It moved to the Archived section.".to_string(),
+                            Err(e) => format!("Could not change it: {e}"),
+                        });
+                    }
+                });
+            });
+        });
         let (wk, c) = (ui.as_weak(), client.clone());
         ui.on_open_details_data(move || {
             let _ = (&wk, &c);
@@ -493,6 +531,15 @@ pub fn install(ui: &AppWindow, client: &Client, sh: &Sh) {
             let Some(ui) = wk.upgrade() else { return };
             ui.set_composer(shortcodes::complete(ui.get_composer().as_str(), e.as_str()).into());
             ui.set_emoji_sugg(model(vec![]));
+        });
+        let (wk, c) = (ui.as_weak(), client.clone());
+        ui.on_quote_reply(move |id| {
+            let Some(ui) = wk.upgrade() else { return };
+            if let Some(m) = c.store().message(&id).ok().flatten() {
+                let t: String = model::plain(&m.body).split_whitespace().collect::<Vec<_>>().join(" ");
+                ui.set_quote_text(format!("Replying to {}: {}", c.display_name(&m.sender_id), t).into());
+                ui.set_quote_id(id);
+            }
         });
         let (wk, c, sh2) = (ui.as_weak(), client.clone(), sh.clone());
         ui.on_up_edit(move || {

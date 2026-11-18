@@ -28,6 +28,11 @@ export component DetailsView {
     in property <bool> is-channel;
     in property <bool> phone: false;
     in-out property <string> topic-edit;
+    in property <bool> archived;
+    in-out property <string> name-edit;
+    callback rename(string);
+    callback archive-toggle;
+    callback open-admin;
     callback add-people;
     callback remove-member(string, string);
     callback save-topic(string);
@@ -123,9 +128,19 @@ export component DetailsView {
                 if !root.lock-set: SettingRow { icon: "lock"; badge: #16a34a; title: "Set up App Lock to lock conversations"; clicked => { root.lock-toggle(); } divider: false; }
             }
             Text { text: "Locked conversations are hidden until you unlock with your PIN."; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
+            if root.can-manage && root.kind != "dm" && root.kind != "self": VerticalLayout {
+                spacing: 8px;
+                Text { text: "Admin tools"; font-size: Theme.fs-small; font-weight: 800; color: Theme.muted; }
+                LineEdit { text <=> root.name-edit; placeholder-text: "Name"; font-size: Theme.fs; accessible-label: "Conversation name"; accepted(t) => { root.rename(t); } }
+                HorizontalLayout { alignment: end; GhostButton { text: "Rename"; clicked => { root.rename(root.name-edit); } } }
+                Card {
+                    SettingRow { icon: "download"; badge: #64748b; title: root.archived ? "Unarchive conversation" : "Archive conversation"; summary: root.archived ? "Make it writable again" : "Read-only, moves to Archived"; chevron: false; clicked => { root.archive-toggle(); } }
+                    SettingRow { icon: "external"; badge: #64748b; title: "Delete or manage in the admin panel"; summary: "Opens the admin panel in your browser"; clicked => { root.open-admin(); } divider: false; }
+                }
+            }
         }
     }
-    if root.page == "files" && root.files.length == 0: EmptyState { icon: "file"; title: "No files yet"; hint: "Files shared in this conversation show up here. Use + in the message box to attach one."; }
+    if root.page == "files" && root.files.length == 0: EmptyState { width: parent.width; height: parent.height; icon: "file"; title: "No files yet"; hint: "Files shared in this conversation show up here. Use + in the message box to attach one."; }
     if root.page == "files" && root.files.length > 0: ListView {
         for f[i] in root.files: Rectangle {
             height: max(64px, 52px * Theme.scale);
@@ -141,7 +156,7 @@ export component DetailsView {
             ft := TouchArea { clicked => { root.open-file(f.id); } }
         }
     }
-    if root.page == "pins" && root.pins.length == 0: EmptyState { icon: "pin"; title: "No pinned messages"; hint: "Pin an important message from its ... menu so everyone can find it here."; }
+    if root.page == "pins" && root.pins.length == 0: EmptyState { width: parent.width; height: parent.height; icon: "pin"; title: "No pinned messages"; hint: "Pin an important message from its ... menu so everyone can find it here."; }
     if root.page == "pins" && root.pins.length > 0: ListView {
         for p[i] in root.pins: Rectangle {
             height: max(68px, 56px * Theme.scale);
@@ -165,7 +180,7 @@ export component DetailsView {
             for b in root.bookmarks: SheetRow { icon: "link"; text: b.title; detail: b.url; clicked => { root.open-link(b.url); } }
         }
     }
-    if root.page == "home" && root.home.length == 0: EmptyState { icon: "home"; title: "No Home page"; hint: "This app has not published a Home page."; }
+    if root.page == "home" && root.home.length == 0: EmptyState { width: parent.width; height: parent.height; icon: "home"; title: "No Home page"; hint: "This app has not published a Home page."; }
     if root.page == "home": ScrollView {
         VerticalLayout {
             padding: 16px;

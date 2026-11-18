@@ -98,7 +98,7 @@ Packages (output in `dist/`):
 cargo install cargo-deb && cargo deb -p atomic-desktop --output dist/     # .deb
 packaging/linux/build-appimage.sh                                         # AppImage
 (cd apps/android && ./gradlew assembleRelease)                            # APK (arm64-v8a + x86_64)
-docker build -f deploy/Dockerfile -t superchat:1.1.3 .                    # server image
+docker build -f deploy/Dockerfile -t superchat:1.2.0 .                    # server image
 ```
 
 Windows (`.exe` and NSIS installer) and the published images are built by `.github/workflows/release.yml` when a `v*` tag is pushed.

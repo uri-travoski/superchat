@@ -12,15 +12,26 @@ pub struct SavedView {
 impl Client {
     // ------------------------------------------------------------------ membership (owners and admins)
 
-    /// Admins set the topic of a channel or group conversation.
-    pub async fn set_topic(&self, conv_id: &str, topic: &str) -> Result<()> {
-        let s: ConversationSummary = self
-            .api()?
-            .patch(&format!("/conversations/{conv_id}"), &proto::types::UpdateConversation { name: None, topic: Some(topic.to_string()), archived: None })
-            .await?;
+    async fn patch_conversation(&self, conv_id: &str, req: proto::types::UpdateConversation) -> Result<()> {
+        let s: ConversationSummary = self.api()?.patch(&format!("/conversations/{conv_id}"), &req).await?;
         self.inner.store.put_conversation(&s)?;
         self.changed(vec![conv_id.to_string()]);
         Ok(())
+    }
+
+    /// Admins set the topic of a channel or group conversation (C-02).
+    pub async fn set_topic(&self, conv_id: &str, topic: &str) -> Result<()> {
+        self.patch_conversation(conv_id, proto::types::UpdateConversation { name: None, topic: Some(topic.to_string()), archived: None }).await
+    }
+
+    /// Admins rename a channel or group conversation (C-01).
+    pub async fn rename_conversation(&self, conv_id: &str, name: &str) -> Result<()> {
+        self.patch_conversation(conv_id, proto::types::UpdateConversation { name: Some(name.to_string()), topic: None, archived: None }).await
+    }
+
+    /// Admins archive (read-only, moves to Archived) or unarchive a conversation (C-04, C-05).
+    pub async fn set_archived(&self, conv_id: &str, archived: bool) -> Result<()> {
+        self.patch_conversation(conv_id, proto::types::UpdateConversation { name: None, topic: None, archived: Some(archived) }).await
     }
 
     /// Whether the signed-in user may add and remove people in this conversation (server owners and admins).

@@ -565,6 +565,25 @@ fn refresh(ui: &AppWindow, c: &Client, sh: &Sh) {
     }
 }
 
+/// `@channel`, `@here`, `@everyone` (channels and groups) and user groups for the mention autocomplete (M-17, M-18).
+fn special_mentions(c: &Client, kind: &proto::types::ConversationKind, q: &str) -> Vec<PersonItem> {
+    let mk = |handle: &str, name: &str, sub: &str| PersonItem { id: handle.into(), name: name.into(), initials: "@".into(), color: color_of(handle), sub: sub.into(), sel: false, tag: Default::default() };
+    let mut v = vec![];
+    if !matches!(kind, proto::types::ConversationKind::Dm | proto::types::ConversationKind::SelfNote) {
+        for (h, d) in [("channel", "Notify everyone in this conversation"), ("here", "Notify people who are online"), ("everyone", "Notify everyone in this conversation")] {
+            if q.is_empty() || h.starts_with(q) {
+                v.push(mk(h, &format!("@{h}"), d));
+            }
+        }
+    }
+    for g in c.groups() {
+        if q.is_empty() || g.handle.to_lowercase().starts_with(q) {
+            v.push(mk(&g.handle, &format!("@{}", g.handle), &format!("Group: {} ({} people)", g.name, g.member_ids.len())));
+        }
+    }
+    v
+}
+
 fn conv_title_of_id(c: &Client, id: &str) -> String {
     c.conversations().into_iter().find(|x| x.conversation.id == id).map(|cs| c.conversation_title(&cs)).unwrap_or_default()
 }
@@ -706,6 +725,8 @@ fn select_conv(ui: &AppWindow, c: &Client, sh: &Sh, id: &str, push_history: bool
     ui.set_info_page("".into());
     ui.set_editing_id("".into());
     ui.set_emoji_sugg(model(vec![]));
+    ui.set_quote_id("".into());
+    ui.set_quote_text("".into());
     ui.set_tab(0);
     ui.set_screen("".into());
     ui.set_show_chat(true);
@@ -1525,7 +1546,8 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
             if t.is_empty() || cur.is_empty() {
                 return;
             }
-            if let Err(e) = c.send_text(&cur, &t, SendOptions::default()) {
+            let quote = wk.upgrade().map(|u| u.get_quote_id().to_string()).filter(|q| !q.is_empty());
+            if let Err(e) = c.send_text(&cur, &t, SendOptions { thread_root: None, reply_to: quote }) {
                 if let Some(ui) = wk.upgrade() {
                     toast(&ui, &e.to_string());
                 }
@@ -1533,6 +1555,8 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
             }
             c.save_draft(&cur, None, "");
             if let Some(ui) = wk.upgrade() {
+                ui.set_quote_id("".into());
+                ui.set_quote_text("".into());
                 ui.set_mentions(model(vec![]));
                 sh.lock().unwrap().scroll_after = None;
                 refresh(&ui, &c, &sh);
@@ -1663,6 +1687,9 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                             p.id = u.username.clone().into();
                             p
                         })
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .chain(special_mentions(&c, &cs.conversation.kind, &q))
                         .collect()
                 }
                 _ => vec![],
@@ -2116,6 +2143,7 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
             ui.set_saved(model(sh.lock().unwrap().prefs.saved_searches.iter().map(|q| row(0, "", "", q.clone(), String::new(), String::new())).collect()));
             ui.set_ai_answer("".into());
             ui.set_ai_note("".into());
+            ui.set_search_tab(0);
             // The admin may have switched AI on or off since we signed in.
             let (wk2, c2) = (ui.as_weak(), c.clone());
             c.handle().spawn(async move {
@@ -2138,6 +2166,28 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
         ui.on_search(move |q| {
             let Some(ui) = wk.upgrade() else { return };
             let q = q.trim().to_string();
+            if q.is_empty() && ui.get_search_tab() == 1 {
+                // The global Files view: recent files in every conversation you can see.
+                let (wk2, c2, sh2) = (ui.as_weak(), c.clone(), sh.clone());
+                c.handle().spawn(async move {
+                    let off = tz_offset();
+                    let files = c2.list_files(None, None, None, None).await.unwrap_or_default();
+                    let mut rows: Vec<RowItem> = vec![];
+                    {
+                        let mut g = sh2.lock().unwrap();
+                        for fh in files {
+                            rows.push(row(1, &fh.attachment.id, &fh.conv_id, format!("{}  in {}  |  {}", c2.display_name(&fh.sender_id), conv_title_of_id(&c2, &fh.conv_id), datefmt::format_date(fh.ts, off)), fh.attachment.name.clone(), String::new()));
+                            g.atts.insert(fh.attachment.id.clone(), fh.attachment);
+                        }
+                    }
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = wk2.upgrade() {
+                            ui.set_results(model(rows));
+                        }
+                    });
+                });
+                return;
+            }
             if q.is_empty() {
                 ui.set_results(model(vec![]));
                 return;

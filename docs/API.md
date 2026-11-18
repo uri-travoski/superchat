@@ -24,6 +24,19 @@ Edit rule (`proto::rules::edit_allowed`): channels and notes-to-self always; DMs
 Admin (`/admin/...`, owner or admin only): overview, users (+reset-password, login-link, revoke-sessions, clear-history, backup,
 delete-range), backups, sessions, conversations (+members), files, storage (+test, migrate, verify), jobs.
 
+## 1.2 additions
+
+All of these are per user and private unless noted. Changes reach your other devices as events `saved_update`, `saved_remove`, `labels_update` and `activity_read` (activity itself is derived from messages, so new items arrive with the message events).
+
+* **Membership (owners and admins).** `POST /conversations/{id}/members` with `{"user_ids": [...]}` adds people to a channel or group; `DELETE /conversations/{id}/members/{uid}` removes one.
+  Plain members get `403 forbidden`; non-members get `404 not_found` (the conversation stays invisible). A "X added Y" / "X removed Y" system message is posted. `PATCH /conversations/{id}` (admins) takes `name`, `topic`, `archived`.
+* **Save for later.** `GET /saved` lists saved items (newest first); `PUT /saved/{message_id}` saves (optional `{"label_ids": [...]}`), `DELETE /saved/{message_id}` removes it,
+  `PUT /saved/{message_id}/labels` with `{"label_ids": [...]}` sets its labels. Only messages in conversations you belong to can be saved (`404` otherwise).
+* **Labels.** `GET /labels`, `POST /labels` (`{"name","color"}` as `#rrggbb`), `PATCH /labels/{id}` (rename, recolour, reorder), `DELETE /labels/{id}`. Each call returns the full label list.
+* **Activity feed.** `GET /activity?limit=n` returns mentions of you, reactions to your messages and replies in threads you follow (newest first, `unread` per item, `read_ms` for the feed);
+  `POST /activity/read` marks it read (optionally up to a timestamp). Items for conversations you left are not returned.
+* Backups include each user's saved items and labels; a per-user restore merges them back.
+
 ## 1.1.2 additions
 
 * Self-service sign-out is gated by the admin's Privacy options (`privacy_controls_enabled` in `GET /me`). For a member without it, `POST /logout`, `DELETE /sessions/{own id}`,

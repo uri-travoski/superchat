@@ -76,6 +76,8 @@ async fn seed_and_serve() {
     let (carol_id, carol) = s.user("carol").await;
     let (dave_id, dave) = s.user("dave").await;
     s.admin.update_user(&alice_id, &UpdateUserRequest { display_name: Some("Alice Nguyen".into()), ..Default::default() }).await.ok();
+    // Alice is an admin so the screenshots show the admin controls (Add people, rename, archive).
+    s.admin.set_role(&alice_id, Role::Admin).await.ok();
     // Carol has Privacy options: Allow (sign-out controls visible); everyone else is Disallow.
     s.admin.update_user(&carol_id, &UpdateUserRequest { privacy_controls_enabled: Some(true), ..Default::default() }).await.ok();
     let general = make_channel(&s, "general", &[&alice_id, &bob_id, &carol_id, &dave_id]).await;

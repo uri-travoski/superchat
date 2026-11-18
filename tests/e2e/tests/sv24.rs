@@ -401,6 +401,25 @@ async fn phase2(
     alice.follow_thread(&root.id, false).await.unwrap();
     assert!(alice.threads().iter().all(|t| t.root.id != root.id), "unfollow removes it from the Threads list");
 
+    // --- 1.2: membership add/remove by an admin, saved items and labels stay private ------------------------------
+    let c_id = carol.me().unwrap().user.id;
+    assert!(!carol.conversations().iter().any(|c| c.conversation.id == ch));
+    admin.add_members(ch, std::slice::from_ref(&c_id)).await.unwrap();
+    wait_for("carol sees #project", || carol.conversations().iter().any(|c| c.conversation.id == ch)).await;
+    assert!(!carol.can_manage_members(ch), "a plain member cannot manage people");
+    admin.remove_member(ch, &c_id).await.unwrap();
+    wait_for("carol loses #project", || !carol.conversations().iter().any(|c| c.conversation.id == ch)).await;
+    let keep = alice.timeline(ch, 50, None).into_iter().find(|t| t.message.body.starts_with("budget numbers")).unwrap().message;
+    let label = alice.create_label("Follow up", "#e8590c").await.unwrap().into_iter().find(|l| l.name == "Follow up").unwrap();
+    alice.save_message(&keep.id, None).await.unwrap();
+    alice.set_saved_labels(&keep.id, std::slice::from_ref(&label.id)).await.unwrap();
+    wait_for("alice has the saved item with its label", || alice.saved_items().iter().any(|v| v.item.message_id == keep.id && v.item.label_ids == vec![label.id.clone()])).await;
+    bob.refresh_saved().await.unwrap();
+    assert!(bob.saved_items().is_empty() && bob.labels().is_empty(), "saved items and labels are per user");
+    assert!(carol.save_message(&keep.id, None).await.is_err(), "no saving messages from chats you are not in");
+    alice.unsave_message(&keep.id).await.unwrap();
+    wait_for("unsaved", || alice.saved_items().is_empty()).await;
+
     // --- push: fake ntfy receives one content-free wake-up when bob is offline ------------------------------------
     let (ntfy_log, ntfy_port) = fake_ntfy().await;
     admin.put_push_settings(&PushSettings { ntfy_url: Some(format!("http://host.docker.internal:{ntfy_port}")), ..Default::default() }).await.unwrap();

@@ -214,6 +214,22 @@ export type EventData =
       type: "scheduled_update";
     }
   | {
+      item: SavedItem;
+      type: "saved_update";
+    }
+  | {
+      message_id: string;
+      type: "saved_remove";
+    }
+  | {
+      labels: Label[];
+      type: "labels_update";
+    }
+  | {
+      read_ms: number;
+      type: "activity_read";
+    }
+  | {
       type: "resync";
     };
 export type ScheduledState = "pending" | "sent" | "cancelled" | "failed";
@@ -835,6 +851,10 @@ export interface BookmarkRequest {
   url?: string | null;
 }
 export interface Bootstrap {
+  /**
+   * Activity items at or before this time are read (1.2).
+   */
+  activity_read_ms?: number;
   bookmarks?: {
     [k: string]: Bookmark[];
   };
@@ -857,6 +877,7 @@ export interface Bootstrap {
   has_more: {
     [k: string]: boolean;
   };
+  labels?: Label[];
   me: Me;
   /**
    * Latest messages per conversation (conversation id -> ascending by seq).
@@ -874,6 +895,10 @@ export interface Bootstrap {
    * Per-conversation favourites, sections, mute and notification level (NV-01..NV-07, N-03).
    */
   prefs?: ConvPref[];
+  /**
+   * Saved messages ("Later") and the user's labels (1.2).
+   */
+  saved?: SavedItem[];
   sections?: Section[];
   server_time: number;
   /**
@@ -899,6 +924,18 @@ export interface UserGroup {
   id: string;
   member_ids: string[];
   name: string;
+}
+/**
+ * A label the user created for organising saved messages. Private to the user.
+ */
+export interface Label {
+  /**
+   * `#rrggbb`.
+   */
+  color: string;
+  id: string;
+  name: string;
+  position: number;
 }
 export interface Me {
   email?: string | null;
@@ -941,6 +978,15 @@ export interface ConvPref {
    */
   notify: string;
   section_id?: string | null;
+}
+/**
+ * A message the user saved for later. The message itself is read from the normal message cache.
+ */
+export interface SavedItem {
+  conv_id: string;
+  label_ids?: string[];
+  message_id: string;
+  saved_ms: number;
 }
 /**
  * A custom sidebar section (NV-04).

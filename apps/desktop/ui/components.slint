@@ -369,7 +369,7 @@ export component BottomSheet inherits Rectangle {
     TouchArea { clicked => { root.dismiss(); } }
     card := Rectangle {
         width: root.wide ? (root.menu ? root.menu-width : 400px) : root.width;
-        height: min(root.max-h, (root.wide ? 8px : 28px) + ttl.preferred-height + body.content-height + root.inset-bottom + 8px);
+        height: min(root.max-h, (root.wide ? 8px : 28px) + ttl.preferred-height + body.content-height + root.inset-bottom + (root.wide ? 8px : 24px));
         x: root.wide ? (root.menu ? (root.anchor-x >= 0px ? min(max(8px, root.anchor-x), root.width - self.width - 8px) : root.width - self.width - 12px) : (root.width - self.width) / 2) : 0px;
         y: root.wide ? (root.menu ? (root.anchor-y >= 0px ? max(8px, min(root.anchor-y, root.height - self.height - 8px)) : 8px) : max(12px, (root.height - self.height) / 2)) : (root.shown ? root.height - self.height + root.drag : root.height);
         background: Theme.sheet-bg;
@@ -398,14 +398,14 @@ export component BottomSheet inherits Rectangle {
                 if root.title != "": Text { x: 20px; text: root.title; font-size: Theme.fs-small * 1.05; font-weight: 700; color: Theme.muted; vertical-alignment: center; overflow: elide; width: parent.width - 40px; }
             }
             body := Flickable {
-                height: min(self.content-height, root.max-h - (root.wide ? 8px : 28px) - ttl.height - root.inset-bottom - 8px);
+                height: min(self.content-height, root.max-h - (root.wide ? 8px : 28px) - ttl.height - root.inset-bottom - (root.wide ? 8px : 24px));
                 content-height: inner.preferred-height;
                 inner := VerticalLayout {
                     alignment: start;
                     @children
                 }
             }
-            Rectangle { height: root.inset-bottom + 8px; }
+            Rectangle { height: root.inset-bottom + (root.wide ? 8px : 24px); }
         }
     }
 }

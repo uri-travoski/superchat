@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 
 static LAST_INPUT_MS: AtomicI64 = AtomicI64::new(0);
 static BACKGROUND: AtomicBool = AtomicBool::new(false);
+static IDLE_SENT: AtomicBool = AtomicBool::new(false);
 
 /// Any tap, click, key press or scroll. Platform glue calls this (desktop: window events, Android: `onUserInteraction`).
 pub fn note_input() {
@@ -218,6 +219,15 @@ fn clear_fields(ui: &AppWindow) {
 
 /// Called twice a second: applies platform input / background signals and the idle timeout, counts down a block.
 pub fn tick(ui: &AppWindow, c: &Client, sh: &Sh, was_background: &mut bool) {
+    // P-02 auto-away: no input for 10 minutes (desktop) or the app in the background (phone) reports "idle".
+    {
+        let now = wall_ms();
+        let li = LAST_INPUT_MS.load(Ordering::Relaxed);
+        let idle = (cfg!(target_os = "android") && BACKGROUND.load(Ordering::Relaxed)) || (li > 0 && now - li > 10 * 60 * 1000);
+        if IDLE_SENT.swap(idle, Ordering::Relaxed) != idle {
+            c.set_idle(idle);
+        }
+    }
     let a = c.applock();
     if !a.is_set() {
         return;

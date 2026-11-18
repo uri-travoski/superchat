@@ -329,6 +329,33 @@ fn view(st: &St) -> View {
     View { hour24: st.prefs.hour24, accent: st.prefs.accent as usize, off: tz_offset(), now: now_ms() }
 }
 
+/// A search snippet as one plain line: markup characters removed, line breaks and runs of spaces collapsed.
+/// The server's `[[match]]` markers are kept. Mentions keep their names (`@bob`).
+fn clean_snippet(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut prev_space = false;
+    for ch in s.chars() {
+        let ch = match ch {
+            '*' | '~' | '`' | '\u{FE0F}' => continue,
+            '\n' | '\r' | '\t' => ' ',
+            c => c,
+        };
+        if ch == ' ' {
+            if prev_space {
+                continue;
+            }
+            prev_space = true;
+        } else {
+            prev_space = false;
+        }
+        out.push(ch);
+    }
+    // Leading quote or list markers ("> ", "- ").
+    let t = out.trim_start();
+    let t = t.strip_prefix("> ").or_else(|| t.strip_prefix("- ")).unwrap_or(t);
+    t.to_string()
+}
+
 fn scale_of(st: &St) -> f32 {
     (st.prefs.font_scale as f32 / 100.0 * st.prefs.zoom as f32 / 100.0 * st.system_scale).clamp(0.6, 2.4)
 }
@@ -486,6 +513,8 @@ fn refresh(ui: &AppWindow, c: &Client, sh: &Sh) {
     g.atts = atts;
     g.first_unread = first_unread;
     ui.set_first_unread(first_unread.is_some());
+    ui.set_first_unread_frac(first_unread.map(|i| i as f32 / items.len().max(1) as f32).unwrap_or(0.0));
+    ui.set_unread_new(first_unread.map(|i| (items.len() - i) as i32).unwrap_or(0));
     ui.set_has_more_older(c.has_more_before(&cur) || c.timeline(&cur, limit + 1, None).len() > limit);
     let grew = items.len() != g.msg_count;
     g.msg_count = items.len();
@@ -2232,20 +2261,14 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                 if let Ok(r) = r {
                     for h in &r.hits {
                         let title = format!("{}  in {}  |  {}", c2.display_name(&h.message.sender_id), c2.conversations().into_iter().find(|x| x.conversation.id == h.message.conv_id).map(|cs| c2.conversation_title(&cs)).unwrap_or_default(), datefmt::format_date(h.message.ts, off));
-                        let flat = |t: &str| model::plain(t).split_whitespace().collect::<Vec<_>>().join(" ");
-                        let mut it = row(0, &h.message.id, &h.message.conv_id, title, flat(&h.snippet.replace("[[", "").replace("]]", "")), String::new());
-                        // The server marks the match as [[...]]; show it highlighted.
-                        if let (Some(a), Some(b)) = (h.snippet.find("[["), h.snippet.find("]]")) {
+                        // Plain one-line text: no markup characters, newlines become spaces, the match stays marked.
+                        let clean = clean_snippet(&h.snippet);
+                        let mut it = row(0, &h.message.id, &h.message.conv_id, title, clean.replace("[[", "").replace("]]", ""), String::new());
+                        if let (Some(a), Some(b)) = (clean.find("[["), clean.find("]]")) {
                             if a < b {
-                                it.pre = flat(&h.snippet[..a]).into();
-                                it.hit = h.snippet[a + 2..b].to_string().into();
-                                it.post = flat(&h.snippet[b + 2..]).into();
-                                if h.snippet[..a].ends_with(' ') {
-                                    it.pre = format!("{} ", it.pre).into();
-                                }
-                                if h.snippet[b + 2..].starts_with(' ') {
-                                    it.post = format!(" {}", it.post).into();
-                                }
+                                it.pre = clean[..a].to_string().into();
+                                it.hit = clean[a + 2..b].to_string().into();
+                                it.post = clean[b + 2..].to_string().into();
                             }
                         }
                         rows.push(it);
@@ -2676,4 +2699,17 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
     }
     let _keep: Weak<AppWindow> = ui.as_weak();
     ui.run()
+}
+
+#[cfg(test)]
+mod snippet_tests {
+    use super::clean_snippet;
+
+    #[test]
+    fn snippets_are_plain_single_lines() {
+        assert_eq!(clean_snippet("Morning all. *[[Release]] 1.4* goes out"), "Morning all. [[Release]] 1.4 goes out");
+        assert_eq!(clean_snippet("make [[release]]\nmake publish"), "make [[release]] make publish");
+        assert_eq!(clean_snippet("> hi @bob   there"), "hi @bob there");
+        assert_eq!(clean_snippet("~~old~~ `code`"), "old code");
+    }
 }

@@ -339,7 +339,7 @@ export component SettingRow {
                 background: root.badge;
                 Icon { name: root.icon; size: 20px; tint: white; weight: 2px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
             }
-            Text { text: root.title; font-size: Theme.fs; color: root.danger ? Theme.danger : Theme.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+            Text { text: root.title; font-size: Theme.fs; color: root.danger ? Theme.danger : Theme.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; min-width: min(self.preferred-width, 200px * Theme.scale); }
             if root.summary != "" && !root.has-switch: Text { text: root.summary; font-size: Theme.fs-small * 1.05; color: Theme.muted; vertical-alignment: center; overflow: elide; max-width: 190px * Theme.scale; }
             if root.has-switch: Toggle { checked: root.on; y: (parent.height - self.height) / 2; toggled => { root.on = self.checked; root.toggled(); } }
             if root.chevron && !root.has-switch: Icon { name: "chevron-right"; size: 20px; tint: Theme.icon-soft; y: (parent.height - self.height) / 2; }
@@ -420,11 +420,12 @@ export component ModalCard inherits Rectangle {
     in property <length> inset-bottom: 0px;
     callback dismiss;
     property <bool> shown: false;
+    property <length> card-w: root.wide ? min(460px, root.width - 32px) : root.width;
     init => { root.shown = true; }
     background: Theme.scrim.with-alpha(0.55);
     TouchArea { clicked => { root.dismiss(); } }
     card := Rectangle {
-        width: root.wide ? min(460px, root.width - 32px) : root.width;
+        width: root.card-w;
         height: min(root.height - (root.wide ? 32px : 24px), 24px + ttl.height + body.content-height + ftr.preferred-height + root.inset-bottom + 8px);
         x: (root.width - self.width) / 2;
         y: root.wide ? (root.height - self.height) / 2 : root.height - self.height;
@@ -443,9 +444,11 @@ export component ModalCard inherits Rectangle {
                 IconButton { icon: "close"; label: "Close"; clicked => { root.dismiss(); } y: (parent.height - self.height) / 2; }
             }
             body := Flickable {
+                width: root.card-w;
                 height: min(self.content-height, root.height - 140px - root.inset-bottom);
                 content-height: inner.preferred-height;
                 inner := VerticalLayout {
+                    width: root.card-w;
                     padding-left: 20px;
                     padding-right: 20px;
                     padding-bottom: 8px;

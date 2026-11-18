@@ -81,7 +81,7 @@ One row per feature in `Client Apps.md` (sections X, M, C, NV, SR, F, WF, N, P, 
 | NV-06 | Hide muted | works | Home filter icon | server menu | core | |
 | NV-07 | Mute | works | row menu > Mute; Details > Mute | right-click > Mute | core | |
 | NV-08 | Quick switcher | works | Home search pill | Ctrl+K or the top-bar search | shot | |
-| NV-09 | Back/forward, jump to unread | works | system Back; "Jump to first unread" | arrows in the top bar, Alt+Left/Right | UI-unit, emu | |
+| NV-09 | Back/forward, jump to unread | works | system Back; "Jump to first unread" | arrows in the top bar, Alt+Left/Right | UI-unit, emu | | compact "N new messages" pill (phone) / slim bar (desktop), hides once first unread visible |
 
 ## Search (SR)
 

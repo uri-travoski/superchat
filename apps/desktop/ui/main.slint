@@ -165,6 +165,28 @@ export component AppWindow inherits Window {
     in-out property <bool> unread-only: false;
     in-out property <bool> hide-muted: false;
     in-out property <length> list-y;
+    // Phone Home list scroll tracking: the New message button hides while scrolling down and returns on scroll up or at the end.
+    in-out property <length> home-y;
+    in-out property <length> home-h;
+    in-out property <length> home-vh;
+    property <length> home-prev-y;
+    property <bool> fab-up: false;
+    // At rest the button is only shown when it covers no row (the list fits); scrolling up brings it back, the end of the list always shows it.
+    property <bool> fab-shown: (root.home-y >= 0px && root.home-h <= root.home-vh + 2px) || (root.home-h > root.home-vh && root.home-y <= root.home-vh - root.home-h + 4px) || (root.fab-up && root.home-y < 0px);
+    changed home-y => {
+        if root.home-y >= 0px { root.fab-up = false; }
+        else if root.home-y > root.home-prev-y + 1px { root.fab-up = true; }
+        else if root.home-y < root.home-prev-y - 1px { root.fab-up = false; }
+        root.home-prev-y = root.home-y;
+    }
+    // Position of the first unread message as a fraction of the list, and how many messages follow it.
+    in-out property <float> first-unread-frac: 0;
+    in-out property <int> unread-new: 0;
+    property <float> view-top: root.list-h > 0px ? (-root.list-y / root.list-h) : 0;
+    property <float> view-bottom: root.list-h > 0px ? ((-root.list-y + root.list-vh) / root.list-h) : 1;
+    // True while the first unread message is scrolled out of view (above or below the visible part).
+    property <bool> unread-away: root.first-unread && root.list-h > 0px && (root.first-unread-frac < root.view-top - 0.01 || root.first-unread-frac > root.view-bottom + 0.01);
+    property <bool> unread-above: root.first-unread-frac < root.view-top;
     in-out property <length> list-h;
     in-out property <length> list-vh;
     out property <bool> wide: self.width >= 720px;
@@ -591,6 +613,7 @@ export component AppWindow inherits Window {
                                             y: (parent.height - self.height) / 2;
                                         }
                                         if root.wide: ToolButton { icon: "edit"; label: "New message"; size: 34px * Theme.scale; y: (parent.height - self.height) / 2; clicked => { root.new-message(); } }
+                                        if !root.wide: IconButton { icon: "edit"; label: "New message"; clicked => { root.new-message(); } y: (parent.height - self.height) / 2; }
                                         if !root.wide: IconButton { icon: "filter"; label: "Sort and filter the list"; clicked => { root.menu-kind = "overflow"; } y: (parent.height - self.height) / 2; }
                                     }
                                     Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
@@ -672,6 +695,9 @@ export component AppWindow inherits Window {
                                 if root.main-tab == "home" && root.side-rows.length == 0: EmptyState { vertical-stretch: 1; icon: "chat"; title: "No conversations yet"; hint: "Start a conversation with someone on your server."; action: "New message"; act => { root.new-message(); } }
                                 if root.main-tab == "home" && root.side-rows.length > 0: ListView {
                                     vertical-stretch: 1;
+                                    content-y <=> root.home-y;
+                                    changed visible-height => { root.home-vh = self.visible-height; }
+                                    changed content-height => { root.home-h = self.content-height; }
                                     for r[i] in root.side-rows: SideItem {
                                         r: r;
                                         wide: root.wide;
@@ -756,17 +782,17 @@ export component AppWindow inherits Window {
                                             SettingRow { icon: "bell-off"; badge: #dc2626; title: "Pause notifications"; has-switch: true; on: root.presence-pref == "dnd"; toggled => { root.set-presence(self.on ? "dnd" : "auto"); } }
                                             SettingRow { icon: "bookmark"; badge: #f59e0b; title: "Saved items (Later)"; summary: root.saved-rows.length > 0 ? "" + root.saved-rows.length : ""; clicked => { root.go-home-tab("later"); } }
                                             SettingRow { icon: "thread"; badge: #0d9488; title: "Threads"; clicked => { root.open-threads(); } }
-                                            SettingRow { icon: "file"; badge: #0d9488; title: "Files"; summary: "All files in your conversations"; clicked => { root.open-files(); } }
+                                            SettingRow { icon: "file"; badge: #0d9488; title: "Files"; summary: ""; clicked => { root.open-files(); } }
                                             SettingRow { icon: "clock"; badge: #3b82f6; title: "Drafts & sent"; summary: root.scheduled-count > 0 ? root.scheduled-count + " scheduled" : ""; clicked => { root.open-drafts(); } divider: false; }
                                         }
                                         Card {
                                             SettingRow { icon: "settings"; badge: #64748b; title: "Preferences"; clicked => { root.open-settings(); } }
                                             SettingRow { icon: "lock"; badge: #16a34a; title: "App Lock"; summary: root.lock-set ? "On" : "Off"; clicked => { root.open-settings(); root.settings-page = "lock"; } divider: root.is-admin || root.sign-out-allowed; }
-                                            if root.is-admin: SettingRow { icon: "shield"; badge: #8b5cf6; title: "Admin panel"; summary: "Opens in your browser"; clicked => { root.open-admin-panel(); } divider: root.sign-out-allowed; }
+                                            if root.is-admin: SettingRow { icon: "shield"; badge: #8b5cf6; title: "Admin panel"; summary: "In browser"; clicked => { root.open-admin-panel(); } divider: root.sign-out-allowed; }
                                             if root.sign-out-allowed: SettingRow { icon: "devices"; badge: #3b82f6; title: "Devices"; clicked => { root.open-settings(); root.settings-page = "devices"; } divider: true; }
                                             if root.sign-out-allowed: SettingRow { icon: "logout"; badge: Theme.danger; title: "Sign out"; danger: true; chevron: false; clicked => { root.confirm = "signout"; } divider: false; }
                                         }
-                                        Text { text: "SuperChat " + root.version; font-size: Theme.fs-small; color: Theme.muted; horizontal-alignment: center; }
+                                        Text { text: root.version; font-size: Theme.fs-small; color: Theme.muted; horizontal-alignment: center; }
                                     }
                                 }
                                 if !root.wide: BottomNav {
@@ -776,7 +802,7 @@ export component AppWindow inherits Window {
                                     picked(t) => { root.go-home-tab(t); }
                                 }
                             }
-                            if !root.wide && root.main-tab == "home": Fab {
+                            if !root.wide && root.main-tab == "home" && root.fab-shown: Fab {
                                 icon: "edit";
                                 label: "New message";
                                 x: parent.width - self.width - 16px;
@@ -868,6 +894,15 @@ export component AppWindow inherits Window {
                                 add-bookmark => { root.bm-title = ""; root.bm-url = ""; root.bookmark-open = true; }
                                 home-action(k, id) => { root.home-action(k, id); }
                             }
+                            // Desktop: a slim bar under the tabs while the first unread message is out of view.
+                            if root.wide && root.tab == 0 && root.current-conv != "" && root.unread-away: Rectangle {
+                                height: max(28px, 24px * Theme.scale);
+                                background: Theme.accent;
+                                accessible-role: button;
+                                accessible-label: root.unread-new + " new messages, jump to the first";
+                                Text { text: (root.unread-above ? "\u{2191} " : "\u{2193} ") + root.unread-new + (root.unread-new == 1 ? " new message" : " new messages") + " - Jump to first unread"; color: Theme.on-accent; font-size: Theme.fs-small; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                                TouchArea { clicked => { root.jump-unread(); } }
+                            }
                             if root.current-conv != "" && (root.tab == 0 || !root.wide): Rectangle {
                                 vertical-stretch: 1;
                                 if root.messages.length == 0: EmptyState { width: parent.width; height: parent.height; icon: "chat"; title: "This is the start of " + root.current-title; hint: "Say hello. Messages you send appear here for everyone in the conversation."; }
@@ -898,9 +933,12 @@ export component AppWindow inherits Window {
                                         edit-cancel => { root.editing-id = ""; }
                                     }
                                 }
-                                if root.first-unread: Rectangle {
-                                    x: parent.width - self.width - 12px; y: 10px; width: fu.preferred-width + 28px; height: 32px; border-radius: 16px; background: Theme.accent;
-                                    fu := Text { text: "Jump to first unread"; color: Theme.on-accent; font-size: Theme.fs-small; font-weight: 700; }
+                                // Phone: a compact floating pill centred under the top bar; hidden while the first unread is on screen.
+                                if !root.wide && root.unread-away: Rectangle {
+                                    x: (parent.width - self.width) / 2; y: 8px; width: fu.preferred-width + 32px; height: max(32px, 28px * Theme.scale); border-radius: self.height / 2; background: Theme.accent;
+                                    accessible-role: button;
+                                    accessible-label: root.unread-new + " new messages, jump to the first";
+                                    fu := Text { x: 16px; y: (parent.height - self.height) / 2; text: (root.unread-above ? "\u{2191} " : "\u{2193} ") + root.unread-new + (root.unread-new == 1 ? " new message" : " new messages"); color: Theme.on-accent; font-size: Theme.fs-small; font-weight: 700; }
                                     TouchArea { clicked => { root.jump-unread(); } }
                                 }
                             }
@@ -1678,10 +1716,13 @@ export component AppWindow inherits Window {
                             accessible-checked: l.on;
                             HorizontalLayout {
                                 spacing: 10px;
+                                padding-left: 8px;
+                                padding-right: 8px;
                                 Rectangle { width: 18px; height: 18px; y: (parent.height - self.height) / 2; border-radius: 9px; background: l.tint; }
                                 if root.label-msg != "": Text { text: l.name; font-size: Theme.fs; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
                                 if root.label-msg == "": LineEdit { text: l.name; font-size: Theme.fs; accessible-label: "Label name"; accepted(t) => { root.label-rename(l.id, t); } horizontal-stretch: 1; y: (parent.height - self.height) / 2; }
-                                if root.label-msg != "" && l.on: Icon { name: "check"; tint: Theme.accent-text; y: (parent.height - self.height) / 2; }
+                                if root.label-msg != "": Rectangle { width: 24px; height: 24px; y: (parent.height - self.height) / 2; border-radius: 6px; border-width: l.on ? 0px : 2px; border-color: Theme.icon-soft; background: l.on ? Theme.accent : transparent;
+                                    if l.on: Icon { name: "check"; size: 16px; tint: Theme.on-accent; weight: 2.5px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; } }
                                 if root.label-msg == "": ToolButton { icon: "palette"; label: "Change colour"; size: 40px; y: (parent.height - self.height) / 2; clicked => { root.label-recolor(l.id); } }
                                 if root.label-msg == "": ToolButton { icon: "trash"; label: "Delete label " + l.name; tint: Theme.danger; size: 40px; y: (parent.height - self.height) / 2; clicked => { root.label-delete(l.id); } }
                             }

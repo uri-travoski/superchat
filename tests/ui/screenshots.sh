@@ -121,6 +121,9 @@ VARIANTS=(
   "phone-light-regular-form|360x640|light|100|form:general"
   "phone-light-regular-threads|360x640|light|100|threads"
   "phone-light-regular-drafts|360x640|light|100|drafts"
+  "phone-light-large-label-picker|360x640|light|130|labelpick:general"
+  "phone-light-large-you|360x640|light|130|tab:you"
+  "phone-light-large-settings|360x640|light|130|settings"
 )
 n=0
 for v in "${VARIANTS[@]}"; do

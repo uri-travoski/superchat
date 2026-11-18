@@ -236,6 +236,11 @@ async fn seed_and_serve() {
     let due = proto_now_ms() + 2 * 3_600_000;
     alice.schedule_message(&general, "Reminder: retro starts at 4 pm.", due, None).await.unwrap();
     alice.save_draft(&design, None, "Notes on the login screen spacing: tighten the gap under the logo");
+    // For the emulator: a one-time login link for Alice (the app opens it and signs in).
+    if let Ok(f) = std::env::var("SEED_LINK_FILE") {
+        let l = s.admin.login_link(&alice_id).await.unwrap();
+        std::fs::write(f, l.link).unwrap();
+    }
     std::fs::write(std::env::var("SEED_URL_FILE").expect("SEED_URL_FILE"), &s.url).unwrap();
     let stop = std::env::var("SEED_STOP_FILE").expect("SEED_STOP_FILE");
     while !std::path::Path::new(&stop).exists() {

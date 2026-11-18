@@ -135,9 +135,9 @@ export component DetailsView {
                 LineEdit { text <=> root.name-edit; placeholder-text: "Name"; font-size: Theme.fs; accessible-label: "Conversation name"; accepted(t) => { root.rename(t); } }
                 HorizontalLayout { alignment: end; GhostButton { text: "Rename"; clicked => { root.rename(root.name-edit); } } }
                 Card {
-                    SettingRow { icon: "download"; badge: #64748b; title: root.archived ? "Unarchive conversation" : "Archive conversation"; summary: root.archived ? "Make it writable again" : "Read-only, moves to Archived"; chevron: false; clicked => { root.archive-toggle(); } }
-                    SettingRow { icon: "trash"; badge: Theme.danger; title: root.kind == "channel" ? "Delete channel..." : "Delete group chat..."; summary: "Removes its messages and files for everyone"; danger: true; clicked => { root.delete-conv(); } }
-                    SettingRow { icon: "external"; badge: #64748b; title: "More in the admin panel"; summary: "Opens the admin panel in your browser"; clicked => { root.open-admin(); } divider: false; }
+                    SettingRow { icon: "download"; badge: #64748b; title: root.archived ? "Unarchive conversation" : "Archive conversation"; summary: root.phone ? "" : (root.archived ? "Make it writable again" : "Read-only, moves to Archived"); chevron: false; clicked => { root.archive-toggle(); } }
+                    SettingRow { icon: "trash"; badge: Theme.danger; title: root.kind == "channel" ? "Delete channel..." : "Delete group chat..."; summary: root.phone ? "" : "Removes its messages and files for everyone"; danger: true; clicked => { root.delete-conv(); } }
+                    SettingRow { icon: "external"; badge: #64748b; title: "More in the admin panel"; summary: root.phone ? "" : "Opens the admin panel in your browser"; clicked => { root.open-admin(); } divider: false; }
                 }
             }
         }

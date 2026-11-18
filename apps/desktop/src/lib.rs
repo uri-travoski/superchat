@@ -519,6 +519,19 @@ fn now_ms() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }
 
+/// Uploads `p` as the signed-in user's profile photo and says how it went.
+fn apply_avatar(ui: &AppWindow, c: &Client, p: PathBuf) {
+    let (wk, c2) = (ui.as_weak(), c.clone());
+    c.handle().spawn(async move {
+        let ok = p.is_file() && c2.set_avatar(&p).await.is_ok();
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(ui) = wk.upgrade() {
+                toast(&ui, if ok { "Profile photo updated." } else { "Could not set that photo." });
+            }
+        });
+    });
+}
+
 #[derive(Default)]
 struct St {
     prefs: Prefs,
@@ -547,6 +560,8 @@ struct St {
     play_speed: f32,
     audio_dur_ms: u32,
     shared: Option<Shared>,
+    /// The next result from the media picker is a profile photo, not an attachment.
+    avatar_pick: bool,
     home_bot: String,
     home_forms: Vec<proto::automation::Form>,
     pp_sel: HashSet<String>,
@@ -721,7 +736,6 @@ fn refresh(ui: &AppWindow, c: &Client, sh: &Sh) {
         let key: Vec<(String, String)> = c.users().into_iter().filter_map(|u| c.avatar_path(&u.id).map(|p| (u.id, p.to_string_lossy().to_string()))).collect();
         if key != g.avatar_key {
             let items: Vec<AvatarImg> = key.iter().filter_map(|(id, p)| slint::Image::load_from_path(std::path::Path::new(p)).ok().map(|img| AvatarImg { id: id.clone().into(), img })).collect();
-            use slint::Global;
             ui.global::<Avatars>().set_items(model(items));
             g.avatar_key = key;
         }
@@ -1439,6 +1453,21 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                     // Screenshot / test helper: a message with typos in the box (the spell check marks them).
                     ui.set_composer("Thsi is a mesage with a few typos, can you recieve it? The colour is fine.".into());
                 }
+                "menukind" => {
+                    // Screenshot / test helper: open any menu or sheet by its kind (the second part), for the menu audit.
+                    use slint::Model;
+                    let n = ui.get_messages().row_count();
+                    if let Some(m) = (0..n).rev().filter_map(|i| ui.get_messages().row_data(i)).find(|m| !m.deleted) {
+                        ui.set_sel_msg(m.clone());
+                        ui.set_menu_msg(m.id.clone());
+                    }
+                    ui.set_menu_x(40.0);
+                    ui.set_menu_y(260.0);
+                    ui.set_menu_conv(ui.get_current_conv());
+                    ui.set_menu_title(ui.get_current_title());
+                    ui.set_menu_kind(conv.into());
+                }
+                "deletedlg" => ui.set_delete_open(true),
                 "soundmenu" => {
                     ui.set_menu_x(40.0);
                     ui.set_menu_y(260.0);
@@ -1746,8 +1775,15 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                 }
             }
             if let Some(items) = (h2.take_picked)() {
-                let cur = sh.lock().unwrap().current.clone();
-                if ui.get_signed_in() && !cur.is_empty() && !items.is_empty() {
+                let (cur, avatar) = {
+                    let mut g = sh.lock().unwrap();
+                    (g.current.clone(), std::mem::take(&mut g.avatar_pick))
+                };
+                if avatar {
+                    if let Some((p, _)) = items.into_iter().next() {
+                        apply_avatar(&ui, &c, p);
+                    }
+                } else if ui.get_signed_in() && !cur.is_empty() && !items.is_empty() {
                     match c.send_files_with(&cur, "", &items, SendOptions::default()) {
                         Ok(_) => toast(&ui, &format!("Sending {} file{}...", items.len(), if items.len() == 1 { "" } else { "s" })),
                         Err(e) => toast(&ui, &e.to_string()),
@@ -2753,6 +2789,16 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
             let recents: Vec<RowItem> = sh.lock().unwrap().prefs.recent_searches.iter().map(|q| row(0, "", "", q.clone(), String::new(), String::new())).collect();
             ui.set_recents(model(recents));
             ui.set_saved(model(sh.lock().unwrap().prefs.saved_searches.iter().map(|q| row(0, "", "", q.clone(), String::new(), String::new())).collect()));
+            // The From and In filter menus list people and conversations (they were never filled before 1.3.0).
+            ui.set_filter_people(model(people_list(&c, "")));
+            let mut chans: Vec<RowItem> = c
+                .conversations()
+                .into_iter()
+                .filter(|x| !c.is_hidden(&x.conversation.id))
+                .map(|x| row(0, &x.conversation.id, "", c.conversation_title(&x), String::new(), String::new()))
+                .collect();
+            chans.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+            ui.set_filter_chans(model(chans));
             ui.set_ai_answer("".into());
             ui.set_ai_note("".into());
             ui.set_search_tab(0);
@@ -3290,15 +3336,27 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
         });
         let (wk, c) = (ui.as_weak(), client.clone());
         ui.on_set_avatar(move |path| {
-            let p = PathBuf::from(path.trim());
-            let (wk, c2) = (wk.clone(), c.clone());
-            c.handle().spawn(async move {
-                let ok = p.is_file() && c2.set_avatar(&p).await.is_ok();
-                let _ = slint::invoke_from_event_loop(move || {
-                    if let Some(ui) = wk.upgrade() {
-                        toast(&ui, if ok { "Profile photo updated." } else { "Could not set that photo." });
-                    }
-                });
+            if let Some(ui) = wk.upgrade() {
+                apply_avatar(&ui, &c, PathBuf::from(path.trim()));
+            }
+        });
+        let (wk, c, h2, sh2) = (ui.as_weak(), client.clone(), hooks.clone(), osh.clone());
+        ui.on_choose_avatar(move || {
+            if let Some(f) = &h2.pick_media {
+                sh2.lock().unwrap().avatar_pick = true;
+                f("image", c.server_meta().map(|m| m.max_upload_bytes).unwrap_or(100 * 1024 * 1024));
+                return;
+            }
+            let (wk, c) = (wk.clone(), c.clone());
+            std::thread::spawn(move || {
+                if let Some(p) = platform::pick_file() {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = wk.upgrade() {
+                            ui.set_avatar_path(p.display().to_string().into());
+                            apply_avatar(&ui, &c, p);
+                        }
+                    });
+                }
             });
         });
         let (wk, c) = (ui.as_weak(), client.clone());

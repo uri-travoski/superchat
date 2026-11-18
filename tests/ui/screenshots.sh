@@ -22,7 +22,7 @@ cleanup() {
   [ -n "${APP_PID:-}" ] && kill "$APP_PID" 2>/dev/null || true
   [ -n "${XVFB_PID:-}" ] && kill "$XVFB_PID" 2>/dev/null || true
   [ -n "${DBUS_PID:-}" ] && kill "$DBUS_PID" 2>/dev/null || true
-  sleep 1; rm -rf "$WORK"
+  [ -n "${KEEP_APP_LOG:-}" ] && cp "$WORK"/app-*.log "$KEEP_APP_LOG"/ 2>/dev/null; sleep 1; rm -rf "$WORK"
 }
 trap cleanup EXIT
 
@@ -84,6 +84,26 @@ VARIANTS=(
   "desk-1280-light-regular-menu-emoji|1280x800|light|100|chat:general||mousemove 440 763 click 1; mousemove 700 300"
   "desk-1280-light-regular-screenrec|1280x800|light|100|chat:general||mousemove 409 763 click 1; mousemove 492 633 click 1; mousemove 700 300; sleep 3"
   "desk-1280-light-regular-screenrecsent|1280x800|light|100|chat:general||mousemove 409 763 click 1; mousemove 492 633 click 1; sleep 4; mousemove 303 766 click 1; mousemove 800 400; sleep 6; click 5 click 5 click 5 click 5 click 5 click 5"
+  "desk-1280-light-regular-menu-overflow|1280x800|light|100|menukind:overflow:general"
+  "desk-1280-light-regular-menu-sort|1280x800|light|100|menukind:sort:general"
+  "desk-1280-light-regular-menu-mute|1280x800|light|100|menukind:mute:general"
+  "desk-1280-light-regular-menu-notify|1280x800|light|100|menukind:notify:general"
+  "desk-1280-light-regular-menu-secmenu|1280x800|light|100|menukind:secmenu:general"
+  "desk-1280-light-regular-menu-forward|1280x800|light|100|menukind:forward:general"
+  "desk-1280-light-regular-menu-share|1280x800|light|100|menukind:share:general"
+  "desk-1280-light-regular-menu-pick-theme|1280x800|light|100|menukind:pick-theme:general"
+  "desk-1280-light-regular-menu-pick-text|1280x800|light|100|menukind:pick-text:general"
+  "desk-1280-light-regular-menu-pick-spell|1280x800|light|100|menukind:pick-spell:general"
+  "desk-1280-light-regular-menu-pick-status|1280x800|light|100|menukind:pick-status:general"
+  "desk-1280-light-regular-menu-lock-pick|1280x800|light|100|menukind:lock-pick:general"
+  "desk-1280-light-regular-menu-search-f-from|1280x800|light|100|searchmenu:f-from"
+  "desk-1280-light-regular-menu-search-f-in|1280x800|light|100|searchmenu:f-in"
+  "desk-1280-light-regular-menu-search-f-date|1280x800|light|100|searchmenu:f-date"
+  "desk-1280-light-regular-delete-channel|1280x800|light|100|deletedlg:general"
+  "desk-1280-light-regular-manage|1280x800|light|100|details:settings:general"
+  "desk-1280-dark-regular-menu-attach|1280x800|dark|100|chat:general||mousemove 409 763 click 1; mousemove 700 300"
+  "desk-1280-dark-regular-menu-pick-theme|1280x800|dark|100|menukind:pick-theme:general"
+  "desk-1280-dark-large-menu-more|1280x800|dark|115|chat:general||mousemove 34 440 click 1"
   "desk-1280-light-regular-spellcheck|1280x800|light|100|spell:general"
   "desk-1280-light-regular-spellmenu|1280x800|light|100|spell:general||mousemove 735 732 click 3"
   "desk-1280-light-regular-media-cards|1280x800|light|100|chat:design"
@@ -153,8 +173,8 @@ for v in "${VARIANTS[@]}"; do
   [ "$open" = none ] || export ATOMIC_UI_OPEN="$open"
   "$ROOT/target/debug/superchat" >"$WORK/app-$n.log" 2>&1 &
   APP_PID=$!
-  for _ in $(seq 1 40); do xdotool search --name "SuperChat" >/dev/null 2>&1 && break; sleep 0.25; done
-  WID="$(xdotool search --onlyvisible --name "SuperChat" | tail -1)"; [ -n "$WID" ] || WID="$(xdotool search --name "SuperChat" | tail -1)"
+  for _ in $(seq 1 120); do xdotool search --onlyvisible --name "SuperChat" >/dev/null 2>&1 && break; sleep 0.25; done
+  WID="$(xdotool search --onlyvisible --name "SuperChat" | tail -1)"; [ -n "$WID" ] || WID="$(xdotool search --name "SuperChat" | tail -1 || true)"
   xdotool windowsize "$WID" "$W" "$H"; xdotool windowmove "$WID" 0 0
   sleep 3
   xdotool windowsize "$WID" "$W" "$H"; xdotool windowmove "$WID" 0 0

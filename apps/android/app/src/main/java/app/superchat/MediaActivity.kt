@@ -44,6 +44,7 @@ import java.util.UUID
  * M-31: everything that puts files into a message on Android.
  *  - mode "files": the system file picker (any type, several at once)
  *  - mode "gallery": the system photo picker (pictures and videos)
+ *  - mode "image": the system photo picker for one picture (profile photo)
  *  - mode "video": an in-app video recorder (CameraX). The server's upload limit is shown before recording starts, the
  *    size grows on screen while recording, and the clip stops by itself just under the limit.
  * Picked files are copied into the app's cache; for videos the duration, size and a poster frame are computed here and
@@ -64,6 +65,7 @@ class MediaActivity : ComponentActivity() {
     private lateinit var flipButton: Button
 
     private val pickFiles = registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris -> handlePicked(uris) }
+    private val pickOne = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> handlePicked(listOfNotNull(uri)) }
     private val pickGallery = registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(10)) { uris -> handlePicked(uris) }
     private val askCamera = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
         if (granted[Manifest.permission.CAMERA] == true) startCamera()
@@ -76,6 +78,7 @@ class MediaActivity : ComponentActivity() {
         cleanOld()
         when (intent.getStringExtra("mode")) {
             "files" -> { setContentView(FrameLayout(this)); pickFiles.launch("*/*") }
+            "image" -> { setContentView(FrameLayout(this)); pickOne.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
             "gallery" -> { setContentView(FrameLayout(this)); pickGallery.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) }
             "video" -> {
                 buildRecorderUi()

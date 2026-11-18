@@ -316,6 +316,7 @@ export component AppWindow inherits Window {
     callback set-presence(string);
     callback save-profile(string);
     callback set-avatar(string);
+    callback choose-avatar();
     callback revoke-session(string);
     callback revoke-others();
     callback nav-back();
@@ -1502,8 +1503,12 @@ export component AppWindow inherits Window {
                                                 LineEdit { text <=> root.edit-name; placeholder-text: "Display name"; font-size: Theme.fs; accessible-label: "Display name"; }
                                                 HorizontalLayout { alignment: end; PrimaryButton { text: "Save"; clicked => { root.save-profile(root.edit-name); } } }
                                                 Text { text: "Profile photo"; font-size: Theme.fs-small; color: Theme.muted; font-weight: 700; }
-                                                LineEdit { text <=> root.avatar-path; placeholder-text: "Path of a profile photo (png or jpg)"; font-size: Theme.fs; accessible-label: "Profile photo path"; }
-                                                HorizontalLayout { alignment: end; GhostButton { text: "Set photo"; clicked => { root.set-avatar(root.avatar-path); } } }
+                                                if !root.is-android: LineEdit { text <=> root.avatar-path; placeholder-text: "Path of a profile photo (png or jpg)"; font-size: Theme.fs; accessible-label: "Profile photo path"; }
+                                                HorizontalLayout {
+                                                    alignment: end; spacing: 8px;
+                                                    GhostButton { text: "Choose photo"; clicked => { root.choose-avatar(); } }
+                                                    if !root.is-android: GhostButton { text: "Set photo"; clicked => { root.set-avatar(root.avatar-path); } }
+                                                }
                                             }
                                         }
                                         if root.settings-page == "account": Card {
@@ -1679,7 +1684,7 @@ export component AppWindow inherits Window {
                                             SettingRow { icon: "info"; badge: #475569; title: "Version"; summary: root.version; chevron: false; }
                                             SettingRow { icon: "globe"; badge: #0d9488; title: "Server"; summary: root.server-text; chevron: false; divider: false; }
                                         }
-                                        if root.settings-page == "about": Text { text: "Built with Slint (slint.dev). Colour emoji by Noto Color Emoji. SuperChat is open source software; its licences ship with the app and the source repository."; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
+                                        if root.settings-page == "about": Text { text: "Built with Slint (slint.dev). Typeface: Inter (SIL OFL 1.1). Colour emoji: Noto Color Emoji (SIL OFL 1.1). Spelling: en_AU Hunspell dictionary. SuperChat is open source software; LICENSE and THIRD-PARTY-NOTICES.txt ship with the desktop installers (Linux: /usr/share/doc/superchat) and the source repository."; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
                                     }
                                 }
                             }
@@ -1716,7 +1721,7 @@ export component AppWindow inherits Window {
                         TouchArea { }
                         VerticalLayout {
                             AppBar {
-                                title: root.info-page == "" ? "Details" : (root.info-page == "about" ? "About" : (root.info-page == "members" ? "Members" : (root.info-page == "files" ? "Files" : (root.info-page == "pins" ? "Pins" : (root.info-page == "bookmarks" ? "Bookmarks" : "Home")))));
+                                title: root.info-page == "" ? "Details" : (root.info-page == "about" ? "About" : (root.info-page == "members" ? "Members" : (root.info-page == "files" ? "Files" : (root.info-page == "pins" ? "Pins" : (root.info-page == "bookmarks" ? "Bookmarks" : (root.info-page == "settings" ? "Manage" : "Home"))))));
                                 subtitle: root.current-title;
                                 back => { root.back-pressed(); }
                             }
@@ -1741,7 +1746,8 @@ export component AppWindow inherits Window {
                                         if root.can-manage: SettingRow { icon: "user-plus"; badge: #0dbd8b; title: "Add people"; clicked => { root.add-people(); } }
                                         SettingRow { icon: "file"; badge: #0d9488; title: "Files"; clicked => { root.open-details("files"); } }
                                         SettingRow { icon: "pin"; badge: #e8590c; title: "Pins"; clicked => { root.open-details("pins"); } }
-                                        SettingRow { icon: "bookmark"; badge: #8b5cf6; title: "Bookmarks"; clicked => { root.open-details("bookmarks"); } divider: root.is-bot-dm; }
+                                        SettingRow { icon: "bookmark"; badge: #8b5cf6; title: "Bookmarks"; clicked => { root.open-details("bookmarks"); } divider: root.is-bot-dm || (root.can-manage && root.current-kind != "dm" && root.current-kind != "self"); }
+                                        if root.can-manage && root.current-kind != "dm" && root.current-kind != "self": SettingRow { icon: "settings"; badge: #64748b; title: "Manage"; summary: "Rename, archive, delete"; clicked => { root.open-details("settings"); } divider: false; }
                                         if root.is-bot-dm: SettingRow { icon: "home"; badge: #f59e0b; title: "Home"; clicked => { root.open-details("home"); } divider: false; }
                                     }
                                     Card {
@@ -2086,7 +2092,7 @@ export component AppWindow inherits Window {
 
                 // ---- message actions: quick reactions on top ----
                 if root.menu-kind == "msg": BottomSheet {
-                    wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y; menu-width: 300px;
+                    wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y; menu-width: 350px;
                     dismiss => { root.menu-kind = ""; }
                     Rectangle {
                         height: 60px;
@@ -2272,7 +2278,7 @@ export component AppWindow inherits Window {
                         Text { text: f.label + (f.required ? " *" : ""); font-size: Theme.fs; font-weight: 700; wrap: word-wrap; color: Theme.text; }
                         if f.kind == 0: LineEdit { text: f.text; placeholder-text: f.placeholder; font-size: Theme.fs; accessible-label: f.label; edited(t) => { root.form-text(i, t); } }
                         if f.kind == 1: TextEdit { text: f.text; height: 90px * Theme.scale; font-size: Theme.fs; accessible-label: f.label; edited(t) => { root.form-text(i, t); } }
-                        if f.kind == 2: SettingRow { icon: "check"; title: f.placeholder != "" ? f.placeholder : "Yes"; has-switch: true; on: f.flag; divider: false; toggled => { root.form-toggle(i, ""); } }
+                        if f.kind == 2: SettingRow { icon: "settings"; badge: #64748b; title: f.placeholder != "" ? f.placeholder : "Yes"; has-switch: true; on: f.flag; divider: false; toggled => { root.form-toggle(i, ""); } }
                         if f.kind >= 3: VerticalLayout {
                             for o in f.options: Rectangle {
                                 height: max(48px, 38px * Theme.scale);

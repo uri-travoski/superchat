@@ -59,4 +59,6 @@ assets = [
   ["../../packaging/linux/superchat.desktop", "usr/share/applications/", "644"],
   ["../../assets/icon/superchat-256.png", "usr/share/icons/hicolor/256x256/apps/superchat.png", "644"],
   ["../../assets/icon/superchat-48.png", "usr/share/icons/hicolor/48x48/apps/superchat.png", "644"],
+  ["../../LICENSE", "usr/share/doc/superchat/LICENSE", "644"],
+  ["../../THIRD-PARTY-NOTICES.txt", "usr/share/doc/superchat/THIRD-PARTY-NOTICES.txt", "644"],
 ]

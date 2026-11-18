@@ -13,6 +13,8 @@ cp packaging/linux/superchat.desktop "$APPDIR/"
 cp packaging/linux/superchat.desktop "$APPDIR/usr/share/applications/"
 cp assets/icon/superchat-256.png "$APPDIR/superchat.png"
 cp assets/icon/superchat-256.png "$APPDIR/usr/share/icons/hicolor/256x256/apps/superchat.png"
+mkdir -p "$APPDIR/usr/share/doc/superchat"
+cp LICENSE THIRD-PARTY-NOTICES.txt "$APPDIR/usr/share/doc/superchat/"
 ln -s usr/bin/superchat "$APPDIR/AppRun"
 TOOLS=packaging/.tools
 mkdir -p "$TOOLS" dist

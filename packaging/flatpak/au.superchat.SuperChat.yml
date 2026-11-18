@@ -21,6 +21,8 @@ modules:
       - install -Dm755 superchat /app/bin/superchat
       - install -Dm644 superchat.desktop /app/share/applications/au.superchat.SuperChat.desktop
       - install -Dm644 superchat-256.png /app/share/icons/hicolor/256x256/apps/au.superchat.SuperChat.png
+      - install -Dm644 LICENSE /app/share/licenses/au.superchat.SuperChat/LICENSE
+      - install -Dm644 THIRD-PARTY-NOTICES.txt /app/share/licenses/au.superchat.SuperChat/THIRD-PARTY-NOTICES.txt
       - sed -i 's/^Icon=.*/Icon=au.superchat.SuperChat/' /app/share/applications/au.superchat.SuperChat.desktop
     sources:
       - type: file
@@ -29,3 +31,7 @@ modules:
         path: ../linux/superchat.desktop
       - type: file
         path: ../../assets/icon/superchat-256.png
+      - type: file
+        path: ../../LICENSE
+      - type: file
+        path: ../../THIRD-PARTY-NOTICES.txt

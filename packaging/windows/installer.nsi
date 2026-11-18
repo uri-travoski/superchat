@@ -1,4 +1,4 @@
-; NSIS installer for SuperChat. Build:  makensis /DVERSION=1.2.0 packaging/windows/installer.nsi  (run from the repo root)
+; NSIS installer for SuperChat. Build:  makensis /DVERSION=1.3.0 packaging/windows/installer.nsi  (run from the repo root)
 !include "MUI2.nsh"
 Name "SuperChat"
 OutFile "..\..\dist\superchat-${VERSION}-x64-setup.exe"
@@ -17,6 +17,8 @@ Section "Install"
   File "..\..\dist\superchat-${VERSION}-x64-portable.exe"
   Rename "$INSTDIR\superchat-${VERSION}-x64-portable.exe" "$INSTDIR\superchat.exe"
   File "..\..\assets\icon\superchat.ico"
+  File "..\..\LICENSE"
+  File "..\..\THIRD-PARTY-NOTICES.txt"
   WriteUninstaller "$INSTDIR\uninstall.exe"
   CreateShortcut "$SMPROGRAMS\SuperChat.lnk" "$INSTDIR\superchat.exe" "" "$INSTDIR\superchat.ico"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\SuperChat" "DisplayName" "SuperChat"
@@ -33,6 +35,8 @@ SectionEnd
 Section "Uninstall"
   Delete "$INSTDIR\superchat.exe"
   Delete "$INSTDIR\superchat.ico"
+  Delete "$INSTDIR\LICENSE"
+  Delete "$INSTDIR\THIRD-PARTY-NOTICES.txt"
   Delete "$INSTDIR\uninstall.exe"
   Delete "$SMPROGRAMS\SuperChat.lnk"
   RMDir "$INSTDIR"

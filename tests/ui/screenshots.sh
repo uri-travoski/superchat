@@ -72,7 +72,10 @@ VARIANTS=(
   "desk-1280-light-regular-message-menu|1280x800|light|100|menu:general"
   "desk-1280-light-regular-help|1280x800|light|100|help:general"
   "desk-1280-light-regular-files-tab|1280x800|light|100|files:design"
-  "desk-1280-light-regular-more|1280x800|light|100|tab:you"
+  "desk-1280-light-regular-menu-server|1280x800|light|100|chat:general||mousemove 150 72 click 1"
+  "desk-1280-light-regular-menu-more|1280x800|light|100|chat:general||mousemove 34 392 click 1"
+  "desk-1280-light-regular-menu-avatar|1280x800|light|100|chat:general||mousemove 34 760 click 1"
+  "desk-1280-light-regular-later-empty|1280x800|light|100|tab:later"
   # ---- desktop 1000x700 ----
   "desk-1000-light-regular-home|1000x700|light|100|chat:general"
   "desk-1000-dark-regular-home|1000x700|dark|100|chat:general"
@@ -139,11 +142,18 @@ for v in "${VARIANTS[@]}"; do
   "$ROOT/target/debug/superchat" >"$WORK/app-$n.log" 2>&1 &
   APP_PID=$!
   for _ in $(seq 1 40); do xdotool search --name "SuperChat" >/dev/null 2>&1 && break; sleep 0.25; done
-  WID="$(xdotool search --name "SuperChat" | head -1)"
+  WID="$(xdotool search --onlyvisible --name "SuperChat" | tail -1)"; [ -n "$WID" ] || WID="$(xdotool search --name "SuperChat" | tail -1)"
   xdotool windowsize "$WID" "$W" "$H"; xdotool windowmove "$WID" 0 0
   sleep 3
   xdotool windowsize "$WID" "$W" "$H"; xdotool windowmove "$WID" 0 0
-  sleep 4
+  # The window manager-less Xvfb sometimes ignores the first resize: retry until the geometry matches.
+  for _ in $(seq 1 10); do
+    GEO="$(xdotool getwindowgeometry "$WID" | awk '/Geometry/{print $2}')"
+    [ -n "${KEEP_LOG:-}" ] && echo "geo=$GEO want=${W}x${H} wins=$(xdotool search --name SuperChat | tr '\n' ' ')"
+    [ "$GEO" = "${W}x${H}" ] && break
+    xdotool windowsize "$WID" "$W" "$H"; xdotool windowmove "$WID" 0 0; sleep 1
+  done
+  sleep 3
   # Optional pointer / keyboard steps (xdotool commands separated by ';') before the shot, e.g. hover a message.
   if [ -n "${acts:-}" ]; then
     IFS=';' read -ra STEPS <<<"$acts"

@@ -324,6 +324,10 @@ pub fn person(u: &proto::types::User) -> PersonItem {
     PersonItem { id: u.id.clone().into(), name: u.display_name.clone().into(), initials: initials::initials(&u.display_name).into(), color: color_of(&u.id), sub: format!("@{}", u.username).into(), sel: false, tag: SharedString::new() }
 }
 
+pub fn person_blank() -> PersonItem {
+    PersonItem { id: SharedString::new(), name: SharedString::new(), initials: SharedString::new(), color: slint::Color::from_rgb_u8(0, 0, 0), sub: SharedString::new(), sel: false, tag: SharedString::new() }
+}
+
 pub fn row(kind: i32, id: &str, conv: &str, title: String, text: String, sub: String) -> RowItem {
     RowItem {
         kind,
@@ -448,18 +452,28 @@ pub struct SideOpts<'a> {
 pub fn side_rows(c: &Client, o: &SideOpts, v: &View) -> Vec<SideRow> {
     let me = c.my_id().unwrap_or_default();
     let mut out = vec![];
+    // Shortcuts: Threads, Drafts & sent and Later, a collapsible section like the others. When collapsed, a link with
+    // something new (unread threads) stays visible so nothing important hides.
+    let short_collapsed = o.collapsed.iter().any(|x| x == "sec:shortcuts");
     let mut threads = blank_row(2, "threads", "Threads");
     threads.icon = "thread".into();
     threads.unread = c.thread_unread_total() as i32;
-    out.push(threads);
     let mut drafts = blank_row(2, "drafts", "Drafts & sent");
     drafts.icon = "edit".into();
     drafts.count = (o.drafts + c.scheduled_pending(None).len()) as i32;
-    out.push(drafts);
     let mut later = blank_row(2, "later", "Later");
     later.icon = "bookmark".into();
     later.count = c.saved_items().len() as i32;
-    out.push(later);
+    let mut head = blank_row(0, "sec:shortcuts", "Shortcuts");
+    head.collapsed = short_collapsed;
+    head.unread = threads.unread;
+    out.push(head);
+    for r in [threads, drafts, later] {
+        if short_collapsed && r.unread == 0 {
+            continue;
+        }
+        out.push(r);
+    }
 
     let list = c.sorted_conversations(o.sort_alpha, o.unread_only, o.hide_muted);
     let sections = c.sections();

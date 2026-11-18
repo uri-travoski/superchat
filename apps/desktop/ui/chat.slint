@@ -183,7 +183,7 @@ export component MessageRow inherits Rectangle {
                     horizontal-stretch: 1;
                     if !m.grouped: HorizontalLayout {
                         spacing: 8px;
-                        Text { text: m.sender; font-size: Theme.fs; font-weight: 800; color: Theme.text; }
+                        Text { text: m.sender; font-size: Theme.fs; font-weight: 700; color: Theme.text; }
                         if m.is-app: Rectangle {
                             width: apptag.preferred-width + 10px;
                             height: apptag.preferred-height + 2px;
@@ -192,7 +192,7 @@ export component MessageRow inherits Rectangle {
                             background: Theme.accent.with-alpha(0.22);
                             accessible-role: text;
                             accessible-label: "App";
-                            apptag := Text { text: "APP"; font-size: Theme.fs-small * 0.8; font-weight: 800; color: Theme.accent-text; horizontal-alignment: center; vertical-alignment: center; }
+                            apptag := Text { text: "APP"; font-size: Theme.fs-small * 0.8; font-weight: 700; color: Theme.accent-text; horizontal-alignment: center; vertical-alignment: center; }
                         }
                         Text {
                             text: m.time + (m.state == 1 ? "  sending..." : "") + (m.state == 2 ? "  not sent" : "") + (m.state == 3 ? "  \u{2713}" : "");

@@ -98,6 +98,23 @@ impl Prefs {
         dir.join("prefs.json")
     }
 
+    /// Sidebar sections the given account collapsed. Keys are stored per account as `<account>|<key>`
+    /// (the account id is unique per server and user); keys without a prefix are 1.2 leftovers and apply to everyone.
+    pub fn collapsed_for(&self, account: &str) -> Vec<String> {
+        let pre = format!("{account}|");
+        self.collapsed_sections.iter().filter_map(|k| if let Some(r) = k.strip_prefix(&pre) { Some(r.to_string()) } else if !k.contains('|') { Some(k.clone()) } else { None }).collect()
+    }
+
+    /// Flips one section key for one account and persists nothing itself (the caller saves).
+    pub fn toggle_collapsed(&mut self, account: &str, key: &str) {
+        let now = self.collapsed_for(account).iter().any(|k| k == key);
+        let scoped = format!("{account}|{key}");
+        self.collapsed_sections.retain(|k| *k != scoped && k != key);
+        if !now {
+            self.collapsed_sections.push(scoped);
+        }
+    }
+
     /// SR-06: remembers a search (newest first, no duplicates, at most 10).
     pub fn remember_search(&mut self, q: &str) {
         let q = q.trim();
@@ -125,6 +142,26 @@ mod tests {
         assert_eq!(p.text_scale(1.5), 2.0);
         let p = Prefs::default();
         assert!((p.text_scale(1.0) - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn collapsed_sections_are_per_account_and_survive_a_reload() {
+        let d = tempfile::tempdir().unwrap();
+        let mut p = Prefs::default();
+        p.toggle_collapsed("u1", "sec:shortcuts");
+        p.toggle_collapsed("u2", "sec:channels");
+        p.save(d.path());
+        let p = Prefs::load(d.path());
+        assert_eq!(p.collapsed_for("u1"), vec!["sec:shortcuts".to_string()]);
+        assert_eq!(p.collapsed_for("u2"), vec!["sec:channels".to_string()]);
+        let mut p = p;
+        p.toggle_collapsed("u1", "sec:shortcuts");
+        assert!(p.collapsed_for("u1").is_empty());
+        // A 1.2 key without an account prefix still applies, and toggling it replaces it with a scoped key.
+        let mut p = Prefs { collapsed_sections: vec!["sec:dms".into()], ..Default::default() };
+        assert_eq!(p.collapsed_for("u1"), vec!["sec:dms".to_string()]);
+        p.toggle_collapsed("u1", "sec:dms");
+        assert!(p.collapsed_for("u1").is_empty());
     }
 
     #[test]

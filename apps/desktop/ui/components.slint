@@ -253,19 +253,19 @@ export component SheetRow {
     in property <bool> chevron: false;
     in property <bool> enabled: true;
     callback clicked;
-    height: max(48px, 40px * Theme.scale);
+    height: Theme.wide ? max(38px, 32px * Theme.scale) : max(48px, 40px * Theme.scale);
     accessible-role: button;
     accessible-label: root.text;
     Rectangle {
         background: ta.pressed ? Theme.bubble-other : (ta.has-hover ? Theme.bubble-other.with-alpha(0.5) : transparent);
         HorizontalLayout {
-            padding-left: 20px;
-            padding-right: 20px;
-            spacing: 16px;
-            if root.icon != "": Icon { name: root.icon; tint: root.danger ? Theme.danger : Theme.icon; y: (parent.height - self.height) / 2; }
-            Text { text: root.text; font-size: Theme.fs; color: !root.enabled ? Theme.muted : (root.danger ? Theme.danger : Theme.text); vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
-            if root.detail != "": Text { text: root.detail; font-size: Theme.fs-small; color: Theme.muted; vertical-alignment: center; }
-            if root.checked: Icon { name: "check"; tint: Theme.accent-text; y: (parent.height - self.height) / 2; }
+            padding-left: Theme.wide ? 14px : 20px;
+            padding-right: Theme.wide ? 14px : 20px;
+            spacing: Theme.wide ? 12px : 16px;
+            if root.icon != "": Icon { name: root.icon; size: Theme.wide ? 20px : 24px; tint: root.danger ? Theme.danger : Theme.icon; y: (parent.height - self.height) / 2; }
+            Text { text: root.text; font-size: Theme.fs; color: !root.enabled ? Theme.muted : (root.danger ? Theme.danger : Theme.text); vertical-alignment: center; horizontal-stretch: 1; min-width: 40px; overflow: elide; }
+            if root.detail != "": Text { text: root.detail; font-size: Theme.fs-small; color: Theme.muted; vertical-alignment: center; overflow: elide; max-width: 110px * Theme.scale; }
+            if root.checked: Icon { name: "check"; size: Theme.wide ? 18px : 24px; tint: Theme.accent-text; y: (parent.height - self.height) / 2; }
             if root.chevron: Icon { name: "chevron-right"; tint: Theme.icon-soft; size: 20px; y: (parent.height - self.height) / 2; }
         }
         ta := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
@@ -358,20 +358,24 @@ export component BottomSheet inherits Rectangle {
     in property <length> inset-bottom: 0px;
     in property <length> anchor-x: -1px;
     in property <length> anchor-y: -1px;
-    in property <length> menu-width: 280px;
+    in property <length> menu-width: 300px;
+    // Open upwards: anchor-y is the bottom edge of the card (menus opened from the bottom of the window).
+    in property <bool> anchor-up: false;
     callback dismiss;
     property <bool> shown: false;
     property <length> drag: 0px;
     property <length> max-h: root.height * 0.94;
+    // Menus size to their content: a width that grows with the text size, never wider than the window.
+    property <length> menu-w: min(root.width - 16px, root.menu-width * max(1.0, Theme.scale * 0.95));
     init => { root.shown = true; }
     background: Theme.scrim.with-alpha(root.shown ? 0.5 : 0.0);
     animate background { duration: Theme.reduce-motion ? 0ms : 180ms; }
     TouchArea { clicked => { root.dismiss(); } }
     card := Rectangle {
-        width: root.wide ? (root.menu ? root.menu-width : 400px) : root.width;
-        height: min(root.max-h, (root.wide ? 8px : 28px) + ttl.preferred-height + body.content-height + root.inset-bottom + (root.wide ? 8px : 24px));
-        x: root.wide ? (root.menu ? (root.anchor-x >= 0px ? min(max(8px, root.anchor-x), root.width - self.width - 8px) : root.width - self.width - 12px) : (root.width - self.width) / 2) : 0px;
-        y: root.wide ? (root.menu ? (root.anchor-y >= 0px ? max(8px, min(root.anchor-y, root.height - self.height - 8px)) : 8px) : max(12px, (root.height - self.height) / 2)) : (root.shown ? root.height - self.height + root.drag : root.height);
+        width: root.wide ? (root.menu ? root.menu-w : min(root.width - 16px, 400px * max(1.0, Theme.scale * 0.95))) : root.width;
+        height: min(root.max-h, (root.wide ? 12px : 28px) + ttl.height + body.content-height + root.inset-bottom + (root.wide ? 8px : 24px));
+        x: root.wide ? (root.menu ? (root.anchor-x >= 0px ? max(8px, min(root.anchor-x, root.width - self.width - 8px)) : root.width - self.width - 12px) : (root.width - self.width) / 2) : 0px;
+        y: root.wide ? (root.menu ? (root.anchor-y >= 0px ? max(8px, min(root.anchor-up ? root.anchor-y - self.height : root.anchor-y, root.height - self.height - 8px)) : 8px) : max(12px, (root.height - self.height) / 2)) : (root.shown ? root.height - self.height + root.drag : root.height);
         background: Theme.sheet-bg;
         border-top-left-radius: Theme.r-sheet;
         border-top-right-radius: Theme.r-sheet;
@@ -384,7 +388,7 @@ export component BottomSheet inherits Rectangle {
         // Drag handle + title: swipe down here to dismiss.
         VerticalLayout {
             Rectangle {
-                height: root.wide ? 8px : 28px;
+                height: root.wide ? 6px : 28px;
                 if !root.wide: Rectangle { width: 36px; height: 4px; border-radius: 2px; background: Theme.icon-soft.with-alpha(0.6); y: 10px; x: (parent.width - self.width) / 2; }
                 TouchArea {
                     moved => { if !root.wide { root.drag = max(0px, self.mouse-y - self.pressed-y); } }
@@ -398,7 +402,7 @@ export component BottomSheet inherits Rectangle {
                 if root.title != "": Text { x: 20px; text: root.title; font-size: Theme.fs-small * 1.05; font-weight: 700; color: Theme.muted; vertical-alignment: center; overflow: elide; width: parent.width - 40px; }
             }
             body := Flickable {
-                height: min(self.content-height, root.max-h - (root.wide ? 8px : 28px) - ttl.height - root.inset-bottom - (root.wide ? 8px : 24px));
+                height: min(self.content-height, root.max-h - (root.wide ? 12px : 28px) - ttl.height - root.inset-bottom - (root.wide ? 8px : 24px));
                 content-height: inner.preferred-height;
                 inner := VerticalLayout {
                     alignment: start;

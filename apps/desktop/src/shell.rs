@@ -16,7 +16,7 @@ pub fn refresh_shell(ui: &AppWindow, c: &Client, g: &St) {
         sort_alpha: g.prefs.sort == "alpha",
         unread_only: g.prefs.unread_only,
         hide_muted: g.prefs.hide_muted,
-        collapsed: &g.prefs.collapsed_sections,
+        collapsed: &g.prefs.collapsed_for(&c.my_id().unwrap_or_default()),
         drafts: c.all_drafts().iter().filter(|d| !d.body.trim().is_empty() && d.thread_root.is_none()).count(),
     };
     ui.set_side_rows(model(side_rows(c, &opts, &v)));
@@ -109,6 +109,30 @@ fn fill_picker(ui: &AppWindow, c: &Client, sh: &Sh) {
         let g = sh.lock().unwrap();
         (ui.get_pp_mode().to_string(), ui.get_pp_text().to_string(), g.pp_sel.clone(), g.current.clone())
     };
+    if mode == "channels" {
+        // Channel browser: the channels you belong to (channels are private to their members).
+        let ql = q.trim().to_lowercase();
+        let mut list: Vec<crate::PersonItem> = c
+            .conversations()
+            .into_iter()
+            .filter(|cs| cs.conversation.kind == ConversationKind::Channel && !cs.conversation.archived)
+            .filter(|cs| ql.is_empty() || c.conversation_title(cs).to_lowercase().contains(&ql))
+            .map(|cs| {
+                let mut p = model::person_blank();
+                p.id = cs.conversation.id.clone().into();
+                p.name = format!("# {}", c.conversation_title(&cs)).into();
+                p.initials = "#".into();
+                p.color = model::color_of(&cs.conversation.id);
+                p.sub = format!("{} member{}", cs.conversation.members.len(), if cs.conversation.members.len() == 1 { "" } else { "s" }).into();
+                p.tag = if cs.unread > 0 { format!("{} unread", cs.unread).into() } else { Default::default() };
+                p
+            })
+            .collect();
+        list.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        ui.set_pp_count(0);
+        ui.set_pp_list(model(list));
+        return;
+    }
     let existing: Vec<String> = if mode == "add-people" {
         c.conversations().into_iter().find(|x| x.conversation.id == cur).map(|cs| cs.conversation.members.iter().map(|m| m.user_id.clone()).collect()).unwrap_or_default()
     } else {
@@ -167,7 +191,7 @@ pub fn install(ui: &AppWindow, client: &Client, sh: &Sh) {
         let (wk, c, sh2) = (ui.as_weak(), client.clone(), sh.clone());
         ui.on_side_toggle(move |id| {
             let Some(ui) = wk.upgrade() else { return };
-            if let Some(sid) = id.strip_prefix("sec:").filter(|s| !matches!(*s, "fav" | "channels" | "dms")) {
+            if let Some(sid) = id.strip_prefix("sec:").filter(|s| !matches!(*s, "fav" | "channels" | "dms" | "shortcuts" | "archived")) {
                 let collapsed = c.sections().into_iter().find(|s| s.id == sid).map(|s| s.collapsed).unwrap_or(false);
                 let (c2, sid) = (c.clone(), sid.to_string());
                 c.handle().spawn(async move {
@@ -176,12 +200,7 @@ pub fn install(ui: &AppWindow, client: &Client, sh: &Sh) {
                 return;
             }
             let mut g = sh2.lock().unwrap();
-            let key = id.to_string();
-            if let Some(p) = g.prefs.collapsed_sections.iter().position(|k| *k == key) {
-                g.prefs.collapsed_sections.remove(p);
-            } else {
-                g.prefs.collapsed_sections.push(key);
-            }
+            g.prefs.toggle_collapsed(&c.my_id().unwrap_or_default(), id.as_str());
             save_prefs(&g);
             drop(g);
             refresh(&ui, &c, &sh2);
@@ -399,10 +418,19 @@ pub fn install(ui: &AppWindow, client: &Client, sh: &Sh) {
         let (wk, c, sh2) = (ui.as_weak(), client.clone(), sh.clone());
         ui.on_pp_toggle(move |id| {
             let Some(ui) = wk.upgrade() else { return };
-            if ui.get_pp_mode().as_str() == "new-message" {
-                ui.set_pp_open(false);
-                ui.invoke_start_dm(id);
-                return;
+            match ui.get_pp_mode().as_str() {
+                "new-message" | "directory" => {
+                    ui.set_pp_open(false);
+                    ui.invoke_start_dm(id);
+                    return;
+                }
+                "channels" => {
+                    ui.set_pp_open(false);
+                    select_conv(&ui, &c, &sh2, &id, true);
+                    ui.set_show_chat(true);
+                    return;
+                }
+                _ => {}
             }
             {
                 let mut g = sh2.lock().unwrap();

@@ -1,3 +1,9 @@
+// Inter (SIL OFL 1.1, see fonts/Inter-OFL.txt) is bundled so every platform renders the same without a system install.
+import "fonts/Inter-Regular.ttf";
+import "fonts/Inter-Medium.ttf";
+import "fonts/Inter-SemiBold.ttf";
+import "fonts/Inter-Bold.ttf";
+import "fonts/Inter-Italic.ttf";
 import { LineEdit, ListView, ScrollView, Palette, TextEdit } from "std-widgets.slint";
 import { Theme, ConvItem, MsgItem, PersonItem, RowItem, BookmarkItem, BlockItem, FileItem, ReactItem, EmojiItem, FormFieldItem, FormOptionItem, FormButtonItem, SideRow, LabelItem, SavedRow, ActivityRow } from "theme.slint";
 import { Avatar, Icon, IconButton, Fab, AppBar, BottomSheet, ModalCard, AlertDialog, SheetRow, SettingRow, Card, TextButton, Toggle, Link, Pill, PrimaryButton, GhostButton, SectionHeader, ToolButton, LabelChip, EmptyState, TabBar, CountBadge, MenuRow, MenuDivider } from "components.slint";
@@ -15,6 +21,7 @@ export component AppWindow inherits Window {
     min-height: 480px;
     background: Theme.bg;
     default-font-size: Theme.fs;
+    default-font-family: "Inter";
 
     // ---- session ----
     in-out property <bool> signed-in: false;
@@ -296,6 +303,7 @@ export component AppWindow inherits Window {
     in-out property <int> presence-i: 1;
     in-out property <length> thread-w: 380px;
     in-out property <length> menu-x: -1px;
+    in-out property <bool> menu-up: false;
     in-out property <length> menu-y: -1px;
     out property <length> rail-w: self.wide ? 68px * max(1.0, Theme.scale * 0.9) : 0px;
     out property <length> top-h: self.wide ? max(44px, 36px * Theme.scale) : 0px;
@@ -431,6 +439,12 @@ export component AppWindow inherits Window {
         root.pp-open-for("new-message");
         root.pp-open = true;
     }
+    public function open-directory(kind: string) {
+        root.pp-mode = kind;
+        root.pp-text = "";
+        root.pp-open-for(kind);
+        root.pp-open = true;
+    }
     public function add-people() {
         root.pp-mode = "add-people";
         root.pp-text = "";
@@ -452,6 +466,8 @@ export component AppWindow inherits Window {
         if !root.wide { root.show-chat = false; }
     }
 
+    init => { Theme.wide = root.wide; }
+    changed wide => { Theme.wide = root.wide; }
     changed theme-mode => {
         Palette.color-scheme = root.theme-mode == 1 ? ColorScheme.light : (root.theme-mode == 2 ? ColorScheme.dark : ColorScheme.unknown);
     }
@@ -459,7 +475,7 @@ export component AppWindow inherits Window {
         if root.list-y > -30px && root.has-more-older && root.tab == 0 { root.load-older(); }
     }
     changed menu-kind => {
-        if root.menu-kind == "" { root.menu-x = -1px; root.menu-y = -1px; }
+        if root.menu-kind == "" { root.menu-x = -1px; root.menu-y = -1px; root.menu-up = false; }
     }
 
     FocusScope {
@@ -503,7 +519,7 @@ export component AppWindow inherits Window {
                                         Icon { name: "thread"; size: 34px; tint: Theme.on-accent; weight: 2px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
                                     }
                                 }
-                                Text { text: "SuperChat"; font-size: Theme.fs-large * 1.2; font-weight: 800; horizontal-alignment: center; color: Theme.text; }
+                                Text { text: "SuperChat"; font-size: Theme.fs-large * 1.2; font-weight: 700; horizontal-alignment: center; color: Theme.text; }
                                 Text { text: "Sign in to your team's server"; color: Theme.muted; font-size: Theme.fs; horizontal-alignment: center; }
                                 server-edit := LineEdit { text <=> root.f-server; placeholder-text: "Server address (https://chat.example.com)"; font-size: Theme.fs; accessible-label: "Server address"; edited(t) => { root.server-edited(t); } }
                                 HorizontalLayout {
@@ -573,8 +589,10 @@ export component AppWindow inherits Window {
                             me-color: root.me-color;
                             presence: root.presence-i;
                             picked(t) => { root.go-home-tab(t); }
-                            server-clicked => { root.menu-x = root.rail-w + 4px; root.menu-y = root.top-h + 6px; root.menu-kind = "server"; }
-                            profile-clicked => { root.menu-x = 8px; root.menu-y = root.height - 330px; root.menu-kind = "profile"; }
+                            more-open: root.menu-kind == "more";
+                            server-clicked => { root.menu-up = false; root.menu-x = root.rail-w + 4px; root.menu-y = root.top-h + 6px; root.menu-kind = "server"; }
+                            more-clicked(x, y) => { root.menu-up = false; root.menu-x = x + 4px; root.menu-y = y - 8px; root.menu-kind = "more"; }
+                            profile-clicked(x, y) => { root.menu-up = true; root.menu-x = x + 4px; root.menu-y = y; root.menu-kind = "profile"; }
                         }
 
                         // ---- list column: sidebar, DMs, Activity, Later, You ----
@@ -590,8 +608,8 @@ export component AppWindow inherits Window {
                                         padding-right: 6px;
                                         spacing: 10px;
                                         if !root.wide: Rectangle {
-                                            width: 38px * Theme.scale; height: self.width; y: (parent.height - self.height) / 2; border-radius: 10px; background: Theme.accent;
-                                            Text { text: root.server-initials; color: Theme.on-accent; font-weight: 800; font-size: Theme.fs; horizontal-alignment: center; vertical-alignment: center; }
+                                            width: min(34px * Theme.scale, 44px); height: self.width; y: (parent.height - self.height) / 2; border-radius: 7px; background: Theme.accent;
+                                            Text { text: root.server-initials; color: Theme.on-accent; font-weight: 700; font-size: Theme.fs * 0.9; horizontal-alignment: center; vertical-alignment: center; }
                                         }
                                         Rectangle {
                                             horizontal-stretch: 1;
@@ -599,11 +617,11 @@ export component AppWindow inherits Window {
                                             accessible-label: root.server-name + " menu";
                                             HorizontalLayout {
                                                 spacing: 4px;
-                                                Text { text: root.server-name; font-size: Theme.fs-title; font-weight: 800; color: Theme.text; vertical-alignment: center; overflow: elide; }
+                                                Text { text: root.server-name; font-size: Theme.fs-title * (root.wide ? 1.0 : 0.85); font-weight: 700; color: Theme.text; vertical-alignment: center; overflow: elide; }
                                                 if root.wide: Icon { name: "chevron-down"; size: 18px; tint: Theme.icon; y: (parent.height - self.height) / 2; }
                                                 Rectangle { horizontal-stretch: 1; }
                                             }
-                                            TouchArea { clicked => { if root.wide { root.menu-x = root.rail-w + 8px; root.menu-y = root.top-h + 48px * Theme.scale; } root.menu-kind = "server"; } }
+                                            TouchArea { clicked => { if root.wide { root.menu-up = false; root.menu-x = root.rail-w + 8px; root.menu-y = root.top-h + 48px * Theme.scale; } root.menu-kind = "server"; } }
                                         }
                                         if root.lock-set: IconButton {
                                             icon: root.lock-engaged ? "lock" : "unlock";
@@ -638,7 +656,7 @@ export component AppWindow inherits Window {
                                     height: max(root.wide ? 52px : 60px, 44px * Theme.scale);
                                     HorizontalLayout {
                                         padding-left: 16px; padding-right: 6px; spacing: 6px;
-                                        Text { text: "Direct messages"; font-size: Theme.fs-title; font-weight: 800; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                                        Text { text: "Direct messages"; font-size: Theme.fs-title; font-weight: 700; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
                                         if !root.wide && root.lock-set: IconButton { icon: root.lock-engaged ? "lock" : "unlock"; tint: Theme.icon-soft; label: root.lock-engaged ? "App Lock, locked. Tap to unlock" : "App Lock, unlocked. Tap to lock"; clicked => { root.lock-tapped(); } y: (parent.height - self.height) / 2; }
                                         ToolButton { icon: "edit"; label: "New message"; size: 40px; y: (parent.height - self.height) / 2; clicked => { root.new-message(); } }
                                     }
@@ -649,7 +667,7 @@ export component AppWindow inherits Window {
                                         height: max(root.wide ? 52px : 60px, 44px * Theme.scale);
                                         HorizontalLayout {
                                             padding-left: 16px; padding-right: 6px; spacing: 6px;
-                                            Text { text: "Activity"; font-size: Theme.fs-title; font-weight: 800; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
+                                            Text { text: "Activity"; font-size: Theme.fs-title; font-weight: 700; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
                                             if root.activity-unread > 0: TextButton { text: "Mark all read"; clicked => { root.mark-activity-read(); } y: (parent.height - self.height) / 2; }
                                         }
                                     }
@@ -665,11 +683,16 @@ export component AppWindow inherits Window {
                                 }
                                 if root.main-tab == "later": VerticalLayout {
                                     Rectangle {
-                                        height: max(root.wide ? 52px : 60px, 44px * Theme.scale);
+                                        height: max(root.wide ? 60px : 66px, 50px * Theme.scale);
                                         HorizontalLayout {
                                             padding-left: root.wide ? 16px : 4px; padding-right: 6px; spacing: 6px;
                                             if !root.wide: IconButton { icon: "back"; label: "Back to Home"; clicked => { root.go-home-tab("home"); } y: (parent.height - self.height) / 2; }
-                                            Text { text: "Later"; font-size: Theme.fs-title; font-weight: 800; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
+                                            VerticalLayout {
+                                                alignment: center;
+                                                horizontal-stretch: 1;
+                                                Text { text: "Later"; font-size: Theme.fs-title * (root.wide ? 1.0 : 0.95); font-weight: 700; color: Theme.text; overflow: elide; }
+                                                Text { text: "Messages you saved, only visible to you"; font-size: Theme.fs-small; color: Theme.muted; overflow: elide; }
+                                            }
                                             TextButton { text: "Labels"; clicked => { root.label-msg = ""; root.label-open = true; } y: (parent.height - self.height) / 2; }
                                         }
                                     }
@@ -735,7 +758,7 @@ export component AppWindow inherits Window {
                                     vertical-stretch: 1;
                                     icon: "bookmark";
                                     title: root.label-filter == "" ? "Nothing saved for later" : "Nothing with this label";
-                                    hint: "Hover a message and choose the bookmark icon, or press and hold it on the phone and choose Save for later. Add labels to sort what you save.";
+                                    hint: root.wide ? "Save messages to come back to them later. Hover a message and click the bookmark icon. Add labels to organise them." : "Save messages to come back to them later. Long-press a message → Save for later. Add labels to organise them.";
                                 }
                                 if root.main-tab == "later" && root.saved-rows.length > 0: ListView {
                                     vertical-stretch: 1;
@@ -806,7 +829,7 @@ export component AppWindow inherits Window {
                                 icon: "edit";
                                 label: "New message";
                                 x: parent.width - self.width - 16px;
-                                y: parent.height - self.height - max(60px, 52px * Theme.scale) - 16px;
+                                y: parent.height - self.height - max(64px, 54px * Theme.scale) - 16px;
                                 clicked => { root.new-message(); }
                             }
                         }
@@ -835,7 +858,7 @@ export component AppWindow inherits Window {
                                             if root.current-conv != "" && (root.current-kind == "dm" || root.current-kind == "self"): Avatar { initials: root.current-initials; tint: root.current-color; size: 30px * Theme.scale; y: (parent.height - self.height) / 2; }
                                             VerticalLayout {
                                                 alignment: center;
-                                                Text { text: root.current-title == "" ? "Choose a conversation" : root.current-title; font-size: Theme.fs * 1.12; font-weight: 800; color: Theme.text; overflow: elide; }
+                                                Text { text: root.current-title == "" ? "Choose a conversation" : root.current-title; font-size: Theme.fs * 1.12; font-weight: 700; color: Theme.text; overflow: elide; }
                                                 if root.typing-text != "" || (!root.wide && root.current-sub != ""): Text { text: root.typing-text != "" ? root.typing-text : root.current-sub; font-size: Theme.fs-small; color: root.typing-text != "" ? Theme.accent-text : Theme.muted; overflow: elide; }
                                             }
                                             if root.wide && root.current-conv != "": Icon { name: "chevron-down"; size: 16px; tint: Theme.icon-soft; y: (parent.height - self.height) / 2; }
@@ -1036,7 +1059,7 @@ export component AppWindow inherits Window {
                                         VerticalLayout {
                                             alignment: center;
                                             horizontal-stretch: 1;
-                                            Text { text: "Thread"; font-size: Theme.fs * 1.12; font-weight: 800; color: Theme.text; }
+                                            Text { text: "Thread"; font-size: Theme.fs * 1.12; font-weight: 700; color: Theme.text; }
                                             Text { text: root.thread-conv-title; font-size: Theme.fs-small; color: Theme.muted; overflow: elide; }
                                         }
                                         if root.wide: ToolButton { icon: "close"; label: "Close thread"; size: 34px * Theme.scale; y: (parent.height - self.height) / 2; clicked => { root.close-thread(); } }
@@ -1214,7 +1237,7 @@ export component AppWindow inherits Window {
                                                     HorizontalLayout {
                                                         spacing: 0px;
                                                         Text { text: r.pre; font-size: Theme.fs; color: Theme.text; overflow: elide; horizontal-stretch: r.hit == "" ? 1 : 0; }
-                                                        if r.hit != "": Rectangle { background: Theme.mention-bg; width: ht.preferred-width; ht := Text { text: r.hit; font-size: Theme.fs; font-weight: 800; color: Theme.text; } }
+                                                        if r.hit != "": Rectangle { background: Theme.mention-bg; width: ht.preferred-width; ht := Text { text: r.hit; font-size: Theme.fs; font-weight: 700; color: Theme.text; } }
                                                         if r.hit != "": Text { text: r.post; font-size: Theme.fs; color: Theme.text; overflow: elide; horizontal-stretch: 1; }
                                                     }
                                                 }
@@ -1629,7 +1652,7 @@ export component AppWindow inherits Window {
                                         VerticalLayout {
                                             padding: 18px; spacing: 4px;
                                             HorizontalLayout { alignment: center; Avatar { initials: root.current-initials; tint: root.current-color; size: 64px * min(Theme.scale, 1.2); } }
-                                            Text { text: (root.current-kind == "channel" ? "# " : "") + root.current-title; font-size: Theme.fs-large; font-weight: 800; color: Theme.text; horizontal-alignment: center; wrap: word-wrap; }
+                                            Text { text: (root.current-kind == "channel" ? "# " : "") + root.current-title; font-size: Theme.fs-large; font-weight: 700; color: Theme.text; horizontal-alignment: center; wrap: word-wrap; }
                                             Text { text: root.current-sub; font-size: Theme.fs; color: Theme.muted; horizontal-alignment: center; wrap: word-wrap; }
                                         }
                                     }
@@ -1682,7 +1705,7 @@ export component AppWindow inherits Window {
                 }
                     // ---- people picker (New message, Add people) ----
                     if root.pp-open: ModalCard {
-                        title: root.pp-mode == "add-people" ? "Add people to " + root.current-title : "New message";
+                        title: root.pp-mode == "add-people" ? "Add people to " + root.current-title : (root.pp-mode == "directory" ? "People directory" : (root.pp-mode == "channels" ? "Channel browser" : "New message"));
                         wide: root.wide;
                         ok-text: root.pp-mode == "add-people" ? (root.pp-count > 0 ? "Add " + root.pp-count : "Add") : "";
                         ok-enabled: root.pp-count > 0;
@@ -1692,9 +1715,9 @@ export component AppWindow inherits Window {
                         PeoplePicker {
                             people: root.pp-list;
                             query <=> root.pp-text;
-                            single: root.pp-mode == "new-message";
-                            hint: root.pp-mode == "add-people" ? "Search people to add" : "Search people";
-                            empty-text: root.pp-mode == "add-people" ? "Everyone is already here." : "No people found.";
+                            single: root.pp-mode != "add-people";
+                            hint: root.pp-mode == "add-people" ? "Search people to add" : (root.pp-mode == "channels" ? "Search your channels" : "Search people");
+                            empty-text: root.pp-mode == "add-people" ? "Everyone is already here." : (root.pp-mode == "channels" ? "You are not in any channels yet. An admin adds people to channels." : "No people found.");
                             filter(t) => { root.pp-filter(t); }
                             toggle(id) => { root.pp-toggle(id); }
                         }
@@ -1786,7 +1809,7 @@ export component AppWindow inherits Window {
                                     padding-right: 6px;
                                     spacing: 8px;
                                     if root.current-kind == "channel": Icon { name: root.is-conv-locked(root.current-conv) ? "lock" : "hash"; size: 22px; tint: Theme.icon; y: (parent.height - self.height) / 2; }
-                                    Text { text: root.current-title; font-size: Theme.fs-title; font-weight: 800; color: Theme.text; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                                    Text { text: root.current-title; font-size: Theme.fs-title; font-weight: 700; color: Theme.text; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
                                     ToolButton { icon: "close"; label: "Close details"; size: 36px * Theme.scale; y: (parent.height - self.height) / 2; clicked => { root.info-open = false; } }
                                 }
                                 TabBar {
@@ -1862,7 +1885,7 @@ export component AppWindow inherits Window {
 
                 // ---- profile menu (your avatar at the bottom of the rail) ----
                 if root.menu-kind == "profile": BottomSheet {
-                    title: root.me-name; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y; menu-width: 280px;
+                    title: root.me-name; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y; anchor-up: root.menu-up; menu-width: 300px;
                     dismiss => { root.menu-kind = ""; }
                     SheetRow { icon: "check"; text: "Active"; checked: root.presence-pref == "auto"; clicked => { root.set-presence("auto"); root.menu-kind = ""; } }
                     SheetRow { icon: "clock"; text: "Set yourself as away"; checked: root.presence-pref == "away"; clicked => { root.set-presence("away"); root.menu-kind = ""; } }
@@ -1871,6 +1894,23 @@ export component AppWindow inherits Window {
                     SheetRow { icon: "settings"; text: "Preferences"; clicked => { root.menu-kind = ""; root.open-settings(); } }
                     SheetRow { icon: "lock"; text: "App Lock"; clicked => { root.menu-kind = ""; root.open-settings(); root.settings-page = "lock"; } }
                     if root.sign-out-allowed: SheetRow { icon: "logout"; text: "Sign out"; danger: true; clicked => { root.menu-kind = ""; root.confirm = "signout"; } }
+                }
+
+                // ---- More (rail): a popover next to the rail ----
+                if root.menu-kind == "more": BottomSheet {
+                    title: "More"; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y; anchor-up: root.menu-up; menu-width: 300px;
+                    dismiss => { root.menu-kind = ""; }
+                    SheetRow { icon: "file"; text: "Files"; clicked => { root.menu-kind = ""; root.open-files(); } }
+                    SheetRow { icon: "thread"; text: "Threads"; clicked => { root.menu-kind = ""; root.open-threads(); } }
+                    SheetRow { icon: "clock"; text: "Drafts & sent"; detail: root.scheduled-count > 0 ? root.scheduled-count + " scheduled" : ""; clicked => { root.menu-kind = ""; root.open-drafts(); } }
+                    SheetRow { icon: "bookmark"; text: "Saved items (Later)"; detail: root.saved-rows.length > 0 ? "" + root.saved-rows.length : ""; clicked => { root.menu-kind = ""; root.go-home-tab("later"); } }
+                    MenuDivider { }
+                    SheetRow { icon: "users"; text: "People directory"; clicked => { root.menu-kind = ""; root.open-directory("directory"); } }
+                    SheetRow { icon: "hash"; text: "Channel browser"; clicked => { root.menu-kind = ""; root.open-directory("channels"); } }
+                    MenuDivider { }
+                    SheetRow { icon: "settings"; text: "Preferences"; clicked => { root.menu-kind = ""; root.open-settings(); } }
+                    if root.is-admin: SheetRow { icon: "shield"; text: "Admin panel"; clicked => { root.menu-kind = ""; root.open-admin-panel(); } }
+                    SheetRow { icon: "help"; text: "Help and keyboard shortcuts"; clicked => { root.menu-kind = "help"; } }
                 }
 
                 // ---- conversation context menu (right click / long press / hover button) ----

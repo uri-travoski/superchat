@@ -59,7 +59,7 @@ export component DetailsView {
                     padding: 16px;
                     spacing: 6px;
                     Text { text: root.kind == "channel" ? "Channel" : (root.kind == "group" ? "Group conversation" : (root.kind == "self" ? "Notes to self" : "Direct message")); font-size: Theme.fs-small; color: Theme.muted; font-weight: 700; }
-                    Text { text: (root.kind == "channel" ? "# " : "") + root.title; font-size: Theme.fs-title; font-weight: 800; color: Theme.text; wrap: word-wrap; }
+                    Text { text: (root.kind == "channel" ? "# " : "") + root.title; font-size: Theme.fs-title; font-weight: 700; color: Theme.text; wrap: word-wrap; }
                 }
             }
             if root.kind == "channel" || root.kind == "group": Card {
@@ -130,7 +130,7 @@ export component DetailsView {
             Text { text: "Locked conversations are hidden until you unlock with your PIN."; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
             if root.can-manage && root.kind != "dm" && root.kind != "self": VerticalLayout {
                 spacing: 8px;
-                Text { text: "Admin tools"; font-size: Theme.fs-small; font-weight: 800; color: Theme.muted; }
+                Text { text: "Admin tools"; font-size: Theme.fs-small; font-weight: 700; color: Theme.muted; }
                 LineEdit { text <=> root.name-edit; placeholder-text: "Name"; font-size: Theme.fs; accessible-label: "Conversation name"; accepted(t) => { root.rename(t); } }
                 HorizontalLayout { alignment: end; GhostButton { text: "Rename"; clicked => { root.rename(root.name-edit); } } }
                 Card {

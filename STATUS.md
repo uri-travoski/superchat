@@ -1,4 +1,13 @@
-# Status: v1.0 (Phases 0 to 3; calls are Phase 4, not built)
+# Status: v1.1.0 (v1.0 plus the 1.1 changes below; calls are Phase 4, not built)
+
+## v1.1 summary
+
+Done: rename to SuperChat with compatibility migrations; new icon; multiple AI providers; clickable login links with landing page, QR code, Android and desktop link handling,
+public-address setting; phone-friendly admin panel; login screen rework; user-deletion bug fix with regression test; App Lock (client-core logic and tests, UI, notifications, screenshots).
+See docs/RELEASE-NOTES-v1.1.md for the honest limitations (Windows and arm64 still unexecuted, FCM and real AI services untested, App Lock is a screen lock and not encryption).
+Tests: see the release notes for the counts of the final run.
+
+## v1.0 summary (final autonomous pass)
 
 ## v1.0 summary (final autonomous pass)
 

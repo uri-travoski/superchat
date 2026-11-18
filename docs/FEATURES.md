@@ -1,7 +1,7 @@
 # What SuperChat does today (version 1.1.0, Phases 1 and 2)
 
 * Self-hosted team chat. One small server (Docker), apps for Linux and Android (Windows later), an admin web panel, and a command-line client.
-* **Accounts are created by admins only.** There is no sign-up. New people get a one-time login link (works once, expires in 7 days).
+* **Accounts are created by admins only.** There is no sign-up. New people get a one-time login link (works once, expires in 7 days): a web address that opens the app and signs them in, also as a QR code.
 * **Private by design:** channels and group chats are members-only and invisible to everyone else; only admins create them. Direct messages and
   "notes to self" are created on demand.
 * **Messages:** edit (channels and notes always; direct chats until the other person replies), delete (leaves "Message deleted"), reactions,
@@ -26,3 +26,11 @@ See `STATUS.md` for what is partly built.
 * Settings: theme and accent, text size (Regular/Large/Extra large), zoom (Ctrl + / - / 0), compact, reduce motion, 12/24 hour, status, profile, devices, privacy (when your admin enables it).
 * Admin: chat viewer, bulk delete with backup, encrypted backups, selective restore, restore onto a new server.
 * Not built yet: voice/video clips, drag and drop, Android share target, tray icon, Android Keystore, push registration on the device.
+
+## 1.1 additions
+
+* **Clickable login links and QR codes** (`<server>/l/<token>`): the page opens the app (Android, Linux, Windows) or offers the download; the apps also take the link pasted, and Android scans the QR code.
+* **Multiple AI providers** with per-feature defaults, test button, masked keys and failover.
+* **App Lock**: a 6-digit PIN kept on the device only; chosen conversations are hidden from the list, search, switcher, threads, counts, drafts and notifications until you unlock. Padlock at the top of the list; locks again after 5 idle minutes, 5 minutes in the background, or on tap.
+* **Phone-friendly admin panel** (cards, menu button, single-pane chat viewer).
+* **Friendlier login screen**: Username & password or Login link buttons, Paste button, a link pasted into the server field is recognised, exact error messages.

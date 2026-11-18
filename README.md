@@ -6,18 +6,19 @@ A self-hosted, Slack-style team chat. One small Rust server (Docker), an admin w
 Android (one Slint UI shared by all three), plus a command-line client. Your data stays on your server and in the storage you choose
 (S3, Cloudflare R2, Backblaze B2, MinIO or Google Drive).
 
-* Accounts are created by an admin only (with a one-time login link). No public sign-up.
+* Accounts are created by an admin only (with a one-time login link you can tap, scan or paste). No public sign-up.
 * Channels and group chats are private to their members. Direct messages and notes to yourself are created on demand.
 * No end-to-end encryption: TLS in transit, and admins can read messages (needed for the admin chat viewer and search). Backups are
   encrypted with a passphrase.
 * Bots and automation: Telegram-style bot API, webhooks, interactive forms, scheduled messages, optional AI search and recaps.
-* Calls (voice/video) are planned for v1.1.
+* New in 1.1: tap-to-sign-in links with a QR code, several AI providers, App Lock (PIN-hidden conversations), a phone-friendly admin panel. See [docs/RELEASE-NOTES-v1.1.md](docs/RELEASE-NOTES-v1.1.md). Calls (voice/video) are still planned.
 
 ![Desktop app](docs/screenshots/desk-light-regular-chat.png)
 
 | | | |
 |---|---|---|
 | ![Dark](docs/screenshots/desk-dark-regular-chat.png) | ![Form](docs/screenshots/desk-light-regular-form.png) | ![Phone](docs/screenshots/phone-light-regular-list.png) |
+| ![App Lock](docs/screenshots/phone-light-regular-lock-screen.png) | ![Login link page](docs/screenshots/mobile-4b-landing-page.png) | ![Admin on a phone](docs/screenshots/mobile-3-users.png) |
 
 ## Quick start (server)
 

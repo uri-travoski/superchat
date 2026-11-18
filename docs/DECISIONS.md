@@ -62,7 +62,7 @@ Not verified: real-device performance, IME composition for CJK, accessibility (T
 * Passwords: argon2id. Login lockout per username and per IP, token-bucket rate limiting, and a dummy hash so unknown users cost the same time.
 * Disabled account: sessions revoked with reason `account_disabled`, sockets closed with 4403, the client receives `SignedOut{code}` and
   wipes the cache, drafts, outbox and secrets (X-05). Re-enabling restores the history (cloud chats).
-* One-time login links: `superchat://login?server=<url>&token=<token>`; token hashed, single use, 7-day expiry. The app also accepts a pasted https
+* (Superseded in 1.1, see below: the shared link is now `<server>/l/<token>`.) One-time login links: `superchat://login?server=<url>&token=<token>`; token hashed, single use, 7-day expiry. The app also accepts a pasted https
   link or a bare token.
 * No public registration. First-run `setup` creates the owner and is refused afterwards (`setup_done`).
 
@@ -161,3 +161,23 @@ Not verified: real-device performance, IME composition for CJK, accessibility (T
 * **Voice messages** record to AAC (`.m4a`, MediaRecorder) on Android and WAV with `arecord` on Linux; the inline player uses MediaPlayer (Android) or ffplay/mpv/paplay. Video clips upload as files and open in the system player (no in-app video decoding in Slint). There is no waveform or speed control.
 * **Release pipeline**: tag `v*` runs `release.yml` (Linux deb + AppImage, Windows portable exe + NSIS installer, Android APK, server image on ghcr.io); `ci.yml` runs tests, clippy and the admin build. Windows code and the NSIS script are built only in CI (not testable on this machine).
 * **Android signing**: `ATOMIC_KEYSTORE_*` environment variables select a keystore; CI creates a throw-away one when the secrets are absent; local builds fall back to the debug key.
+
+## 1.1 decisions (autonomous pass; the owner was away)
+
+* **Rename to SuperChat.** Crate package names stay `atomic-*` (renaming them gains nothing); binaries, images, packages, UI and docs say SuperChat. `ATOMIC_*` variables keep working and `SUPERCHAT_*`
+  aliases win (`proto::env_var`). Compatibility is kept for the data directory, the secret-store entries, the `atomic-chat://` link scheme, webhook headers (both `x-superchat-*` and `x-atomic-*` are sent) and the docker volume.
+  The Android application id is new (`app.superchat`), so it installs beside the old app. `min_client_version` stays 1.0.0 so 1.0 apps keep working against a 1.1 server.
+* **Icon**: dark squircle, white-to-mint (#0DBD8B) speech bubble. `tools/gen_icon.py` writes the SVG master; PNGs, .ico and the Android adaptive layers come from ImageMagick only.
+* **AI providers** are a list in the database with per-feature defaults (search, recap) and failover to the next enabled provider. Keys are encrypted at rest with the server key, never returned (only the last four characters). A 1.0 single-provider
+  setting migrates to a provider named "Default". Only the owner edits; tests use fake provider servers.
+* **QR codes** are generated in the admin panel by a small built-in encoder (byte mode, level M, versions 1 to 10), no library; the output was decoded with ZXing in a test harness. Android scans with CameraX plus ZXing core.
+* **Login link is a web URL** (`<public-url>/l/<token>`) so it is clickable anywhere and a phone camera opens a browser, not nothing. The landing page does not consume the token (a link preview or a refresh must not burn it); only the app's sign-in does.
+  It opens the app with an Android `intent://` link (fallback: the downloads page) or `superchat://` elsewhere; there is no third-party content and no referrer. Public address order: env, owner setting, request Host header.
+* **Link handling in apps**: Android intent filters for `superchat://login` and `http(s)://*/l/` (no autoVerify, so Android may show a chooser the first time); desktop registers the `superchat://` scheme (deb/AppImage desktop file, Windows registry key) and a second launch hands the link
+  to the running instance over a loopback socket protected by a random secret in a 0600 file.
+* **Login screen**: Username & password or Login link as two big buttons; a link pasted anywhere (server field included, with other text around it) switches to link mode and fills the server. Errors are exact: cannot reach the server, plain http blocked, link invalid, expired or already used.
+* **User deletion bug**: v7 UUIDs begin with a timestamp, which made an ordering assumption in the cascade wrong; fixed with an explicit cascade and a regression test; 5xx answers are now logged with route and cause.
+* **App Lock** is local only: Argon2id hash with a random salt, kept (with the locked conversation ids and the wrong-attempt counter) in the platform secret store. It is a screen lock that hides chats in the app, not encryption of the local cache. Wrong PINs: five free, then 30 s, doubling to one hour; the counter survives restarts.
+  Locked chats are removed at the client-core level (list, search, quick switcher, threads, unread counts, drafts, scheduled), so every UI inherits it. Notifications for locked chats are always "SuperChat: New message". Locks are not synced because a synced lock would let one stolen device reveal the others.
+  Idle detection uses window events on desktop and `onUserInteraction` on Android; background time is measured by focus loss (desktop) and onPause (Android).
+* **Mobile admin**: tables become cards under 720 px (a MutationObserver labels the cells), the menu collapses, the viewer is single-pane. Playwright runs at 390x844.

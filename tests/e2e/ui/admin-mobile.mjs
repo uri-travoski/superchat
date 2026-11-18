@@ -158,7 +158,7 @@ try {
   assert.ok(lw[0] <= lw[1], `landing page has no horizontal scroll (${lw})`);
   const bh = await lp.locator("#open").boundingBox();
   assert.ok(bh.height >= 44 && bh.width >= 300, "the open button is large");
-  await lp.screenshot({ path: path.join(shots, "4b-landing-page.png") });
+  await lp.screenshot({ path: path.join(shots, "mobile-4b-landing-page.png") });
   assert.equal((await fetch(link)).status, 200, "viewing the landing page did not consume the one-time token");
   await lp.close();
   await page.click("dialog button:has-text('Cancel')");

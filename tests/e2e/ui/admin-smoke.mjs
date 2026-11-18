@@ -23,7 +23,7 @@ await p.click("text=Create user");
 const inputs = p.locator("dialog input");
 await inputs.nth(0).fill("dan"); await inputs.nth(1).fill("Dan Smith");
 await p.click("dialog button:has-text(\"Create\")");
-await p.waitForSelector("text=one-time login link");
+await p.waitForSelector("text=Send this link");
 await shot("3-link");
 console.log("link:", await p.locator(".linkbox").innerText());
 await p.click("dialog >> text=Cancel");

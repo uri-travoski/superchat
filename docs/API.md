@@ -24,6 +24,19 @@ Edit rule (`proto::rules::edit_allowed`): channels and notes-to-self always; DMs
 Admin (`/admin/...`, owner or admin only): overview, users (+reset-password, login-link, revoke-sessions, clear-history, backup,
 delete-range), backups, sessions, conversations (+members), files, storage (+test, migrate, verify), jobs.
 
+## 1.1 additions
+
+* **Login link landing page** (no auth, not under `/api/v1`): `GET /l/<token>` shows the open-in-app page without consuming the token (200 valid, 410 used or
+  expired, 404 unknown). `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, a CSP that allows no outside content. `GET /downloads` lists installers and
+  `GET /downloads/<file>` serves one from `SUPERCHAT_DOWNLOADS_DIR`.
+* `LoginLink.link` is now `<public-url>/l/<token>`. `POST /login/link` accepts that URL, the old `superchat://login?server=&token=` and `atomic-chat://` forms, or the bare token.
+* `GET/PUT /admin/public-url` (`{"url": "https://chat.example.com" | null}`; PUT is owner-only; the response has `effective` and `source` = `env` | `setting` | `request`).
+* AI providers (owner changes, admins read): `GET /admin/ai`, `POST /admin/ai/providers`, `PATCH`/`DELETE /admin/ai/providers/{id}`, `POST /admin/ai/providers/{id}/test`,
+  `PUT /admin/ai/defaults`. Keys are never returned. See [BOTS.md](BOTS.md).
+* `DELETE /admin/users/{id}` now cascades correctly for users who signed in (sessions, devices, memberships, visibility, drafts, preferences, push registrations,
+  bot tokens, login links) and keeps other people's copies of chats. Server errors are logged as `METHOD route -> status` plus the cause, never with tokens.
+* App Lock is client-only: no server endpoint, nothing synced.
+
 ## Phase 2 additions
 
 All paths are under `/api/v1`; types are in `crates/proto` and `schema/api.schema.json`.

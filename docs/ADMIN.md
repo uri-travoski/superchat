@@ -5,8 +5,18 @@ Open `https://your-server/admin` and sign in with an owner or admin account.
 * **Users**: create (optionally with a password; a one-time login link is always produced), disable (the person is signed out
   of every device immediately and their app wipes local data), enable, reset password (signs out all devices; produces a link if
   no password is typed), login link, back up, **clear history**, delete.
-* **One-time login link**: `superchat://login?server=<url>&token=<token>`. The person pastes it on the app's sign-in page.
-  It works once and expires after 7 days. The app then asks them to choose a password.
+* **One-time login link**: a normal web address on your server, `https://<your-server>/l/<token>`, shown with **Copy link**, **Share**
+  (where the browser offers sharing) and a **QR code** that encodes the same address. Tapping the link (or pointing a phone camera at the QR
+  code) opens a page that tries to open the SuperChat app and sign the person in; if the app is not installed the page offers the downloads.
+  The page only checks the link, it does not use it up; the link works once and expires after 7 days. The app then asks them to choose a password.
+  The person can also paste the link on the app's sign-in page, or choose **Scan QR code** there on Android. Links of 1.0 (`atomic-chat://...`)
+  and the app form `superchat://login?...` are still understood.
+* **Address used in login links** (Users page, owner only): the link is built from `SUPERCHAT_PUBLIC_URL` when set, else from the address saved here,
+  else from the address you used to open the admin panel (so it works on a bare LAN address such as `http://192.168.1.10:8080`).
+* **Downloads**: the landing page offers files found in the server's downloads folder (`SUPERCHAT_DOWNLOADS_DIR`, default `<data>/downloads`;
+  `.apk`, `.AppImage`/`.deb`/`.rpm`, `.exe`/`.msi`) and lists them at `/downloads`. With an empty folder it points to `SUPERCHAT_RELEASE_URL`
+  (default: the project's GitHub releases).
+* **Phones**: the whole panel works at phone width (menu button, cards instead of tables, single-pane chat viewer with a back button).
 * **Clear history** always writes a per-user backup first and refuses to proceed if the backup fails. It removes only that
   person's copy of every chat (other participants keep theirs), moves files nobody else can see into
   `backups/users/<user>/<backup>/att/` in your storage, and signs the person out everywhere.
@@ -40,7 +50,10 @@ The same operations exist in the `atomic admin ...` CLI (`atomic help`).
   (the old one stops at once). Membership: add or remove the bot per conversation. The card shows its webhook (URL, secret set, last error) or the
   number of updates waiting for polling. See [BOTS.md](BOTS.md).
 * **Webhooks**: incoming (a secret URL per conversation; "New URL" rotates it) and outgoing (URL, secret, event filter, per-conversation filter, status, "Send test").
-* **AI**: provider, model, base URL and key. Off by default; the page repeats that message text goes to the provider.
+* **AI**: any number of providers (Anthropic, OpenAI, OpenAI-compatible with a base URL): add, edit, delete, **Test**, enable. Keys are write-only (the panel
+  shows only the last four characters). Choose a default provider for AI search and another for recaps, or leave them on automatic: the first enabled provider is
+  used and the next one takes over when it fails. Only the owner changes providers. Off by default; the page repeats that message text goes to the provider.
+  A single provider saved by 1.0 appears as "Default" after the upgrade.
 * **Groups**: `@handle` groups (members, rename, delete). Typing `@handle` mentions everyone in the group.
 * **Bookmarks**: pick a conversation and add, edit or remove its link bookmarks (admins can edit any conversation).
 * **Chats**: the viewer marks bot messages with APP, draws forms as cards, and lists scheduled messages of the open conversation.

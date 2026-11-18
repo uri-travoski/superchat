@@ -37,7 +37,9 @@ Alternatively set `ATOMIC_BOOTSTRAP_ADMIN=user:password` in `.env` to create the
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `ATOMIC_PUBLIC_URL` | none | Address clients use; goes into one-time login links. |
+| `ATOMIC_PUBLIC_URL` | none | Address clients use; goes into one-time login links (`<url>/l/<token>`). When unset the owner can save one in the admin panel, else it is taken from the request's Host header. |
+| `ATOMIC_DOWNLOADS_DIR` | `<data>/downloads` | Folder with the installers (`.apk`, `.AppImage`, `.deb`, `.exe`, ...) offered by the login link page and `/downloads`. |
+| `ATOMIC_RELEASE_URL` | the project's GitHub releases | Where the login link page sends people when the downloads folder is empty. |
 | `ATOMIC_NAME` | SuperChat | Server name shown in apps. |
 | `ATOMIC_BOOTSTRAP_ADMIN` | none | `user:password` of the owner to create when no users exist. |
 | `ATOMIC_MAX_UPLOAD_MB` | 100 | Largest single attachment. |
@@ -82,7 +84,9 @@ The project was renamed from Atomic Chat to SuperChat in v1.1. What that changes
 * **Data volume**: the 1.0 compose project created the volume `atomic-chat_atomic-data`. To keep using it, add
   `SUPERCHAT_DATA_VOLUME=atomic-chat_atomic-data` to `.env` before `docker-compose up -d`. New installs get `superchat-data`.
   The database file inside is still called `atomic.db` (internal, nothing to do).
-* Login links now start with `superchat://`; links made by 1.0 (`atomic-chat://`) are still accepted by the apps.
+* Login links are now web addresses, `https://<your-server>/l/<token>`; links made by 1.0 (`atomic-chat://`) and `superchat://` links are still accepted by the apps.
+  Behind a reverse proxy or tunnel make sure `/l/` and `/downloads` reach the server (the shipped Caddyfile and tunnel send everything). Android may ask once whether
+  to open such a link with SuperChat or the browser (app links are not verified); the landing page opens the app by itself either way.
 * The existing server name (stored in the database) is not changed; edit it in the admin panel if you want it to read SuperChat.
 * Desktop apps move `~/.local/share/atomic-chat` (Windows: `%APPDATA%\AtomicChat`) to the new SuperChat folder on first start and
   still read sign-in secrets saved under the old name. The Android app has a new application id (`app.superchat`), so it installs

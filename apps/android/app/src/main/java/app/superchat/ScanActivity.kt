@@ -58,7 +58,7 @@ class ScanActivity : ComponentActivity() {
         else requestPermissions(arrayOf(Manifest.permission.CAMERA), 7)
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 7 && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) startCamera()
         else { Toast.makeText(this, "SuperChat needs the camera to scan the code. You can also paste the link.", Toast.LENGTH_LONG).show(); finish() }

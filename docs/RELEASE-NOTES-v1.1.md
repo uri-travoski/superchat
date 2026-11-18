@@ -34,6 +34,11 @@ Atomic Chat is now **SuperChat**. A 1.0 server and 1.0 apps keep working togethe
 * **App Lock hides chats in the app; it does not encrypt the local cache.** Someone with the unlocked device and file access can read the cache. A 6-digit PIN has only a million values; the delays protect the screen, not the disk. If you forget the PIN you sign out (that erases the lock with the local data).
   Locks are per device and are not synced. Android task-switcher thumbnails are not blanked.
 * Android may show an "Open with" chooser the first time you tap a web link (app links are not verified). The landing page opens the app either way. Opening a link that points at a plain `http://` public address is refused by the apps by design (private LAN only).
+* Verified on the Android emulator: the landing page in Chrome opened SuperChat and signed in, and a `http://<server>/l/<token>` VIEW intent addressed to the app signed in directly. A plain `am start -d <link>` goes to the default browser (the filters are not verified app links), which then opens the app.
 * QR scanning was exercised on the emulator with injected links, not with a real camera. The QR encoder supports links up to about 270 characters (version 10, level M); longer links show "copy instead".
 * The AppImage does not register the `superchat://` handler by itself (use a desktop integration tool such as appimaged; the .deb does it). Windows registry handling and the installer are untested on Windows, as in 1.0.
 * Unchanged from 1.0: Google Drive, FCM, APNs, ntfy and AI providers were only tested against local fakes; Windows and arm64 were never executed; calls and end-to-end encryption are not built.
+
+## Tests at release
+
+`cargo test --workspace`: all green (about 148 tests, including App Lock, landing page, user deletion, AI providers, link parsing, desktop link hand-off); `tests/e2e/run.sh` green; Playwright admin-smoke, admin-viewer, admin-automation and admin-mobile (390x844) green; clippy 0 errors.

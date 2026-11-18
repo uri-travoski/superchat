@@ -53,6 +53,8 @@ class MainActivity : NativeActivity() {
 
     private fun handleIntent(i: Intent?) {
         Native.handleShare(this, i)
+        // A superchat://login?... link (QR code scanned with the phone's camera app, or a tapped link).
+        if (i?.action == Intent.ACTION_VIEW) i.data?.takeIf { it.scheme == "superchat" || it.scheme == "atomic-chat" }?.let { Native.nativeLoginLink(it.toString()) }
         val conv = i?.getStringExtra("conv_id") ?: return
         Native.nativeOpenConversation(conv)
     }

@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 static VM: OnceLock<JavaVM> = OnceLock::new();
 static NATIVE: OnceLock<GlobalRef> = OnceLock::new();
 static SHARED: Mutex<Option<Shared>> = Mutex::new(None);
+static LOGIN_LINK: Mutex<Option<String>> = Mutex::new(None);
 
 /// Runs `f` on a JNI-attached thread with the `app.superchat.Native` class. None when the shell is not ready or Java threw.
 fn with_env<R>(f: impl FnOnce(&mut JNIEnv, &JClass) -> Option<R>) -> Option<R> {
@@ -165,6 +166,10 @@ fn android_main(app: slint::android::AndroidApp) {
         is_android: true,
         media: Arc::new(AndroidMedia),
         take_shared: Box::new(|| SHARED.lock().ok().and_then(|mut g| g.take())),
+        scan_qr: Some(Box::new(|| {
+            with_env(|env, c| env.call_static_method(c, "scanQr", "()V", &[]).ok().map(|_| ()));
+        })),
+        take_login_link: Box::new(|| LOGIN_LINK.lock().ok().and_then(|mut g| g.take())),
     };
     if let Err(e) = atomic_ui::run_with(hooks) {
         log::error!("ui error: {e}");
@@ -249,6 +254,15 @@ pub extern "system" fn Java_app_superchat_Native_nativeShare(mut env: JNIEnv, _c
     let files: Vec<PathBuf> = jstr(&mut env, &files).lines().filter(|l| !l.is_empty()).map(PathBuf::from).collect();
     if let Ok(mut g) = SHARED.lock() {
         *g = Some((text, files));
+    }
+}
+
+/// A one-time login link from the QR scanner or a tapped superchat:// link.
+#[no_mangle]
+pub extern "system" fn Java_app_superchat_Native_nativeLoginLink(mut env: JNIEnv, _c: JClass, link: JString) {
+    let link = jstr(&mut env, &link);
+    if let Ok(mut g) = LOGIN_LINK.lock() {
+        *g = Some(link);
     }
 }
 

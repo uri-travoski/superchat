@@ -114,6 +114,10 @@ pub struct Hooks {
     pub media: Arc<dyn Media>,
     /// Returns what another app shared with us, once.
     pub take_shared: Box<dyn Fn() -> Option<Shared>>,
+    /// Android: opens the camera scanner for a login-link QR code. None on desktop (paste the link instead).
+    pub scan_qr: Option<Box<dyn Fn()>>,
+    /// A one-time login link that arrived from outside (QR scan result, a tapped superchat:// link), once.
+    pub take_login_link: Box<dyn Fn() -> Option<String>>,
 }
 
 impl Hooks {
@@ -129,6 +133,8 @@ impl Hooks {
             is_android: false,
             media: Arc::new(DesktopMedia::new(default_data_dir().join("recordings"))),
             take_shared: Box::new(|| None),
+            scan_qr: None,
+            take_login_link: Box::new(|| None),
         }
     }
 }
@@ -767,6 +773,7 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
     let osh = sh.clone();
     ui.set_is_android(hooks.is_android);
     ui.set_can_record(hooks.media.can_record());
+    ui.set_can_scan(hooks.scan_qr.is_some());
     ui.set_close_tray(sh.lock().unwrap().prefs.close_to_tray);
     ui.set_version(format!("SuperChat {}", client_core::CLIENT_VERSION).into());
     ui.set_emoji_list(model(model::emoji_items(emoji::all())));
@@ -985,6 +992,19 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                     sh.lock().unwrap().shared = Some(sharing);
                     ui.set_menu_msg("share".into());
                     ui.set_menu_kind("share".into());
+                }
+            }
+            if let Some(link) = (h2.take_login_link)() {
+                if !ui.get_signed_in() && !ui.get_busy() {
+                    if proto::rules::parse_login_link(&link).is_some() {
+                        ui.set_use_link(true);
+                        ui.set_f_link(link.clone().into());
+                        ui.invoke_login(ui.get_f_server(), "".into(), "".into(), link.into());
+                    } else {
+                        ui.set_login_error("That is not a SuperChat login link.".into());
+                    }
+                } else if ui.get_signed_in() {
+                    toast(&ui, "Already signed in. Sign out first to use a login link.");
                 }
             }
             if let Some(conv) = (h2.take_open_conv)() {

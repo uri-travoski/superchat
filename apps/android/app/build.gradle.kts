@@ -82,5 +82,11 @@ kotlin {
 tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(cargoNdk) }
 
 dependencies {
+    // QR login: CameraX preview + analysis, decoded in memory with ZXing core (no Google Play services needed).
+    implementation("androidx.camera:camera-camera2:1.4.2")
+    implementation("androidx.camera:camera-lifecycle:1.4.2")
+    implementation("androidx.camera:camera-view:1.4.2")
+    implementation("androidx.activity:activity:1.9.3")
+    implementation("com.google.zxing:core:3.5.3")
     if (fcmEnabled) implementation("com.google.firebase:firebase-messaging:24.1.0")
 }

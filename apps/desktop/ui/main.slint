@@ -55,6 +55,7 @@ export component AppWindow inherits Window {
     in-out property <string> f-pass;
     in-out property <string> f-link;
     in-out property <bool> use-link: false;
+    in-out property <bool> can-scan: false;
     in-out property <bool> tofu-open: false;
     in-out property <string> tofu-fp;
     in-out property <string> tofu-host;
@@ -173,6 +174,7 @@ export component AppWindow inherits Window {
     out property <bool> thread-side: self.width >= 1000px;
 
     callback login(string, string, string, string);
+    callback scan-qr();
     callback tofu-accept();
     callback tofu-cancel();
     callback select-conv(string);
@@ -305,6 +307,11 @@ export component AppWindow inherits Window {
                                     clicked => {
                                         if root.use-link { root.login(root.f-server, "", "", root.f-link); } else { root.login(root.f-server, root.f-user, root.f-pass, ""); }
                                     }
+                                }
+                                if root.can-scan: GhostButton {
+                                    text: "Scan QR code";
+                                    accessible-label: "Scan the QR code of a one-time login link";
+                                    clicked => { root.scan-qr(); }
                                 }
                                 Link {
                                     text: root.use-link ? "Use username and password instead" : "I have a one-time login link";

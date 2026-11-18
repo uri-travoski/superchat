@@ -39,6 +39,7 @@ object Native {
     @JvmStatic external fun nativeWake(dataDir: String)
     @JvmStatic external fun nativeTzOffset(secs: Int)
     @JvmStatic external fun nativeShare(text: String, files: String)
+    @JvmStatic external fun nativeLoginLink(link: String)
 
     private lateinit var app: Context
     private var ready = false
@@ -113,6 +114,13 @@ object Native {
         c.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, raw.copyOfRange(0, 12)))
         String(c.doFinal(raw, 12, raw.size - 12))
     } catch (e: Exception) { null }
+
+    // ---- QR login: opens the camera scanner (called from Rust) ------------------------------------------------------
+
+    @JvmStatic fun scanQr() {
+        val a = activity ?: return
+        a.runOnUiThread { a.startActivity(Intent(a, ScanActivity::class.java)) }
+    }
 
     // ---- M-30: voice messages ---------------------------------------------------------------------------------------
 

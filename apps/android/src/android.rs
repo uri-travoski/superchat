@@ -170,6 +170,7 @@ fn android_main(app: slint::android::AndroidApp) {
             with_env(|env, c| env.call_static_method(c, "scanQr", "()V", &[]).ok().map(|_| ()));
         })),
         take_login_link: Box::new(|| LOGIN_LINK.lock().ok().and_then(|mut g| g.take())),
+        clipboard: Some(Box::new(|| call_string("clipboardText", "").filter(|s| !s.is_empty()))),
     };
     if let Err(e) = atomic_ui::run_with(hooks) {
         log::error!("ui error: {e}");

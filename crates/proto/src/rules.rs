@@ -46,6 +46,23 @@ pub fn make_login_link(server_url: &str, token: &str) -> String {
     u.to_string()
 }
 
+/// Finds a `superchat://` (or legacy `atomic-chat://`) login link anywhere in `text` (a message, an e-mail, a field with
+/// extra words around it) and returns just the link.
+pub fn extract_login_link(text: &str) -> Option<String> {
+    for scheme in [LOGIN_LINK_SCHEME, LEGACY_LINK_SCHEME] {
+        let marker = format!("{scheme}://login");
+        if let Some(i) = text.find(&marker) {
+            let rest = &text[i..];
+            let end = rest.find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '<' | '>')).unwrap_or(rest.len());
+            let l = rest[..end].trim_end_matches(|c| matches!(c, '.' | ',' | ';' | ')'));
+            if parse_login_link(l).is_some() {
+                return Some(l.to_string());
+            }
+        }
+    }
+    None
+}
+
 /// What the user pasted on the login page.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedLink {
@@ -277,6 +294,19 @@ mod tests {
         assert!(parse_permalink("https://evil.example/m?c=a&m=b").is_none());
         assert!(parse_permalink("superchat://login?c=a&m=b").is_none());
         assert!(parse_permalink("atomic-chat://m?c=aa&m=bb").is_some());
+    }
+
+    #[test]
+    fn link_found_inside_other_text() {
+        let tok = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG";
+        let l = format!("superchat://login?server=https%3A%2F%2Fchat.example.org&token={tok}");
+        assert_eq!(extract_login_link(&format!("Hi! Open {l}. Thanks")), Some(l.clone()));
+        assert_eq!(extract_login_link(&l), Some(l.clone()));
+        let old = l.replace("superchat://", "atomic-chat://");
+        assert_eq!(extract_login_link(&format!("({old})")), Some(old.clone()));
+        assert!(parse_login_link(&old).is_some(), "legacy links still parse");
+        assert!(extract_login_link("https://chat.example.org").is_none());
+        assert!(extract_login_link("superchat://login?server=https%3A%2F%2Fx.org").is_none(), "no token");
     }
 
     #[test]

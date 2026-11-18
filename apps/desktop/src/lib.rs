@@ -118,6 +118,8 @@ pub struct Hooks {
     pub scan_qr: Option<Box<dyn Fn()>>,
     /// A one-time login link that arrived from outside (QR scan result, a tapped superchat:// link), once.
     pub take_login_link: Box<dyn Fn() -> Option<String>>,
+    /// Android: the clipboard text (desktop pastes through the text field itself).
+    pub clipboard: Option<Box<dyn Fn() -> Option<String>>>,
 }
 
 impl Hooks {
@@ -135,6 +137,7 @@ impl Hooks {
             take_shared: Box::new(|| None),
             scan_qr: None,
             take_login_link: Box::new(|| None),
+            clipboard: None,
         }
     }
 }
@@ -735,11 +738,32 @@ fn do_login(ui: &AppWindow, c: &Client, sh: &Sh, server: String, user: String, p
                         refresh(&ui, &c, &sh);
                         sync_push(&c, &sh);
                     }
-                    Err(e) => ui.set_login_error(e.to_string().into()),
+                    Err(e) => ui.set_login_error(login_error_text(&e).into()),
                 }
             }
         });
     });
+}
+
+/// The exact reason a sign-in failed, in words a person can act on.
+fn login_error_text(e: &client_core::ClientError) -> String {
+    match e {
+        client_core::ClientError::Network(m) => format!("Cannot reach the server: {m}. Check the server address and your connection."),
+        other => other.to_string(),
+    }
+}
+
+/// If `text` contains a SuperChat login link (superchat:// or the older atomic-chat://), switch the login screen to
+/// link mode and take the server address from the link.
+fn adopt_login_text(ui: &AppWindow, text: &str) {
+    if let Some(l) = proto::rules::extract_login_link(text) {
+        ui.set_use_link(true);
+        ui.set_f_link(l.clone().into());
+        if let Some(srv) = proto::rules::parse_login_link(&l).and_then(|p| p.server) {
+            ui.set_f_server(srv.into());
+        }
+        ui.set_login_error("".into());
+    }
 }
 
 fn toast(ui: &AppWindow, text: &str) {
@@ -1032,6 +1056,29 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
         });
     }
 
+    // ---- login screen helpers: a link pasted anywhere switches to link mode and supplies the server -------------
+    {
+        let wk = ui.as_weak();
+        ui.on_server_edited(move |text| {
+            if let Some(ui) = wk.upgrade() {
+                adopt_login_text(&ui, text.as_str());
+            }
+        });
+        let (wk, h2) = (ui.as_weak(), hooks.clone());
+        ui.on_paste_clip(move || {
+            if let (Some(ui), Some(f)) = (wk.upgrade(), h2.clipboard.as_ref()) {
+                if let Some(t) = f() {
+                    adopt_login_text(&ui, &t);
+                    if ui.get_f_link().is_empty() {
+                        ui.set_f_link(t.trim().to_string().into());
+                    }
+                } else {
+                    ui.set_login_error("The clipboard is empty.".into());
+                }
+            }
+        });
+    }
+
     // ---- sign in (with certificate fingerprint confirmation) ----------------------------------------
     {
         let (wk, c, sh) = (ui.as_weak(), client.clone(), osh.clone());
@@ -1039,7 +1086,17 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
             let Some(ui) = wk.upgrade() else { return };
             ui.set_busy(true);
             ui.set_login_error("".into());
-            let (server, user, pass, link) = (server.to_string(), user.to_string(), pass.to_string(), link.to_string());
+            let (mut server, user, pass, mut link) = (server.to_string(), user.to_string(), pass.to_string(), link.to_string());
+            // A link pasted into the server field (or surrounded by other text) is recognised here too.
+            if let Some(l) = proto::rules::extract_login_link(&link).or_else(|| proto::rules::extract_login_link(&server)) {
+                if let Some(srv) = proto::rules::parse_login_link(&l).and_then(|p| p.server) {
+                    server = srv;
+                }
+                link = l;
+                ui.set_use_link(true);
+                ui.set_f_link(link.clone().into());
+                ui.set_f_server(server.clone().into());
+            }
             let probe_target = if link.trim().is_empty() { server.clone() } else { proto::rules::parse_login_link(&link).and_then(|p| p.server).unwrap_or(server.clone()) };
             let (wk, c, sh) = (wk.clone(), c.clone(), sh.clone());
             c.clone().handle().spawn(async move {

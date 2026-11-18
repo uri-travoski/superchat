@@ -122,6 +122,12 @@ object Native {
         a.runOnUiThread { a.startActivity(Intent(a, ScanActivity::class.java)) }
     }
 
+    /** Plain text on the clipboard (the login screen's Paste button); empty when there is none. */
+    @JvmStatic fun clipboardText(@Suppress("UNUSED_PARAMETER") unused: String): String = try {
+        val cm = app.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(app)?.toString() ?: ""
+    } catch (e: Exception) { "" }
+
     // ---- M-30: voice messages ---------------------------------------------------------------------------------------
 
     private var player: MediaPlayer? = null

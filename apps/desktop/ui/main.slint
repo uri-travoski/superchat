@@ -175,6 +175,8 @@ export component AppWindow inherits Window {
 
     callback login(string, string, string, string);
     callback scan-qr();
+    callback paste-clip();
+    callback server-edited(string);
     callback tofu-accept();
     callback tofu-cancel();
     callback select-conv(string);
@@ -296,26 +298,44 @@ export component AppWindow inherits Window {
                                 spacing: 10px;
                                 Text { text: "SuperChat"; font-size: Theme.fs-title * 1.3; font-weight: 800; horizontal-alignment: center; }
                                 Text { text: "Sign in to your team's server"; color: Theme.muted; font-size: Theme.fs; horizontal-alignment: center; }
-                                LineEdit { text <=> root.f-server; placeholder-text: "Server address (https://chat.example.com)"; font-size: Theme.fs; accessible-label: "Server address"; }
+                                server-edit := LineEdit { text <=> root.f-server; placeholder-text: "Server address (https://chat.example.com)"; font-size: Theme.fs; accessible-label: "Server address"; edited(t) => { root.server-edited(t); } }
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    GhostButton { text: "Username & password"; on: !root.use-link; horizontal-stretch: 1; height: max(44px, 36px * Theme.scale); clicked => { root.use-link = false; root.login-error = ""; } }
+                                    GhostButton { text: "Login link"; on: root.use-link; horizontal-stretch: 1; height: max(44px, 36px * Theme.scale); clicked => { root.use-link = true; root.login-error = ""; } }
+                                }
                                 if !root.use-link: LineEdit { text <=> root.f-user; placeholder-text: "Username"; font-size: Theme.fs; accessible-label: "Username"; }
                                 if !root.use-link: LineEdit { text <=> root.f-pass; placeholder-text: "Password"; input-type: password; font-size: Theme.fs; accessible-label: "Password"; accepted => { root.login(root.f-server, root.f-user, root.f-pass, ""); } }
-                                if root.use-link: LineEdit { text <=> root.f-link; placeholder-text: "Paste your one-time login link"; font-size: Theme.fs; accepted => { root.login(root.f-server, "", "", root.f-link); } }
-                                if root.login-error != "": Text { text: root.login-error; color: Theme.danger; wrap: word-wrap; font-size: Theme.fs; }
+                                if root.use-link: VerticalLayout {
+                                    spacing: 10px;
+                                    Text { text: "Paste the one-time login link your administrator sent you (it starts with superchat://), or scan its QR code."; color: Theme.muted; font-size: Theme.fs-small; wrap: word-wrap; }
+                                    link-edit := LineEdit { text <=> root.f-link; placeholder-text: "superchat://login?..."; font-size: Theme.fs; accessible-label: "Login link"; edited(t) => { root.server-edited(t); } accepted => { root.login(root.f-server, "", "", root.f-link); } }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        GhostButton {
+                                            text: "Paste";
+                                            accessible-label: "Paste the login link from the clipboard";
+                                            horizontal-stretch: 1;
+                                            height: max(44px, 36px * Theme.scale);
+                                            clicked => { if root.is-android { root.paste-clip(); } else { link-edit.focus(); link-edit.paste(); root.server-edited(root.f-link); } }
+                                        }
+                                        if root.can-scan: GhostButton {
+                                            text: "Scan QR code";
+                                            accessible-label: "Scan the QR code of a one-time login link";
+                                            horizontal-stretch: 1;
+                                            height: max(44px, 36px * Theme.scale);
+                                            clicked => { root.scan-qr(); }
+                                        }
+                                    }
+                                }
+                                if root.login-error != "": Text { text: root.login-error; color: Theme.danger; wrap: word-wrap; font-size: Theme.fs; accessible-role: text; }
                                 PrimaryButton {
                                     text: root.busy ? "Signing in..." : "Sign in";
                                     enabled: !root.busy;
+                                    height: max(44px, 36px * Theme.scale);
                                     clicked => {
                                         if root.use-link { root.login(root.f-server, "", "", root.f-link); } else { root.login(root.f-server, root.f-user, root.f-pass, ""); }
                                     }
-                                }
-                                if root.can-scan: GhostButton {
-                                    text: "Scan QR code";
-                                    accessible-label: "Scan the QR code of a one-time login link";
-                                    clicked => { root.scan-qr(); }
-                                }
-                                Link {
-                                    text: root.use-link ? "Use username and password instead" : "I have a one-time login link";
-                                    clicked => { root.use-link = !root.use-link; }
                                 }
                             }
                         }

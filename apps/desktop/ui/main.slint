@@ -5,12 +5,12 @@ import "fonts/Inter-SemiBold.ttf";
 import "fonts/Inter-Bold.ttf";
 import "fonts/Inter-Italic.ttf";
 import { LineEdit, ListView, ScrollView, Palette, TextEdit } from "std-widgets.slint";
-import { Theme, Avatars, AvatarImg, ConvItem, MsgItem, PersonItem, RowItem, BookmarkItem, BlockItem, FileItem, ReactItem, EmojiItem, FormFieldItem, FormOptionItem, FormButtonItem, SideRow, LabelItem, SavedRow, ActivityRow, Drag } from "theme.slint";
+import { Theme, Avatars, AvatarImg, ConvItem, MsgItem, PersonItem, RowItem, BookmarkItem, BlockItem, FileItem, ReactItem, EmojiItem, FormFieldItem, FormOptionItem, FormButtonItem, SideRow, LabelItem, SavedRow, ActivityRow, Drag, SpellMark } from "theme.slint";
 import { Avatar, Icon, IconButton, Fab, AppBar, BottomSheet, ModalCard, AlertDialog, SheetRow, SettingRow, Card, TextButton, Toggle, Link, Pill, PrimaryButton, GhostButton, SectionHeader, ToolButton, LabelChip, EmptyState, TabBar, CountBadge, MenuRow, MenuDivider } from "components.slint";
 import { MessageRow, Composer, PeoplePicker } from "chat.slint";
 import { Rail, TopBar, SideItem, DmRow, ActivityItem, SavedCard, BottomNav } from "shell.slint";
 import { DetailsView } from "details.slint";
-export { Avatars, AvatarImg, Drag, Theme, ConvItem, MsgItem, PersonItem, RowItem, BookmarkItem, BlockItem, FileItem, ReactItem, EmojiItem, FormFieldItem, FormOptionItem, FormButtonItem, SideRow, LabelItem, SavedRow, ActivityRow }
+export { Avatars, AvatarImg, Drag, SpellMark, Theme, ConvItem, MsgItem, PersonItem, RowItem, BookmarkItem, BlockItem, FileItem, ReactItem, EmojiItem, FormFieldItem, FormOptionItem, FormButtonItem, SideRow, LabelItem, SavedRow, ActivityRow }
 
 export component AppWindow inherits Window {
     title: root.badge-counts && root.total-unread > 0 ? "(" + root.total-unread + ") SuperChat" : "SuperChat";
@@ -280,6 +280,28 @@ export component AppWindow inherits Window {
     callback notify-level(string, string);
     callback mark-unread(string);
     callback set-section(string, string);
+    // E-05: spell check of the message boxes ("main" and "thread").
+    in-out property <[SpellMark]> spell-marks;
+    in-out property <[SpellMark]> thread-spell-marks;
+    in-out property <[string]> spell-menu;
+    in-out property <string> spell-word;
+    in-out property <string> probe-text;
+    in-out property <length> probe-width: 300px;
+    in-out property <int> probe-off: 0;
+    in-out property <bool> spell-on: true;
+    in-out property <string> spell-lang-label: "English (Australia)";
+    in-out property <[string]> spell-langs;
+    callback spell-lang-pick(int);
+    callback spell-check(string, string, length);
+    callback spell-context(string, length, length, length, length);
+    callback spell-pick(int);
+    callback spell-add();
+    callback spell-ignore();
+    callback probed(int, length, length);
+    public function probe(off: int) {
+        root.probe-off = off;
+        probe-ti.set-selection-offsets(off, off);
+    }
     callback reorder-drop(string, string, int);
     callback move-row(string, int);
     callback reset-order();
@@ -1069,6 +1091,9 @@ export component AppWindow inherits Window {
                                     cancel-edit => { root.composer = ""; }
                                     record-toggle => { root.record-toggle(); }
                                     up-edit => { root.up-edit(); }
+                                    marks: root.spell-marks;
+                                    spell-check(t, w) => { root.spell-check("main", t, w); }
+                                    spell-context(x, y, ax, ay) => { root.spell-context("main", x, y, ax, ay); }
                                 }
                             }
                         }
@@ -1170,6 +1195,9 @@ export component AppWindow inherits Window {
                                         emoji => { root.picker-target = ""; root.menu-kind = "emoji"; }
                                         mention => { root.thread-composer = root.thread-composer + "@"; }
                                         toggle-format => { root.formatting-open = !root.formatting-open; }
+                                        marks: root.thread-spell-marks;
+                                        spell-check(t, w) => { root.spell-check("thread", t, w); }
+                                        spell-context(x, y, ax, ay) => { root.spell-context("thread", x, y, ax, ay); }
                                     }
                                 }
                             }
@@ -1611,6 +1639,10 @@ export component AppWindow inherits Window {
 
                                         // ---------- chats ----------
                                         if root.settings-page == "chats": Card {
+                                            SettingRow { icon: "check"; badge: #dc2626; title: "Check spelling"; has-switch: true; on: root.spell-on; toggled => { root.spell-on = self.on; root.setting-changed("spell"); } }
+                                            if root.spell-on && !root.is-android: SettingRow { icon: "globe"; badge: #0d9488; title: "Spelling language"; summary: root.spell-lang-label; divider: false; clicked => { root.menu-kind = "pick-spell"; } }
+                                        }
+                                        if root.settings-page == "chats": Card {
                                             SettingRow { icon: "clock"; badge: #0d9488; title: "Drafts & scheduled"; summary: root.scheduled-count > 0 ? root.scheduled-count + " scheduled" : ""; clicked => { root.open-drafts(); } }
                                             SettingRow { icon: "search"; badge: #3b82f6; title: "Saved searches"; summary: root.saved.length > 0 ? "" + root.saved.length : ""; clicked => { root.open-search(); } divider: false; }
                                         }
@@ -1982,6 +2014,14 @@ export component AppWindow inherits Window {
                     SheetRow { icon: "bell-off"; text: "Forever"; clicked => { root.mute(root.menu-conv, "forever"); root.menu-kind = ""; } }
                     SheetRow { icon: "bell"; text: "Unmute"; clicked => { root.mute(root.menu-conv, "off"); root.menu-kind = ""; } }
                 }
+                if root.menu-kind == "spell": BottomSheet {
+                    title: "Spelling: " + root.spell-word; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y; menu-width: 260px;
+                    dismiss => { root.menu-kind = ""; }
+                    for s[i] in root.spell-menu: SheetRow { icon: "edit"; text: s; clicked => { root.spell-pick(i); root.menu-kind = ""; } }
+                    if root.spell-menu.length == 0: SheetRow { icon: "info"; text: "No suggestions"; }
+                    SheetRow { icon: "plus"; text: "Add to dictionary"; clicked => { root.spell-add(); root.menu-kind = ""; } }
+                    SheetRow { icon: "eye-off"; text: "Ignore for now"; clicked => { root.spell-ignore(); root.menu-kind = ""; } }
+                }
                 if root.menu-kind == "secmenu": BottomSheet {
                     title: root.menu-title; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y; menu-width: 260px;
                     dismiss => { root.menu-kind = ""; }
@@ -2124,6 +2164,11 @@ export component AppWindow inherits Window {
                     SheetRow { text: "Regular"; checked: root.font-step == 0; clicked => { root.font-step = 0; root.setting-changed("font"); root.menu-kind = ""; } }
                     SheetRow { text: "Large"; checked: root.font-step == 1; clicked => { root.font-step = 1; root.setting-changed("font"); root.menu-kind = ""; } }
                     SheetRow { text: "Extra large"; checked: root.font-step == 2; clicked => { root.font-step = 2; root.setting-changed("font"); root.menu-kind = ""; } }
+                }
+                if root.menu-kind == "pick-spell": BottomSheet {
+                    title: "Spelling language"; wide: root.wide;
+                    dismiss => { root.menu-kind = ""; }
+                    for l[i] in root.spell-langs: SheetRow { text: l; checked: l == root.spell-lang-label; clicked => { root.spell-lang-pick(i); root.menu-kind = ""; } }
                 }
                 if root.menu-kind == "pick-push": BottomSheet {
                     title: "Push method"; wide: root.wide;
@@ -2279,6 +2324,21 @@ export component AppWindow inherits Window {
                     LineEdit { text <=> root.new-channel-name; placeholder-text: "Channel name"; font-size: Theme.fs; accessible-label: "Channel name"; accepted => { root.create-channel(root.new-channel-name); } }
                 }
 
+                // E-05: a hidden copy of the message box text that is only used to measure where a word is drawn.
+                probe-ti := TextInput {
+                    x: 0px;
+                    y: 0px;
+                    width: root.probe-width;
+                    height: 8px;
+                    opacity: 0;
+                    text: root.probe-text;
+                    font-size: Theme.fs;
+                    wrap: word-wrap;
+                    single-line: false;
+                    read-only: true;
+                    accessible-role: none;
+                    cursor-position-changed(p) => { root.probed(root.probe-off, p.x, p.y); }
+                }
                 if Drag.active: Rectangle {
                     x: min(max(Drag.x + 10px, 0px), parent.width - self.width - 4px);
                     y: Drag.y - self.height / 2;

@@ -44,6 +44,8 @@ pub struct Prefs {
     pub saved_searches: Vec<String>,
     /// Quick switcher history.
     pub spell_check: bool,
+    /// E-05: dictionary language tag ("en_AU" is bundled; others come from the system's Hunspell dictionaries).
+    pub spell_lang: String,
     /// N-04: play a sound for new messages at all (off = every notification is silent).
     pub notification_sound: bool,
     /// N-04: the sound for conversations without their own choice ("default" = the system sound, "none", or a bundled id).
@@ -85,6 +87,7 @@ impl Default for Prefs {
             recent_searches: vec![],
             saved_searches: vec![],
             spell_check: true,
+            spell_lang: "en_AU".into(),
             collapsed_sections: vec![],
             notification_sound: true,
             sound_default: "default".into(),

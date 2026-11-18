@@ -80,6 +80,8 @@ VARIANTS=(
   "desk-1280-light-regular-drag-reorder|1280x800|light|100|chat:general||mousemove 150 324 mousedown 1 mousemove 150 316 mousemove 150 300 mousemove 150 280 mousemove 150 262"
   "desk-1280-light-regular-drag-reordered|1280x800|light|100|chat:general||mousemove 150 324 mousedown 1 mousemove 150 316 mousemove 150 300 mousemove 150 280 mousemove 150 262 mouseup 1 mousemove 600 400"
   "desk-1280-light-regular-menu-section|1280x800|light|100|chat:general||mousemove 150 234 click 3"
+  "desk-1280-light-regular-spellcheck|1280x800|light|100|spell:general"
+  "desk-1280-light-regular-spellmenu|1280x800|light|100|spell:general||mousemove 735 732 click 3"
   "desk-1280-light-regular-media-cards|1280x800|light|100|chat:design"
   "desk-1280-dark-regular-media-cards|1280x800|dark|100|chat:design"
   # ---- desktop 1000x700 ----

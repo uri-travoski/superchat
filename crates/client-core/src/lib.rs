@@ -10,6 +10,7 @@ pub mod media;
 pub mod prefs;
 pub mod secrets;
 pub mod sounds;
+pub mod spell;
 pub mod store;
 pub mod tls;
 

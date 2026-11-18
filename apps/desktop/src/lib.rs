@@ -14,6 +14,7 @@ pub mod lock;
 pub mod platform;
 mod sched;
 mod shell;
+mod spell_ui;
 mod shortcodes;
 
 use client_core::logic::{datefmt, emoji, initials, markup, searchq};
@@ -666,6 +667,7 @@ fn apply_prefs(ui: &AppWindow, st: &St) {
     ui.set_notif(st.prefs.notifications);
     ui.set_notif_preview(st.prefs.notification_preview);
     ui.set_notif_sound(st.prefs.notification_sound);
+    ui.set_spell_on(st.prefs.spell_check);
     ui.set_badge_counts(st.prefs.badge_counts);
     ui.set_sound_default_label(client_core::sounds::label(&st.prefs.sound_default).into());
     ui.set_push_choice(st.prefs.push_choice.clone().into());
@@ -1411,6 +1413,10 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                     ui.set_menu_y(260.0);
                     ui.invoke_open_conv_menu(ui.get_current_conv(), ui.get_current_title(), false);
                 }
+                "spell" => {
+                    // Screenshot / test helper: a message with typos in the box (the spell check marks them).
+                    ui.set_composer("Thsi is a mesage with a few typos, can you recieve it? The colour is fine.".into());
+                }
                 "soundmenu" => {
                     ui.set_menu_x(40.0);
                     ui.set_menu_y(260.0);
@@ -1766,6 +1772,7 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
     lock::install(&ui, &client, &osh);
     shell::install(&ui, &client, &osh);
     reorder::install(&ui, &client, &osh);
+    spell_ui::install(&ui, &osh);
 
     // ---- login screen helpers: a link pasted anywhere switches to link mode and supplies the server -------------
     {
@@ -3080,6 +3087,7 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
             let Some(ui) = wk.upgrade() else { return };
             let mut g = sh.lock().unwrap();
             let mut push_changed = false;
+            let mut spell_ui_recheck = false;
             match kind.as_str() {
                 "theme" => g.prefs.theme = ["system", "light", "dark"][ui.get_theme_mode().clamp(0, 2) as usize].into(),
                 "accent" => g.prefs.accent = ui.global::<Theme>().get_accent_index() as u8,
@@ -3097,6 +3105,10 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                     g.prefs.push_choice = ui.get_push_choice().to_string();
                     g.prefs.ntfy_url = ui.get_ntfy_url().to_string();
                     push_changed = true;
+                }
+                "spell" => {
+                    g.prefs.spell_check = ui.get_spell_on();
+                    spell_ui_recheck = true;
                 }
                 "tray" => g.prefs.close_to_tray = ui.get_close_tray(),
                 "launch" => {
@@ -3123,6 +3135,9 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
             drop(g);
             if push_changed {
                 sync_push(&c, &sh);
+            }
+            if spell_ui_recheck {
+                spell_ui::recheck_all(&ui);
             }
             refresh(&ui, &c, &sh);
         });

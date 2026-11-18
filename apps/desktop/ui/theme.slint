@@ -296,3 +296,11 @@ export global Drag {
         self.zone = 0;
     }
 }
+
+// E-05: a red squiggle under a misspelled word of the message box (position inside the text field, width, zigzag path).
+export struct SpellMark {
+    x: length,
+    y: length,
+    w: length,
+    path: string,
+}

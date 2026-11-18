@@ -1,6 +1,6 @@
 // Message list and composer building blocks shared by desktop and phone.
 import { TextEdit } from "std-widgets.slint";
-import { Theme, MsgItem, PersonItem, LabelItem, EmojiItem } from "theme.slint";
+import { Theme, MsgItem, PersonItem, LabelItem, EmojiItem, SpellMark } from "theme.slint";
 import { Icon } from "icons.slint";
 import { AudioCard, VideoCard, FileCard } from "media.slint";
 import { Avatar, PressArea, Link, PrimaryButton, GhostButton, ToolButton, LabelChip, MenuRow, MenuDivider } from "components.slint";
@@ -434,6 +434,26 @@ export component Composer inherits Rectangle {
     callback record-toggle;
     callback up-edit;
     callback focus-lost;
+    // E-05: spell check. The text and the width of the field go out (Rust finds the typos and the places to draw them);
+    // right-clicking a marked word reports where.
+    in property <[SpellMark]> marks;
+    out property <length> input-width: ti.width;
+    callback spell-check(string, length);
+    callback spell-context(length, length, length, length);
+    // Polled (the text can be set from outside as well as typed): when the text or the width changed, ask for a check.
+    property <string> spell-last-text: "\u{0}";
+    property <length> spell-last-width: 0px;
+    Timer {
+        interval: 200ms;
+        running: true;
+        triggered => {
+            if root.text != root.spell-last-text || ti.width != root.spell-last-width {
+                root.spell-last-text = root.text;
+                root.spell-last-width = ti.width;
+                root.spell-check(root.text, ti.width);
+            }
+        }
+    }
     out property <bool> has-focus: fs.has-focus;
     public function focus-input() { ti.focus(); }
     property <bool> can-send: root.text != "";
@@ -531,7 +551,27 @@ export component Composer inherits Rectangle {
                                 edited => { root.edited(self.text); }
                             }
                         }
-                        TouchArea { z: -1; clicked => { ti.focus(); } }
+                        for m in root.marks: Path {
+                            x: ti.x + m.x;
+                            y: ti.y + m.y + Theme.fs * 1.21 - 2px;
+                            width: m.w;
+                            height: 3px;
+                            viewbox-width: m.w / 1px;
+                            viewbox-height: 3;
+                            commands: m.path;
+                            stroke: Theme.danger;
+                            stroke-width: 1.1px;
+                            fill: transparent;
+                        }
+                        TouchArea {
+                            z: -1;
+                            clicked => { ti.focus(); }
+                            pointer-event(e) => {
+                                if e.kind == PointerEventKind.up && e.button == PointerEventButton.right {
+                                    root.spell-context(self.mouse-x - ti.x, self.mouse-y - ti.y, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                                }
+                            }
+                        }
                     }
                     if !root.wide: ToolButton { icon: "aa"; label: "Formatting"; size: 40px; glyph: 22px; active: root.formatting; y: (parent.height - self.height) / 2; clicked => { root.toggle-format(); } }
                     if !root.wide: ToolButton { icon: "emoji"; label: "Emoji"; size: 40px; glyph: 22px; y: (parent.height - self.height) / 2; clicked => { root.emoji(); } }

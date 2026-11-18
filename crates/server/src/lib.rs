@@ -13,6 +13,7 @@ pub mod error;
 pub mod fullbackup;
 pub mod hooks;
 pub mod hub;
+pub mod landing;
 pub mod org;
 pub mod push;
 pub mod queries;
@@ -96,6 +97,9 @@ pub fn router(st: St) -> Router {
     let mut app = Router::new()
         .route("/healthz", get(routes::account::health))
         .route("/", get(|| async { Redirect::temporary("/admin/") }))
+        .route("/l/{token}", get(landing::landing))
+        .route("/downloads", get(landing::downloads_index))
+        .route("/downloads/{name}", get(landing::download_file))
         .nest("/api/v1", routes::api_router())
         // Telegram-compatible bot endpoints (same shape as api.telegram.org).
         .route("/bot{token}/{method}", get(routes::botapi::telegram).post(routes::botapi::telegram).layer(axum::extract::DefaultBodyLimit::disable()))

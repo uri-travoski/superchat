@@ -308,8 +308,8 @@ export component AppWindow inherits Window {
                                 if !root.use-link: LineEdit { text <=> root.f-pass; placeholder-text: "Password"; input-type: password; font-size: Theme.fs; accessible-label: "Password"; accepted => { root.login(root.f-server, root.f-user, root.f-pass, ""); } }
                                 if root.use-link: VerticalLayout {
                                     spacing: 10px;
-                                    Text { text: "Paste the one-time login link your administrator sent you (it starts with superchat://), or scan its QR code."; color: Theme.muted; font-size: Theme.fs-small; wrap: word-wrap; }
-                                    link-edit := LineEdit { text <=> root.f-link; placeholder-text: "superchat://login?..."; font-size: Theme.fs; accessible-label: "Login link"; edited(t) => { root.server-edited(t); } accepted => { root.login(root.f-server, "", "", root.f-link); } }
+                                    Text { text: "Paste the one-time login link your administrator sent you (it looks like https://chat.example.com/l/...), or scan its QR code. Tapping the link on this phone opens the app by itself."; color: Theme.muted; font-size: Theme.fs-small; wrap: word-wrap; }
+                                    link-edit := LineEdit { text <=> root.f-link; placeholder-text: "Login link"; font-size: Theme.fs; accessible-label: "Login link"; edited(t) => { root.server-edited(t); } accepted => { root.login(root.f-server, "", "", root.f-link); } }
                                     HorizontalLayout {
                                         spacing: 8px;
                                         GhostButton {

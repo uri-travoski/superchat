@@ -7,6 +7,7 @@ slint::include_modules!();
 mod emoji_data;
 mod forms;
 mod model;
+pub mod handoff;
 pub mod platform;
 mod sched;
 
@@ -777,7 +778,19 @@ fn toast(ui: &AppWindow, text: &str) {
 }
 
 pub fn run() -> Result<(), slint::PlatformError> {
-    run_with(Hooks::desktop())
+    let mut hooks = Hooks::desktop();
+    // A login link given on the command line (the browser's "Open in SuperChat" button, a superchat:// click).
+    let link = std::env::args().skip(1).find_map(|a| proto::rules::extract_login_link(&a));
+    if let Some(l) = &link {
+        if handoff::send(&hooks.data_dir, l) {
+            return Ok(()); // the running instance signs in
+        }
+    }
+    let _ = std::fs::create_dir_all(&hooks.data_dir);
+    let slot = Arc::new(std::sync::Mutex::new(link));
+    handoff::listen(&hooks.data_dir, slot.clone());
+    hooks.take_login_link = Box::new(move || slot.lock().ok().and_then(|mut g| g.take()));
+    run_with(hooks)
 }
 
 pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {

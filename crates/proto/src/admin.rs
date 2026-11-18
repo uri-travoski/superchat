@@ -453,3 +453,22 @@ pub struct ViewerHistory {
     /// Thread root id -> number of replies.
     pub reply_counts: std::collections::BTreeMap<String, i64>,
 }
+
+/// The externally visible base URL used in login links (owner setting; the env var wins when set).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct PublicUrlSettings {
+    /// The URL saved in the admin panel (empty when none).
+    #[serde(default)]
+    pub url: Option<String>,
+    /// What links are built from right now.
+    pub effective: String,
+    /// "env" (SUPERCHAT_PUBLIC_URL), "setting" or "request" (derived from the Host header).
+    pub source: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct PublicUrlUpdate {
+    /// `null` or empty clears the setting.
+    #[serde(default)]
+    pub url: Option<String>,
+}

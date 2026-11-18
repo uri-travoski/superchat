@@ -14,6 +14,15 @@ pub struct TestServer {
 }
 
 impl TestServer {
+    /// Makes every unused login link expired.
+    pub fn expire_login_links(&self) {
+        let st = self.st.clone();
+        let rt = tokio::runtime::Handle::current();
+        std::thread::scope(|sc| {
+            sc.spawn(|| rt.block_on(async { st.db.call(|c| { c.execute("UPDATE login_links SET expires_ms=1", [])?; Ok(()) }).await.unwrap() })).join().unwrap();
+        });
+    }
+
     pub async fn start() -> TestServer {
         Self::start_with(|_| {}).await
     }

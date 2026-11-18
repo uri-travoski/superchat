@@ -23,6 +23,11 @@ Section "Install"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\SuperChat" "DisplayVersion" "${VERSION}"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\SuperChat" "DisplayIcon" "$INSTDIR\superchat.ico"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\SuperChat" "UninstallString" "$INSTDIR\uninstall.exe"
+  ; superchat:// links (the login page's "Open in SuperChat" button) start the app
+  WriteRegStr HKCU "Software\Classes\superchat" "" "URL:SuperChat"
+  WriteRegStr HKCU "Software\Classes\superchat" "URL Protocol" ""
+  WriteRegStr HKCU "Software\Classes\superchat\DefaultIcon" "" "$INSTDIR\superchat.ico"
+  WriteRegStr HKCU "Software\Classes\superchat\shell\open\command" "" '"$INSTDIR\superchat.exe" "%1"'
 SectionEnd
 
 Section "Uninstall"
@@ -32,4 +37,5 @@ Section "Uninstall"
   Delete "$SMPROGRAMS\SuperChat.lnk"
   RMDir "$INSTDIR"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\SuperChat"
+  DeleteRegKey HKCU "Software\Classes\superchat"
 SectionEnd

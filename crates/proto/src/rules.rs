@@ -37,13 +37,22 @@ pub fn is_link_scheme(s: &str) -> bool {
     s == LOGIN_LINK_SCHEME || s == LEGACY_LINK_SCHEME
 }
 
-/// Builds the paste-able one-time login link: `superchat://login?server=<url>&token=<token>`.
+/// The one-time login link an administrator shares: a normal web URL on the server itself, `<server>/l/<token>`.
+/// Opening it in a browser shows a landing page that opens the app; the apps also accept it pasted.
 pub fn make_login_link(server_url: &str, token: &str) -> String {
+    format!("{}/l/{}", server_url.trim_end_matches('/'), token)
+}
+
+/// The app deep link (`superchat://login?server=<url>&token=<token>`) the landing page hands to the installed app.
+pub fn make_app_link(server_url: &str, token: &str) -> String {
     let mut u = Url::parse("superchat://login").expect("static url");
-    u.query_pairs_mut()
-        .append_pair("server", server_url.trim_end_matches('/'))
-        .append_pair("token", token);
+    u.query_pairs_mut().append_pair("server", server_url.trim_end_matches('/')).append_pair("token", token);
     u.to_string()
+}
+
+/// Whether a path segment is a well-formed login token (landing page route check).
+pub fn is_valid_token(t: &str) -> bool {
+    valid_token(t)
 }
 
 /// Finds a `superchat://` (or legacy `atomic-chat://`) login link anywhere in `text` (a message, an e-mail, a field with
@@ -59,6 +68,19 @@ pub fn extract_login_link(text: &str) -> Option<String> {
                 return Some(l.to_string());
             }
         }
+    }
+    // A web link `http(s)://host[:port]/l/<token>`.
+    let mut from = 0;
+    while let Some(i) = text[from..].find("://") {
+        let at = from + i;
+        let start = text[..at].rfind(|c: char| !c.is_ascii_alphabetic()).map(|j| j + 1).unwrap_or(0);
+        let rest = &text[start..];
+        let end = rest.find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '<' | '>')).unwrap_or(rest.len());
+        let l = rest[..end].trim_end_matches(|c| matches!(c, '.' | ',' | ';' | ')'));
+        if (l.starts_with("http://") || l.starts_with("https://")) && l.contains("/l/") && parse_login_link(l).is_some() {
+            return Some(l.to_string());
+        }
+        from = at + 3;
     }
     None
 }
@@ -81,6 +103,12 @@ pub fn parse_login_link(input: &str) -> Option<ParsedLink> {
         if u.has_host() || is_link_scheme(u.scheme()) {
             let mut server = None;
             let mut token = None;
+            if (u.scheme() == "https" || u.scheme() == "http") && u.has_host() {
+                if let Some(t) = u.path().strip_prefix("/l/").map(|t| t.trim_end_matches('/')).filter(|t| valid_token(t)) {
+                    let server = format!("{}://{}{}", u.scheme(), u.host_str().unwrap_or(""), u.port().map(|p| format!(":{p}")).unwrap_or_default());
+                    return Some(ParsedLink { server: Some(server), token: t.to_string() });
+                }
+            }
             for (k, v) in u.query_pairs() {
                 match k.as_ref() {
                     "server" => server = Some(v.to_string()),
@@ -262,6 +290,13 @@ mod tests {
     fn login_link_roundtrip() {
         let tok = "abcd1234efgh5678ijkl";
         let link = make_login_link("https://chat.example.com/", tok);
+        assert_eq!(link, format!("https://chat.example.com/l/{tok}"));
+        let p = parse_login_link(&link).unwrap();
+        assert_eq!(p.server.as_deref(), Some("https://chat.example.com"));
+        assert_eq!(p.token, tok);
+        let p = parse_login_link(&format!("http://192.168.1.5:8080/l/{tok}/")).unwrap();
+        assert_eq!(p.server.as_deref(), Some("http://192.168.1.5:8080"));
+        let link = make_app_link("https://chat.example.com/", tok);
         let p = parse_login_link(&link).unwrap();
         assert_eq!(p.server.as_deref(), Some("https://chat.example.com"));
         assert_eq!(p.token, tok);
@@ -304,6 +339,9 @@ mod tests {
         assert_eq!(extract_login_link(&l), Some(l.clone()));
         let old = l.replace("superchat://", "atomic-chat://");
         assert_eq!(extract_login_link(&format!("({old})")), Some(old.clone()));
+        let web = format!("http://10.0.2.2:18300/l/{tok}");
+        assert_eq!(extract_login_link(&format!("Tap {web}, then sign in")), Some(web.clone()));
+        assert!(extract_login_link("see https://example.org/l/short").is_none());
         assert!(parse_login_link(&old).is_some(), "legacy links still parse");
         assert!(extract_login_link("https://chat.example.org").is_none());
         assert!(extract_login_link("superchat://login?server=https%3A%2F%2Fx.org").is_none(), "no token");

@@ -300,6 +300,14 @@ impl AdminClient {
         self.call(Method::POST, &format!("/admin/webhooks/outgoing/{id}/test"), Some(serde_json::json!({}))).await
     }
 
+    pub async fn get_public_url(&self) -> Result<PublicUrlSettings> {
+        self.call(Method::GET, "/admin/public-url", None).await
+    }
+
+    pub async fn set_public_url(&self, url: Option<&str>) -> Result<PublicUrlSettings> {
+        self.call(Method::PUT, "/admin/public-url", Some(serde_json::to_value(&PublicUrlUpdate { url: url.map(str::to_string) })?)).await
+    }
+
     pub async fn ai_overview(&self) -> Result<AiOverview> {
         self.call(Method::GET, "/admin/ai", None).await
     }

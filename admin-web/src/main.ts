@@ -132,6 +132,12 @@ const pages: Record<Tab, (el: HTMLElement, m: ServerMeta) => Promise<void>> = {
             onchange: async (e: Event) => { try { await api("PATCH", `/admin/users/${u.id}`, { privacy_controls_enabled: (e.target as HTMLInputElement).checked }); toast("Saved"); } catch (er) { fail(er); } } }), "on")),
         h("td", {}, u.deleted ? "" : userActions(u, reload))));
     }
+    const pu: any = await api("GET", "/admin/public-url").catch(() => null);
+    const puIn = h("input", { id: "public-url", placeholder: "https://chat.example.com", value: pu?.url ?? "", disabled: pu?.source === "env", style: "flex:1;min-width:0" }) as HTMLInputElement;
+    const puCard = pu ? h("div", { class: "card", id: "public-url-card" }, h("h2", { style: "margin-top:0" }, "Address used in login links"),
+      h("p", { class: "muted" }, pu.source === "env" ? `Fixed by the server setting SUPERCHAT_PUBLIC_URL: ${pu.effective}` : `Links currently point to ${pu.effective} (${pu.source === "setting" ? "saved here" : "taken from how you opened this page"}). Set the address people reach the server on, such as a domain or a LAN address with its port.`),
+      h("div", { class: "row" }, puIn, h("button", { disabled: pu.source === "env", onclick: async () => { try { await api("PUT", "/admin/public-url", { url: puIn.value.trim() || null }); toast("Saved"); reload(); } catch (e) { fail(e); } } }, "Save"))) : "";
+    el.append(puCard);
     el.append(h("div", { class: "card" },
       h("div", { class: "row" }, h("h2", { style: "margin:0;flex:1" }, "Users"), h("button", { class: "primary", onclick: () => createUserDialog(reload) }, "Create user")),
       h("table", {}, h("thead", {}, h("tr", {}, ...["Name", "Role", "Status", "Setup", "Last active", "Sessions", "Privacy screen", "Actions"].map((x) => h("th", {}, x)))), tbody),
@@ -259,9 +265,12 @@ function userActions(u: AdminUser, reload: () => void): HTMLElement {
 
 function showLink(title: string, link: string, expires: number) {
   const qr = qrSvg(link, 220);
-  dialog(title, h("div", {}, h("p", {}, "Send this to the user. They paste it on the app's login page, or scan the QR code with the app (Sign in, Scan QR). It works once and expires on " + fmtDate(expires) + "."),
-    h("div", { class: "linkbox mono", id: "login-link" }, link),
-    h("div", { class: "qrbox", id: "login-qr" }, qr ?? h("p", { class: "muted" }, "This link is too long for a QR code; copy it instead."))), [{ label: "Copy link", primary: true, action: async () => { await copy(link); } }]);
+  const share = (navigator as any).share ? [{ label: "Share", action: async () => { try { await (navigator as any).share({ title: "SuperChat login link", text: "Your one-time SuperChat login link:", url: link }); } catch { /* cancelled */ } } }] : [];
+  dialog(title, h("div", {}, h("p", {}, "Send this link to the user. Tapping it opens SuperChat and signs them in (a phone camera pointed at the QR code does the same). It works once and expires on " + fmtDate(expires) + "."),
+    h("a", { class: "linkbox mono", id: "login-link", href: link, target: "_blank", rel: "noopener noreferrer", style: "display:block" }, link),
+    h("div", { class: "qrbox", id: "login-qr" }, qr ?? h("p", { class: "muted" }, "This link is too long for a QR code; copy it instead.")),
+    h("p", { class: "muted" }, "The page behind the link offers the app download if SuperChat is not installed yet. You can also paste the link on the app's login page.")),
+    [{ label: "Copy link", primary: true, action: async () => { await copy(link); } }, ...share]);
 }
 
 function createUserDialog(reload: () => void) {

@@ -49,6 +49,7 @@ pub fn api_router() -> Router<St> {
         .route("/ws", get(ws::ws_handler))
         .route("/me/push", get(crate::push::list).put(crate::push::register))
         .route("/me/push/{id}", delete(crate::push::unregister))
+        .route("/admin/public-url", get(admin::get_public_url).put(admin::put_public_url))
         .route("/admin/push", get(crate::push::get_settings).put(crate::push::put_settings))
         // organisation (phase 2)
         .route("/threads", get(org::list_threads))

@@ -18,10 +18,22 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 type J<T> = AppResult<Json<T>>;
 
-fn public_base(st: &St, parts: &Parts) -> String {
+pub(crate) async fn public_base(st: &St, parts: &Parts) -> String {
+    public_base_src(st, parts).await.0
+}
+
+/// The base URL for links plus where it came from: "env", "setting" or "request".
+pub(crate) async fn public_base_src(st: &St, parts: &Parts) -> (String, &'static str) {
     if let Some(u) = &st.cfg.public_url {
-        return u.clone();
+        return (u.clone(), "env");
     }
+    if let Some(u) = st.db.call(|c| crate::db::get_setting(c, "public_url")).await.ok().flatten().filter(|u| !u.is_empty()) {
+        return (u, "setting");
+    }
+    (request_base(parts), "request")
+}
+
+fn request_base(parts: &Parts) -> String {
     let h = |n: &str| parts.headers.get(n).and_then(|v| v.to_str().ok()).map(|s| s.split(',').next().unwrap_or("").trim().to_string());
     let host = h("x-forwarded-host").or_else(|| h("host")).unwrap_or_else(|| "localhost".into());
     let scheme = h("x-forwarded-proto").unwrap_or_else(|| "http".into());
@@ -80,7 +92,7 @@ pub async fn create_user_route(State(st): State<St>, Admin(a): Admin, parts: Par
     };
     let want_link = req.create_login_link.unwrap_or(!has_pw);
     let hash = hash_pw_async(pw).await?;
-    let base = public_base(&st, &parts);
+    let base = public_base(&st, &parts).await;
     let hub = st.hub.clone();
     Ok(Json(
         st.db
@@ -183,7 +195,7 @@ pub async fn reset_password(State(st): State<St>, Admin(a): Admin, parts: Parts,
         _ => None,
     };
     let hash = hash_pw_async(given.clone().unwrap_or_else(|| random_token("", 24))).await?;
-    let base = public_base(&st, &parts);
+    let base = public_base(&st, &parts).await;
     let hub = st.hub.clone();
     Ok(Json(
         st.db
@@ -206,7 +218,7 @@ pub async fn reset_password(State(st): State<St>, Admin(a): Admin, parts: Parts,
 }
 
 pub async fn new_login_link(State(st): State<St>, Admin(a): Admin, parts: Parts, Path(id): Path<String>) -> J<LoginLink> {
-    let base = public_base(&st, &parts);
+    let base = public_base(&st, &parts).await;
     Ok(Json(
         st.db
             .call(move |c| {
@@ -573,4 +585,27 @@ pub async fn overview(State(st): State<St>, Admin(_a): Admin) -> J<serde_json::V
     v["server_version"] = VERSION.into();
     v["storage"] = st.storage_config().kind().into();
     Ok(Json(v))
+}
+
+// ---------------------------------------------------------------------- public URL (login links)
+
+pub async fn get_public_url(State(st): State<St>, Admin(_a): Admin, parts: Parts) -> J<PublicUrlSettings> {
+    let saved = st.db.call(|c| crate::db::get_setting(c, "public_url")).await?.filter(|u| !u.is_empty());
+    let (effective, source) = public_base_src(&st, &parts).await;
+    Ok(Json(PublicUrlSettings { url: saved, effective, source: source.into() }))
+}
+
+pub async fn put_public_url(State(st): State<St>, Admin(a): Admin, parts: Parts, Json(req): Json<PublicUrlUpdate>) -> J<PublicUrlSettings> {
+    if a.role != Role::Owner {
+        return Err(AppError::forbidden("only the owner can change the public address"));
+    }
+    let v = req.url.unwrap_or_default().trim().trim_end_matches('/').to_string();
+    if !v.is_empty() {
+        let ok = url::Url::parse(&v).map(|u| (u.scheme() == "https" || u.scheme() == "http") && u.has_host() && u.path() == "/" && u.query().is_none()).unwrap_or(false);
+        if !ok {
+            return Err(AppError::validation("enter an address like https://chat.example.com or http://192.168.1.10:8080"));
+        }
+    }
+    st.db.call(move |c| crate::db::set_setting(c, "public_url", &v)).await?;
+    get_public_url(State(st), Admin(a), parts).await
 }

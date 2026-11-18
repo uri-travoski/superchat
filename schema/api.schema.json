@@ -3202,6 +3202,45 @@
       ],
       "type": "string"
     },
+    "PublicUrlSettings": {
+      "description": "The externally visible base URL used in login links (owner setting; the env var wins when set).",
+      "properties": {
+        "effective": {
+          "description": "What links are built from right now.",
+          "type": "string"
+        },
+        "source": {
+          "description": "\"env\" (SUPERCHAT_PUBLIC_URL), \"setting\" or \"request\" (derived from the Host header).",
+          "type": "string"
+        },
+        "url": {
+          "default": null,
+          "description": "The URL saved in the admin panel (empty when none).",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "effective",
+        "source"
+      ],
+      "type": "object"
+    },
+    "PublicUrlUpdate": {
+      "properties": {
+        "url": {
+          "default": null,
+          "description": "`null` or empty clears the setting.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "PushRegistration": {
       "description": "A push registration (SV-13). `kind` is \"fcm\", \"ntfy\" or \"apns\".",
       "properties": {
@@ -4735,6 +4774,12 @@
     "pin": {
       "$ref": "#/definitions/Pin"
     },
+    "public_url_settings": {
+      "$ref": "#/definitions/PublicUrlSettings"
+    },
+    "public_url_update": {
+      "$ref": "#/definitions/PublicUrlUpdate"
+    },
     "push_registration": {
       "$ref": "#/definitions/PushRegistration"
     },
@@ -4878,6 +4923,8 @@
     "me",
     "meta",
     "pin",
+    "public_url_settings",
+    "public_url_update",
     "push_registration",
     "push_settings",
     "refresh_request",

@@ -306,6 +306,8 @@ export interface SuperChatAPI {
   me: Me;
   meta: ServerMeta;
   pin: Pin;
+  public_url_settings: PublicUrlSettings;
+  public_url_update: PublicUrlUpdate;
   push_registration: PushRegistration;
   push_settings: PushSettings;
   refresh_request: RefreshRequest;
@@ -1180,6 +1182,29 @@ export interface ServerMeta {
    * True until the first owner account has been created.
    */
   setup_required: boolean;
+}
+/**
+ * The externally visible base URL used in login links (owner setting; the env var wins when set).
+ */
+export interface PublicUrlSettings {
+  /**
+   * What links are built from right now.
+   */
+  effective: string;
+  /**
+   * "env" (SUPERCHAT_PUBLIC_URL), "setting" or "request" (derived from the Host header).
+   */
+  source: string;
+  /**
+   * The URL saved in the admin panel (empty when none).
+   */
+  url?: string | null;
+}
+export interface PublicUrlUpdate {
+  /**
+   * `null` or empty clears the setting.
+   */
+  url?: string | null;
 }
 /**
  * A push registration (SV-13). `kind` is "fcm", "ntfy" or "apns".

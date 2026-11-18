@@ -340,7 +340,8 @@ async fn one_time_login_link() {
     let s = TestServer::start().await;
     let r = s.admin.create_user("newbie", "New Person", None).await.unwrap();
     let link = r.login_link.expect("link created when no password is given");
-    assert!(link.link.starts_with("superchat://login?server="));
+    assert!(link.link.starts_with(&format!("{}/l/", s.url)), "{}", link.link);
+    assert!(link.link.ends_with(&link.token));
     assert!(!r.user.password_set);
     let c = s.new_client("newbie");
     let me = c.login_with_link(&link.link, None, None).await.unwrap();
@@ -756,4 +757,65 @@ async fn uploads_and_backups_pause_while_storage_is_moving() {
     assert_eq!(s.admin.clear_history(&a_id).await.unwrap_err().code(), Some(ErrorCode::BackupFailed));
     s.st.migrating.store(false, std::sync::atomic::Ordering::SeqCst);
     assert!(s.admin.backup_user(&a_id).await.is_ok());
+}
+
+#[tokio::test]
+async fn landing_page_checks_the_link_without_using_it_up() {
+    let s = TestServer::start().await;
+    let r = s.admin.create_user("lander", "Land Er", None).await.unwrap();
+    let link = r.login_link.unwrap();
+    let http = reqwest::Client::new();
+    // Valid: the page offers the app, hands out the right deep links and is never cached or referred.
+    for _ in 0..2 {
+        let res = http.get(&link.link).send().await.unwrap();
+        assert_eq!(res.status(), 200);
+        assert_eq!(res.headers()["cache-control"], "no-store, max-age=0");
+        assert_eq!(res.headers()["referrer-policy"], "no-referrer");
+        assert!(res.headers()["content-security-policy"].to_str().unwrap().contains("default-src 'none'"));
+        let html = res.text().await.unwrap();
+        assert!(html.contains("Open in SuperChat") && html.contains("intent://login?server="));
+        assert!(html.contains("scheme=superchat;package=app.superchat"));
+        assert!(html.contains("superchat://login?server="));
+        assert!(html.contains("Copy login link"));
+        assert!(!html.contains("src=\"http") && !html.contains("href=\"https://fonts"), "no third-party assets");
+    }
+    // GET did not consume it: signing in still works, once.
+    let c = s.new_client("lander");
+    c.login_with_link(&link.link, None, None).await.unwrap();
+    let res = http.get(&link.link).send().await.unwrap();
+    assert_eq!(res.status(), 410);
+    assert!(res.text().await.unwrap().contains("already been used"));
+    // Unknown and malformed tokens.
+    let res = http.get(format!("{}/l/{}", s.url, "z".repeat(43))).send().await.unwrap();
+    assert_eq!(res.status(), 404);
+    assert!(res.text().await.unwrap().contains("not valid"));
+    assert_eq!(http.get(format!("{}/l/short", s.url)).send().await.unwrap().status(), 404);
+    // The Host header is escaped, never echoed raw.
+    let res = http.get(&link.link.replace("/l/", "/l/x")).send().await.unwrap();
+    assert!(!res.text().await.unwrap().contains("<script>alert"));
+}
+
+#[tokio::test]
+async fn expired_link_is_reported_by_the_landing_page() {
+    let s = TestServer::start().await;
+    let r = s.admin.create_user("late", "Late", None).await.unwrap();
+    let link = r.login_link.unwrap();
+    s.expire_login_links();
+    let res = reqwest::get(&link.link).await.unwrap();
+    assert_eq!(res.status(), 410);
+    assert!(res.text().await.unwrap().contains("expired"));
+}
+
+#[tokio::test]
+async fn public_url_setting_changes_new_links_and_env_wins() {
+    let s = TestServer::start().await;
+    let cur = s.admin.get_public_url().await.unwrap();
+    assert_eq!(cur.source, "request");
+    assert!(s.admin.set_public_url(Some("not a url")).await.is_err());
+    let set = s.admin.set_public_url(Some("https://chat.example.org/")).await.unwrap();
+    assert_eq!((set.source.as_str(), set.effective.as_str()), ("setting", "https://chat.example.org"));
+    let r = s.admin.create_user("pub", "Pub", None).await.unwrap();
+    assert!(r.login_link.unwrap().link.starts_with("https://chat.example.org/l/"));
+    let cleared = s.admin.set_public_url(None).await.unwrap();
+    assert_eq!(cleared.source, "request");
 }

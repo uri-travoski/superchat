@@ -135,7 +135,8 @@ try {
   await page.click("dialog button:has-text('Create')");
   await page.waitForSelector("#login-qr svg.qr");
   const link = (await page.locator("#login-link").innerText()).trim();
-  assert.match(link, new RegExp(`^superchat://login\\?server=${encodeURIComponent(BASE).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}&token=[A-Za-z0-9_-]{16,}$`), "the login link is the app deep link");
+  assert.match(link, new RegExp(`^${BASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/l/[A-Za-z0-9_-]{16,}$`), "the login link is a clickable web URL on the server");
+  assert.equal(await page.locator("#login-link").getAttribute("href"), link, "the link is clickable");
   await layoutOk("login link dialog", "dialog");
   await shot("4-login-link-qr");
   const dec = await decoder();
@@ -144,6 +145,22 @@ try {
     await page.locator("#login-qr svg.qr").screenshot({ path: qrPng });
     assert.equal(dec(qrPng), link, "the QR code decodes to exactly the one-time login link");
   }
+  // The landing page behind the link (opened as a phone would): shows the app button, does not use the token up.
+  const lp = await page.context().newPage();
+  await lp.setViewportSize({ width: W, height: 844 });
+  await lp.goto(link, { waitUntil: "domcontentloaded" });
+  await lp.waitForSelector("#open");
+  assert.equal((await lp.locator("#open").innerText()).trim(), "Open in SuperChat");
+  assert.match(await lp.locator("#open").getAttribute("data-app"), /^superchat:\/\/login\?server=.*&token=/);
+  assert.match(await lp.locator("#open").getAttribute("data-intent"), /^intent:\/\/login\?server=.*;scheme=superchat;package=app\.superchat;S\.browser_fallback_url=.*;end$/);
+  assert.ok(await lp.locator("#copy").isVisible() && await lp.locator("#dl").isVisible(), "copy button and download section are shown");
+  const lw = await lp.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
+  assert.ok(lw[0] <= lw[1], `landing page has no horizontal scroll (${lw})`);
+  const bh = await lp.locator("#open").boundingBox();
+  assert.ok(bh.height >= 44 && bh.width >= 300, "the open button is large");
+  await lp.screenshot({ path: path.join(shots, "4b-landing-page.png") });
+  assert.equal((await fetch(link)).status, 200, "viewing the landing page did not consume the one-time token");
+  await lp.close();
   await page.click("dialog button:has-text('Cancel')");
   await page.waitForSelector("tr:has-text('Carol')");
 

@@ -35,6 +35,17 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="superchat" android:host="login" />
             </intent-filter>
+            <!-- The same link as a web URL, https://<server>/l/<token> (also http for a LAN server). autoVerify is off: Android may
+                 ask once whether to open SuperChat or the browser. The server's landing page also opens the app by itself. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:scheme="http" />
+                <data android:host="*" />
+                <data android:pathPrefix="/l/" />
+            </intent-filter>
             <!-- E-06: share text, pictures and files from other apps into a conversation -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />

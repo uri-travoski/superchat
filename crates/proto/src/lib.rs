@@ -111,6 +111,8 @@ pub struct AllTypes {
     pub ai_provider_input: AiProviderInput,
     pub ai_provider_update: AiProviderUpdate,
     pub ai_defaults_update: AiDefaultsUpdate,
+    pub public_url_settings: PublicUrlSettings,
+    pub public_url_update: PublicUrlUpdate,
     pub ai_search_request: AiSearchRequest,
     pub ai_search_response: AiSearchResponse,
     pub ai_recap_request: AiRecapRequest,

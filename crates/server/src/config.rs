@@ -6,6 +6,10 @@ pub struct Config {
     pub data_dir: PathBuf,
     pub admin_dir: PathBuf,
     pub public_url: Option<String>,
+    /// Folder with installers the landing page offers (SUPERCHAT_DOWNLOADS_DIR, default `<data>/downloads`).
+    pub downloads_dir: PathBuf,
+    /// Where the apps are downloaded when no file is in the downloads folder.
+    pub release_url: String,
     pub server_name: String,
     pub max_upload_bytes: u64,
     pub ntfy_url: Option<String>,
@@ -49,6 +53,8 @@ impl Config {
             data_dir: env("ATOMIC_DATA_DIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("./data")),
             admin_dir,
             public_url: env("ATOMIC_PUBLIC_URL").map(|u| u.trim_end_matches('/').to_string()),
+            downloads_dir: env("ATOMIC_DOWNLOADS_DIR").map(PathBuf::from).unwrap_or_else(|| env("ATOMIC_DATA_DIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("./data")).join("downloads")),
+            release_url: env("ATOMIC_RELEASE_URL").unwrap_or_else(|| "https://github.com/uri-travoski/superchat/releases/latest".into()),
             server_name: env("ATOMIC_NAME").unwrap_or_else(|| "SuperChat".into()),
             max_upload_bytes: env("ATOMIC_MAX_UPLOAD_MB")
                 .and_then(|v| v.parse::<u64>().ok())
@@ -74,9 +80,11 @@ impl Config {
     pub fn for_test(data_dir: PathBuf) -> Config {
         Config {
             bind: "127.0.0.1:0".into(),
-            data_dir,
+            data_dir: data_dir.clone(),
             admin_dir: PathBuf::from("/nonexistent"),
             public_url: None,
+            downloads_dir: data_dir.join("downloads"),
+            release_url: "https://example.invalid/releases".into(),
             server_name: "SuperChat (test)".into(),
             max_upload_bytes: 5 * 1024 * 1024,
             ntfy_url: None,

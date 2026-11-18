@@ -60,7 +60,7 @@ try {
   const adm = setup.access_token;
   const aliceId = (await api("POST", "/admin/users", { username: "alice", display_name: "Alice", password: "password-123", role: "member" }, adm)).user.id;
   const general = (await api("POST", "/conversations", { kind: "channel", name: "general", topic: null, members: [aliceId] }, adm)).id;
-  const alice = (await api("POST", "/login", { username: "alice", password: "password-123", device_name: "t", client_version: "1.1.2" })).access_token;
+  const alice = (await api("POST", "/login", { username: "alice", password: "password-123", device_name: "t", client_version: "1.1.3" })).access_token;
 
   const exe = fs.readdirSync(process.env.HOME + "/.cache/ms-playwright").filter((d) => d.startsWith("chromium-")).sort().pop();
   const browser = await chromium.launch({ executablePath: `${process.env.HOME}/.cache/ms-playwright/${exe}/chrome-linux64/chrome`, args: ["--no-sandbox"] });

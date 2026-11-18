@@ -1,4 +1,9 @@
-# Status: v1.1.2 (v1.0 plus the 1.1 changes below; calls are Phase 4, not built)
+# Status: v1.1.3 (v1.0 plus the 1.1 changes below; calls are Phase 4, not built)
+
+## v1.1.3 summary
+
+Done: central Back stack (unit tested; verified on the emulator: Settings to list, sheet closes alone, chat to list, list to launcher), bottom sheets and alert dialogs, chat list / chat / Chat info / Settings redesign, icon set and design tokens, Android QR scan fix with runtime permission, image fallback and visible errors, admin dialog close X with Playwright test, version 1.1.3.
+Partial: live camera scan not exercised with a real QR in front of a camera (emulator scene has none); swipe-down only from the sheet handle; no group creation, in-app sound picker, storage page or update check (see docs/RELEASE-NOTES-v1.1.3.md).
 
 ## v1.1 summary
 

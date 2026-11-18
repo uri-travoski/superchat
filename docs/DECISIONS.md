@@ -190,3 +190,15 @@ Not verified: real-device performance, IME composition for CJK, accessibility (T
 * **Sign out of all devices** asks for confirmation inline (a second step with "Sign out everywhere" / Cancel) because it also signs out this device and erases its local chats.
 * **PIN hint:** the App Lock text no longer tells people to sign out to reset a forgotten PIN; it says to ask the admin.
 * **Client-core:** `logout()` returns the `forbidden` error without wiping when the server refuses; `can_sign_out()` is the single check used by the UI; `logout_all()` and CLI `logout-all` were added. Older apps still show the buttons for Disallow users, but the server refuses them.
+
+## 1.1.3 decisions: mobile-native UX
+
+* **Back stack as a snapshot reducer.** The visible state stays in Slint properties; `nav::NavState` is a plain snapshot of them, `nav::pop` decides which layer closes (tested without a window), and `handle_back` applies it. Order: alert dialog, forms, sheet/menu/emoji, App Lock entry, inline bars, Settings sub-page, page, thread, chat info, chat (phone only; on wide windows the chat sits beside the list so there is no chat page). Esc, Alt+Left, the app-bar arrows and Android Back all call the same function. Empty stack returns false: Android then calls `moveTaskToBack`, desktop does nothing (Alt+Left then falls back to conversation history).
+* **Android Back plumbing.** `android:enableOnBackInvokedCallback="false"` and `dispatchKeyEvent`/`onBackPressed` call `Native.nativeBack()`, which asks the Slint event loop and waits up to 600 ms for the answer (false on timeout, so Back can never trap the user). Predictive back is off on purpose.
+* **Sheets, dialogs, pages.** One `menu-kind` string selects the open sheet (so one pop closes it); `confirm` selects an alert dialog; forms use a modal card that is a bottom sheet on phones and a centred card on wide windows, with a close X and a sticky footer. Wide windows show the same sheets as centred cards, and the two 3-dot menus as popovers at the top right.
+* **Long press** is a small `PressArea` (450 ms, 12 px slop) because Slint has no long-press event; right-click gives the same on desktop. On wide windows a click on a message also opens its actions.
+* **Icons** are stroke paths on a 24 px grid drawn by one `Icon` component (Feather/Lucide style shapes, dots as tiny round strokes), no font or image files. Light, muted tint in both themes.
+* **Colours** are tokens in `Theme`: soft dark (#1c1f24 base, never black), accent text variants that keep 4.5:1 on both backgrounds, dark text on the green and orange accents. Touch targets are at least 48 px; sizes in dp do not scale with text size, text does.
+* **QR root cause**: the Slint `scan-qr` callback had no handler. Scanner failures are reported through a `take_login_error` hook so they are text on the login screen, not toasts that can be missed.
+* **Admin dialogs**: one `dialog()` helper changed, so every dialog (including the login link) gets the X, Esc, backdrop and sticky footer.
+* **Left out on purpose**: bottom navigation (not wanted), reply swipe and pull to refresh (optional), group creation in the app, bubbles.

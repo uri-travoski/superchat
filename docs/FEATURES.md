@@ -1,4 +1,4 @@
-# What SuperChat does today (version 1.1.2, Phases 1 and 2)
+# What SuperChat does today (version 1.1.3, Phases 1 and 2)
 
 * Self-hosted team chat. One small server (Docker), apps for Linux and Android (Windows later), an admin web panel, and a command-line client.
 * **Accounts are created by admins only.** There is no sign-up. New people get a one-time login link (works once, expires in 7 days): a web address that opens the app and signs them in, also as a QR code.
@@ -23,6 +23,7 @@ See `STATUS.md` for what is partly built.
 * Search with filter chips (from, in, has link/file/reaction, before, after), people, files and channels in the results, recent searches.
 * Favourites, sections, mute for a time, notify level per conversation, sort, unread only, hide muted, mark as unread, quick switcher (Ctrl+K), back and forward (Alt+Left/Right).
 * Rich messages: bold, italic, strike, code, code blocks, lists, quotes, links, @mentions with autocomplete, emoji picker, reactions with counts, inline pictures.
+* Navigation (1.1.3): one Back stack (Android Back, Esc, Alt+Left), bottom sheets for menus and pickers, alert dialogs for confirmations, full-screen pages, floating New chat button, Chat info page, pinned/bookmark banner, long-press message actions, grouped Settings with sub-pages, Android QR scan with image fallback.
 * Settings: theme and accent, text size (Regular/Large/Extra large), zoom (Ctrl + / - / 0), compact, reduce motion, 12/24 hour, status, profile, devices, sign out and privacy (devices, sign out and sign out of all devices only when your admin sets Privacy options to Allow).
 * Admin: chat viewer, bulk delete with backup, encrypted backups, selective restore, restore onto a new server.
 * Not built yet: voice/video clips, drag and drop, Android share target, tray icon, Android Keystore, push registration on the device.

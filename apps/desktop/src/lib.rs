@@ -26,6 +26,25 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+/// E-08: the tray icon, with a red dot in the corner while anything is unread.
+#[cfg(not(target_os = "android"))]
+fn tray_icon(unread: bool) -> slint::Image {
+    let mut img = image::load_from_memory(include_bytes!("../ui/assets/icon.png")).map(|i| i.to_rgba8()).unwrap_or_else(|_| image::RgbaImage::new(64, 64));
+    if unread {
+        let (w, h) = img.dimensions();
+        let (cx, cy, r) = (w as f32 * 0.74, h as f32 * 0.26, w as f32 * 0.24);
+        for y in 0..h {
+            for x in 0..w {
+                let d = ((x as f32 - cx).powi(2) + (y as f32 - cy).powi(2)).sqrt();
+                if d <= r {
+                    img.put_pixel(x, y, if d > r * 0.78 { image::Rgba([255, 255, 255, 255]) } else { image::Rgba([220, 38, 38, 255]) });
+                }
+            }
+        }
+    }
+    slint::Image::from_rgba8(slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(img.as_raw(), img.width(), img.height()))
+}
+
 /// Audio playback and recording (M-30 voice messages). Desktop plays in-process with rodio (so it can seek and change
 /// the speed) and records with `arecord`; Android uses MediaPlayer and MediaRecorder through JNI.
 pub trait Media: Send + Sync {
@@ -1274,9 +1293,8 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
         ui.set_f_server(g.prefs.last_server.clone().into());
         ui.set_f_user(g.prefs.last_username.clone().into());
     }
-    if std::env::args().any(|a| a == "--minimised") {
-        ui.window().set_minimized(true);
-    }
+    // E-08: "start minimised" goes to the tray when there is one (the window is never shown), else minimises.
+    let start_min = std::env::args().any(|a| a == "--minimised");
 
     ui.set_signed_in(client.signed_in());
     if client.signed_in() {
@@ -1469,10 +1487,51 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
     #[cfg(not(target_os = "android"))]
     let tray = if hooks.is_android { None } else { SuperChatTray::new().ok() };
     #[cfg(not(target_os = "android"))]
+    let tray_timer = slint::Timer::default();
+    #[cfg(not(target_os = "android"))]
     {
         let has_tray = tray.is_some();
         if let Some(t) = &tray {
             let wk = ui.as_weak();
+            {
+                let wk2 = ui.as_weak();
+                t.on_set_status(move |pref| {
+                    if let Some(ui) = wk2.upgrade() {
+                        ui.invoke_set_presence(pref);
+                    }
+                });
+                let wk2 = ui.as_weak();
+                t.on_toggle_pause(move || {
+                    if let Some(ui) = wk2.upgrade() {
+                        let next = if ui.get_presence_pref().as_str() == "dnd" { "auto" } else { "dnd" };
+                        ui.invoke_set_presence(next.into());
+                    }
+                });
+                // The tray follows the unread count and the status twice a second; the icon only changes when the
+                // state does.
+                let (tw, wk3) = (t.as_weak(), ui.as_weak());
+                let unread_icon = tray_icon(true);
+                let plain_icon = tray_icon(false);
+                let last = std::cell::Cell::new((-1i32, String::new(), false));
+                tray_timer.start(slint::TimerMode::Repeated, Duration::from_millis(500), move || {
+                    let (Some(t), Some(ui)) = (tw.upgrade(), wk3.upgrade()) else { return };
+                    let unread = if ui.get_badge_counts() && ui.get_signed_in() { ui.get_total_unread() } else { 0 };
+                    let pref = ui.get_presence_pref().to_string();
+                    let paused = pref == "dnd";
+                    if last.take() != (unread, pref.clone(), paused) {
+                        t.set_unread(unread);
+                        t.set_paused(paused);
+                        t.set_status(match pref.as_str() {
+                            "dnd" => "Do not disturb",
+                            "away" => "Away",
+                            _ => "Active",
+                        }
+                        .into());
+                        t.set_tray_icon(if unread > 0 { unread_icon.clone() } else { plain_icon.clone() });
+                    }
+                    last.set((unread, pref, paused));
+                });
+            }
             let show = move || {
                 if let Some(ui) = wk.upgrade() {
                     let _ = ui.show();
@@ -3170,6 +3229,15 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
         });
     }
     let _keep: Weak<AppWindow> = ui.as_weak();
+    #[cfg(not(target_os = "android"))]
+    if start_min && tray.is_some() {
+        // Only the tray icon: the window appears when it is clicked (or a notification is opened).
+        let _tray_alive = (&tray, &tray_timer);
+        return slint::run_event_loop_until_quit();
+    }
+    if start_min {
+        ui.window().set_minimized(true);
+    }
     ui.run()
 }
 

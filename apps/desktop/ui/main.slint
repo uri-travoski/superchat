@@ -13,7 +13,7 @@ import { DetailsView } from "details.slint";
 export { Avatars, AvatarImg, Theme, ConvItem, MsgItem, PersonItem, RowItem, BookmarkItem, BlockItem, FileItem, ReactItem, EmojiItem, FormFieldItem, FormOptionItem, FormButtonItem, SideRow, LabelItem, SavedRow, ActivityRow }
 
 export component AppWindow inherits Window {
-    title: "SuperChat";
+    title: root.badge-counts && root.total-unread > 0 ? "(" + root.total-unread + ") SuperChat" : "SuperChat";
     icon: @image-url("assets/icon.png");
     preferred-width: 1000px;
     preferred-height: 700px;
@@ -2275,17 +2275,32 @@ export component AppWindow inherits Window {
     }
 }
 
-// The system tray icon (E-08): click to show the window, menu to open or quit.
+// The system tray icon (E-08): the app icon (with a red dot while there is anything unread), a tooltip with the count,
+// and a menu with Open, Status, Pause notifications and Quit.
 export component SuperChatTray inherits SystemTrayIcon {
     in property <int> unread: 0;
+    in property <image> tray-icon: @image-url("assets/icon.png");
+    in property <bool> paused: false;
+    in property <string> status: "Active";
     callback open-app;
     callback quit-app;
-    icon: @image-url("assets/icon.png");
+    callback toggle-pause;
+    callback set-status(string);
+    icon: root.tray-icon;
     title: "SuperChat";
     clicked => { root.open-app(); }
-    tooltip: root.unread > 0 ? "SuperChat - " + root.unread + " unread" : "SuperChat";
+    tooltip: (root.unread > 0 ? "SuperChat - " + root.unread + " unread" : "SuperChat") + (root.paused ? " (notifications paused)" : "");
     Menu {
         MenuItem { title: "Open SuperChat"; activated => { root.open-app(); } }
-        MenuItem { title: "Quit"; activated => { root.quit-app(); } }
+        MenuSeparator {}
+        Menu {
+            title: "Status: " + root.status;
+            MenuItem { title: "Active (automatic)"; activated => { root.set-status("auto"); } }
+            MenuItem { title: "Away"; activated => { root.set-status("away"); } }
+            MenuItem { title: "Do not disturb"; activated => { root.set-status("dnd"); } }
+        }
+        MenuItem { title: root.paused ? "Resume notifications" : "Pause notifications"; activated => { root.toggle-pause(); } }
+        MenuSeparator {}
+        MenuItem { title: "Quit SuperChat"; activated => { root.quit-app(); } }
     }
 }

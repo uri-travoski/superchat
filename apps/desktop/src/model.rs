@@ -306,6 +306,7 @@ pub fn msg_item(cx: &mut Ctx, t: &TimelineItem, day: String, divider: bool) -> M
         reply_people: model(reply_people),
         reply_time: reply_time.into(),
         reply_unread: false,
+        sender_id: m.sender_id.clone().into(),
         upload_pct: upload.0,
         upload_text: upload.1.into(),
         upload_error: upload.2.into(),
@@ -429,6 +430,11 @@ fn conv_row(c: &Client, cs: &ConversationSummary, me: &str, v: &View) -> SideRow
         plus: SharedString::new(),
         preview: preview.into(),
         stamp: if ts > 0 { datefmt::list_stamp(ts, v.now, v.off, v.hour24).into() } else { SharedString::new() },
+        user_id: match cs.conversation.kind {
+            ConversationKind::Dm => cs.conversation.members.iter().map(|m| m.user_id.clone()).find(|u| *u != me).unwrap_or_default().into(),
+            ConversationKind::SelfNote => me.to_string().into(),
+            _ => SharedString::new(),
+        },
     }
 }
 
@@ -453,6 +459,7 @@ fn blank_row(kind: i32, id: &str, title: &str) -> SideRow {
         plus: SharedString::new(),
         preview: SharedString::new(),
         stamp: SharedString::new(),
+        user_id: SharedString::new(),
     }
 }
 
@@ -601,6 +608,7 @@ pub fn activity_rows(c: &Client, filter: i32, v: &View) -> Vec<ActivityRow> {
                 emoji: a.emoji.clone().unwrap_or_default().into(),
                 has_img: img.is_some(),
                 img: img.unwrap_or_default(),
+                user_id: a.actor_id.clone().into(),
             })
         })
         .collect()
@@ -651,6 +659,7 @@ pub fn saved_rows(c: &Client, label: &str, v: &View) -> Vec<SavedRow> {
                 text: text.into(),
                 deleted,
                 labels: model(chips),
+                user_id: sv.message.as_ref().map(|m| m.sender_id.clone()).unwrap_or_default().into(),
             }
         })
         .collect()

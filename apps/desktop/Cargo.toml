@@ -25,6 +25,11 @@ slint = { version = "1.19", default-features = false, features = ["std", "compat
 [target.'cfg(not(target_os = "android"))'.dependencies]
 slint = { version = "1.19", default-features = false, features = ["std", "compat-1-2", "renderer-femtovg", "renderer-software", "accessibility", "image-default-formats", "backend-default", "system-tray", "unstable-winit-030"] }
 
+[target.'cfg(not(target_os = "android"))'.dependencies.arboard]
+version = "3"
+default-features = false
+features = ["image-data", "wayland-data-control"]
+
 [target.'cfg(windows)'.dependencies]
 keyring = { version = "3", default-features = false, features = ["windows-native"] }
 

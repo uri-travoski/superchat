@@ -53,7 +53,7 @@ export component ThreadSummary {
             padding-left: 6px;
             padding-right: 8px;
             spacing: 6px;
-            for p[i] in root.people: Avatar { initials: p.initials; tint: p.color; size: 22px * Theme.scale; y: (parent.height - self.height) / 2; }
+            for p[i] in root.people: Avatar { uid: p.id; initials: p.initials; tint: p.color; size: 22px * Theme.scale; y: (parent.height - self.height) / 2; }
             Text { text: root.replies == 1 ? "1 reply" : root.replies + " replies"; font-size: Theme.fs-small * 1.1; font-weight: 700; color: Theme.accent-text; vertical-alignment: center; }
             if root.last != "": Text { text: ta.has-hover ? "View thread" : "Last reply " + root.last; font-size: Theme.fs-small; color: Theme.muted; vertical-alignment: center; }
             if root.unread: Rectangle { width: 8px; height: 8px; y: (parent.height - self.height) / 2; border-radius: 4px; background: Theme.accent; }
@@ -176,7 +176,7 @@ export component MessageRow inherits Rectangle {
                 padding-bottom: Theme.compact ? 1px : 3px;
                 Rectangle {
                     width: (Theme.compact ? 26px : 36px) * Theme.scale;
-                    if !m.grouped: Avatar { initials: m.initials; tint: m.color; size: (Theme.compact ? 26px : 36px) * Theme.scale; y: 2px; }
+                    if !m.grouped: Avatar { uid: m.sender-id; initials: m.initials; tint: m.color; size: (Theme.compact ? 26px : 36px) * Theme.scale; y: 2px; }
                     if m.grouped && root.hovering && root.wide: Text { text: m.time; font-size: Theme.fs-small * 0.85; color: Theme.muted; horizontal-alignment: center; y: 3px; }
                 }
                 VerticalLayout {
@@ -632,7 +632,7 @@ export component PeoplePicker {
                 padding-left: 8px;
                 padding-right: 8px;
                 spacing: 12px;
-                Avatar { initials: p.initials; tint: p.color; size: 34px * Theme.scale; y: (parent.height - self.height) / 2; }
+                Avatar { uid: p.id; initials: p.initials; tint: p.color; size: 34px * Theme.scale; y: (parent.height - self.height) / 2; }
                 VerticalLayout {
                     alignment: center;
                     horizontal-stretch: 1;

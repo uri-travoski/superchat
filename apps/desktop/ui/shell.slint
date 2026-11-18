@@ -12,6 +12,7 @@ export component Rail {
     in property <int> activity-unread;
     in property <int> dm-unread;
     in property <string> me-initials;
+    in property <string> me-id;
     in property <color> me-color;
     in property <int> presence: 1;
     callback picked(string);
@@ -74,7 +75,7 @@ export component Rail {
                     height: self.width;
                     accessible-role: button;
                     accessible-label: "Your profile and status";
-                    Avatar { initials: root.me-initials; tint: root.me-color; size: parent.width; presence: root.presence; }
+                    Avatar { uid: root.me-id; initials: root.me-initials; tint: root.me-color; size: parent.width; presence: root.presence; }
                     TouchArea { clicked => { root.profile-clicked(root.width, self.absolute-position.y + self.height); } }
                 }
             }
@@ -174,7 +175,7 @@ export component SideItem {
             if r.kind == 2: Icon { name: r.icon; size: (root.wide ? 18px : 22px) * Theme.scale; tint: Theme.icon; y: (parent.height - self.height) / 2; }
             if r.kind == 1 && (r.conv-kind == "channel"): Icon { name: r.locked ? "lock" : "hash"; size: (root.wide ? 18px : 22px) * Theme.scale; tint: r.muted ? Theme.icon-soft.with-alpha(0.6) : Theme.icon; y: (parent.height - self.height) / 2; }
             if r.kind == 1 && r.conv-kind == "group": Icon { name: "users"; size: (root.wide ? 18px : 22px) * Theme.scale; tint: Theme.icon; y: (parent.height - self.height) / 2; }
-            if r.kind == 1 && (r.conv-kind == "dm" || r.conv-kind == "self"): Avatar { initials: r.initials; tint: r.color; size: (root.wide ? 22px : 32px) * Theme.scale; presence: r.presence; y: (parent.height - self.height) / 2; }
+            if r.kind == 1 && (r.conv-kind == "dm" || r.conv-kind == "self"): Avatar { uid: r.user-id; initials: r.initials; tint: r.color; size: (root.wide ? 22px : 32px) * Theme.scale; presence: r.presence; y: (parent.height - self.height) / 2; }
             Text {
                 text: r.title;
                 font-size: Theme.fs * (root.wide ? 0.97 : 1.03);
@@ -213,7 +214,7 @@ export component DmRow {
             padding-right: 12px;
             spacing: 12px;
             if r.conv-kind == "group": Rectangle { width: 40px * Theme.scale; height: self.width; y: (parent.height - self.height) / 2; border-radius: 10px; background: r.color; Icon { name: "users"; size: 22px; tint: white; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; } }
-            if r.conv-kind != "group": Avatar { initials: r.initials; tint: r.color; size: 40px * Theme.scale; presence: r.presence; y: (parent.height - self.height) / 2; }
+            if r.conv-kind != "group": Avatar { uid: r.user-id; initials: r.initials; tint: r.color; size: 40px * Theme.scale; presence: r.presence; y: (parent.height - self.height) / 2; }
             VerticalLayout {
                 alignment: center;
                 horizontal-stretch: 1;
@@ -259,7 +260,7 @@ export component ActivityItem {
                 width: 38px * Theme.scale;
                 height: self.width;
                 y: 10px;
-                Avatar { initials: a.initials; tint: a.color; size: parent.width; }
+                Avatar { uid: a.user-id; initials: a.initials; tint: a.color; size: parent.width; }
                 Rectangle {
                     x: parent.width - 16px; y: parent.height - 16px; width: 18px; height: 18px; border-radius: 9px; background: Theme.bg; border-width: 1px; border-color: Theme.line;
                     if a.kind == 0: Icon { name: "at"; size: 12px; tint: Theme.accent-text; weight: 2.2px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
@@ -307,7 +308,7 @@ export component SavedCard {
             }
             HorizontalLayout {
                 spacing: 10px;
-                if !s.deleted: Avatar { initials: s.initials; tint: s.color; size: 30px * Theme.scale; }
+                if !s.deleted: Avatar { uid: s.user-id; initials: s.initials; tint: s.color; size: 30px * Theme.scale; }
                 VerticalLayout {
                     horizontal-stretch: 1;
                     spacing: 1px;

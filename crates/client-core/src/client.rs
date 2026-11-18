@@ -616,11 +616,29 @@ impl Client {
         Ok(me)
     }
 
+    /// P-03: the cached profile photo of a user (an image file), when they have one and it has been downloaded.
+    pub fn avatar_path(&self, user_id: &str) -> Option<PathBuf> {
+        let att = self.inner.store.user(user_id).ok().flatten()?.avatar?;
+        if att.is_empty() || att.contains('/') || att.contains("..") {
+            return None;
+        }
+        let p = self.inner.cfg.data_dir.join("avatars").join(att);
+        p.is_file().then_some(p)
+    }
+
+    /// P-03: downloads the photos still missing (the client does this by itself after sign-in and when people change).
+    pub async fn refresh_avatars(&self) {
+        self.inner.sync_avatars().await
+    }
+
     /// P-03: upload and set a profile photo. Pass pre-cropped image bytes' file path.
     pub async fn set_avatar(&self, path: &Path) -> Result<Me> {
         let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "avatar.png".into());
         let up = self.upload_path(path, &name, Some("avatar"), None).await?;
-        self.update_profile(UpdateMeRequest { avatar: Some(up.attachment.id), ..Default::default() }).await
+        let me = self.update_profile(UpdateMeRequest { avatar: Some(up.attachment.id), ..Default::default() }).await?;
+        let _ = self.inner.store.put_users(std::slice::from_ref(&me.user));
+        self.inner.sync_avatars().await;
+        Ok(me)
     }
 
     pub async fn change_password(&self, current: Option<&str>, new: &str) -> Result<()> {
@@ -814,6 +832,35 @@ pub fn guess_content_type(name: &str) -> String {
 }
 
 impl Inner {
+    /// P-03: downloads the profile photos of everyone in the cache that are not on disk yet.
+    /// A photo is stored as `avatars/<attachment id>`; a changed photo has a new id, so nothing is ever stale.
+    pub(crate) async fn sync_avatars(self: &Arc<Self>) {
+        let dir = self.cfg.data_dir.join("avatars");
+        let _ = std::fs::create_dir_all(&dir);
+        let users = self.store.users().unwrap_or_default();
+        let mut changed = false;
+        for u in users {
+            let Some(att) = u.avatar.clone() else { continue };
+            if att.is_empty() || att.contains('/') || att.contains("..") || dir.join(&att).exists() {
+                continue;
+            }
+            let Ok(api) = self.api() else { return };
+            let url = api.download_url(&att);
+            let Ok(resp) = api.exec(|c| c.get(&url)).await else { continue };
+            let Ok(bytes) = resp.bytes().await else { continue };
+            if bytes.len() > 8 * 1024 * 1024 {
+                continue;
+            }
+            let tmp = dir.join(format!("{att}.part"));
+            if std::fs::write(&tmp, &bytes).is_ok() && std::fs::rename(&tmp, dir.join(&att)).is_ok() {
+                changed = true;
+            }
+        }
+        if changed {
+            self.emit(ClientEvent::Changed { conv_ids: vec![], users: true, me: false });
+        }
+    }
+
     pub fn api(&self) -> Result<Arc<Api>> {
         self.api.read().unwrap_or_else(|e| e.into_inner()).clone().ok_or(ClientError::NotSignedIn)
     }
@@ -1078,6 +1125,7 @@ impl Inner {
                         if let Ok(users) = api.get::<Vec<User>>("/users").await {
                             let _ = me.store.put_users(&users);
                             me.emit(ClientEvent::Changed { conv_ids: vec![], users: true, me: false });
+                            me.sync_avatars().await;
                         }
                     }
                 });
@@ -1112,6 +1160,10 @@ impl Inner {
                             }
                         }
                     });
+                }
+                if applied.users_changed || applied.me_changed {
+                    let me = self.clone();
+                    self.handle.spawn(async move { me.sync_avatars().await });
                 }
                 if !applied.conv_ids.is_empty() || applied.users_changed || applied.me_changed || applied.org_changed {
                     if applied.me_changed {

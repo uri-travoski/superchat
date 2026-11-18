@@ -222,6 +222,32 @@ fn set_autostart_xdg(on: bool, minimised: bool) {
     let _ = std::fs::write(f, format!("[Desktop Entry]\nType=Application\nName=SuperChat\nExec={exe}{}\nX-GNOME-Autostart-enabled=true\n", if minimised { " --minimised" } else { "" }));
 }
 
+/// F-02: files (copied in a file manager) or an image on the clipboard, as local paths ready to attach. Works on X11,
+/// Wayland and Windows through the `arboard` crate, with no helper program; empty when the clipboard holds neither.
+pub fn clipboard_attachments(dir: &Path) -> Vec<PathBuf> {
+    #[cfg(not(target_os = "android"))]
+    {
+        if let Ok(mut cb) = arboard::Clipboard::new() {
+            if let Ok(files) = cb.get().file_list() {
+                let files: Vec<PathBuf> = files.into_iter().filter(|p| p.is_file()).collect();
+                if !files.is_empty() {
+                    return files;
+                }
+            }
+            if let Ok(img) = cb.get_image() {
+                if let Some(buf) = image::RgbaImage::from_raw(img.width as u32, img.height as u32, img.bytes.into_owned()) {
+                    let _ = std::fs::create_dir_all(dir);
+                    let out = dir.join(format!("pasted-{}.png", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0)));
+                    if buf.save_with_format(&out, image::ImageFormat::Png).is_ok() {
+                        return vec![out];
+                    }
+                }
+            }
+        }
+    }
+    clipboard_image(dir).into_iter().collect()
+}
+
 /// Image on the clipboard as a PNG file (F-02 paste), through wl-paste, xclip or PowerShell. None when there is no image.
 pub fn clipboard_image(dir: &Path) -> Option<PathBuf> {
     let out = dir.join(format!("pasted-{}.png", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)));

@@ -115,6 +115,7 @@ export struct MsgItem {
     reply-people: [PersonItem],
     reply-time: string,
     reply-unread: bool,
+    sender-id: string,
     // F-01: upload progress of a message that is still being sent (-1 = not uploading, 0..100 = percent).
     upload-pct: int,
     upload-text: string,
@@ -160,6 +161,7 @@ export struct SideRow {
     plus: string, // header "+" action: channel, dm or empty
     preview: string,
     stamp: string,
+    user-id: string,
 }
 
 export struct LabelItem {
@@ -181,6 +183,7 @@ export struct SavedRow {
     text: string,
     deleted: bool,
     labels: [LabelItem],
+    user-id: string,
 }
 
 export struct ActivityRow {
@@ -199,6 +202,7 @@ export struct ActivityRow {
     emoji: string,
     img: image,
     has-img: bool,
+    user-id: string,
 }
 
 export struct BookmarkItem {
@@ -206,6 +210,10 @@ export struct BookmarkItem {
     title: string,
     url: string,
 }
+
+// P-03: profile photos by user id (downloaded by client-core, filled in by the app); initials show when there is none.
+export struct AvatarImg { id: string, img: image }
+export global Avatars { in-out property <[AvatarImg]> items; }
 
 export global Theme {
     // Text size multiplier (Regular 1.0, Large 1.15, XL 1.3) times zoom times the Android system scale.

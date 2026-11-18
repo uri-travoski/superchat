@@ -257,6 +257,8 @@ struct St {
     home_bot: String,
     home_forms: Vec<proto::automation::Form>,
     pp_sel: HashSet<String>,
+    /// P-03: the avatar files currently loaded into the UI (user id, path), to rebuild only when they change.
+    avatar_key: Vec<(String, String)>,
 }
 
 type Sh = Arc<Mutex<St>>;
@@ -417,12 +419,23 @@ fn refresh(ui: &AppWindow, c: &Client, sh: &Sh) {
     ui.set_conversations(model(model::conv_items(c, g.prefs.sort == "alpha", g.prefs.unread_only, g.prefs.hide_muted, &v)));
     ui.set_total_unread(c.unread_total() as i32);
     shell::refresh_shell(ui, c, &g);
+    // P-03: profile photos of everyone whose photo is on disk.
+    {
+        let key: Vec<(String, String)> = c.users().into_iter().filter_map(|u| c.avatar_path(&u.id).map(|p| (u.id, p.to_string_lossy().to_string()))).collect();
+        if key != g.avatar_key {
+            let items: Vec<AvatarImg> = key.iter().filter_map(|(id, p)| slint::Image::load_from_path(std::path::Path::new(p)).ok().map(|img| AvatarImg { id: id.clone().into(), img })).collect();
+            use slint::Global;
+            ui.global::<Avatars>().set_items(model(items));
+            g.avatar_key = key;
+        }
+    }
     ui.set_scheduled_count(c.scheduled_pending(None).len() as i32);
     ui.set_ai_enabled(c.ai_enabled());
     if let Some(me) = c.me() {
         ui.set_me_name(me.user.display_name.clone().into());
         ui.set_me_initials(initials::initials(&me.user.display_name).into());
         ui.set_me_color(color_of(&me.user.id));
+        ui.set_me_id(me.user.id.clone().into());
         ui.set_presence_pref(me.presence_pref.clone().into());
         ui.set_privacy_enabled(me.privacy_controls_enabled);
         let allowed = me.user.role.is_admin() || me.privacy_controls_enabled;
@@ -447,6 +460,14 @@ fn refresh(ui: &AppWindow, c: &Client, sh: &Sh) {
     ui.set_current_title(c.conversation_title(&cs).into());
     ui.set_current_initials(initials::initials(&c.conversation_title(&cs)).into());
     ui.set_current_color(color_of(&cs.conversation.id));
+    ui.set_current_user_id(
+        match cs.conversation.kind {
+            proto::types::ConversationKind::Dm => cs.conversation.members.iter().map(|m| m.user_id.clone()).find(|u| *u != me_id).unwrap_or_default(),
+            proto::types::ConversationKind::SelfNote => me_id.clone(),
+            _ => String::new(),
+        }
+        .into(),
+    );
     ui.set_members(model(
         cs.conversation
             .members
@@ -1201,8 +1222,31 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
         });
         use slint::winit_030::{winit, EventResult, WinitWindowAccessor};
         let wk = ui.as_weak();
+        let sh_paste = osh.clone();
+        let ctrl = std::cell::Cell::new(false);
         ui.window().on_winit_window_event(move |_, ev| {
             use winit::event::WindowEvent as WE;
+            if let WE::ModifiersChanged(m) = ev {
+                ctrl.set(m.state().control_key());
+            }
+            // F-02: Ctrl+V with files or an image on the clipboard attaches them (text still pastes normally).
+            if let WE::KeyboardInput { event, .. } = ev {
+                use winit::keyboard::Key;
+                if event.state == winit::event::ElementState::Pressed && ctrl.get() && matches!(&event.logical_key, Key::Character(s) if s.eq_ignore_ascii_case("v")) {
+                    if let Some(ui) = wk.upgrade() {
+                        if ui.get_signed_in() && !ui.get_current_conv().is_empty() && !ui.get_lock_engaged() {
+                            let dir = sh_paste.lock().unwrap().data_dir.join("pasted");
+                            let files = platform::clipboard_attachments(&dir);
+                            if !files.is_empty() {
+                                for p in files {
+                                    ui.invoke_attach(p.to_string_lossy().to_string().into());
+                                }
+                                return EventResult::PreventDefault;
+                            }
+                        }
+                    }
+                }
+            }
             match ev {
                 WE::CursorMoved { .. } | WE::MouseInput { .. } | WE::MouseWheel { .. } | WE::KeyboardInput { .. } | WE::Touch(_) => lock::note_input(),
                 WE::Focused(f) => lock::note_background(!*f),
@@ -1950,9 +1994,12 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
             let Some(ui) = wk.upgrade() else { return };
             let dir = sh.lock().unwrap().data_dir.join("pasted");
             let _ = std::fs::create_dir_all(&dir);
-            match platform::clipboard_image(&dir) {
-                Some(p) => ui.invoke_attach(p.to_string_lossy().to_string().into()),
-                None => toast(&ui, "There is no image on the clipboard."),
+            let files = platform::clipboard_attachments(&dir);
+            if files.is_empty() {
+                toast(&ui, "There is no image or file on the clipboard.");
+            }
+            for p in files {
+                ui.invoke_attach(p.to_string_lossy().to_string().into());
             }
         });
     }

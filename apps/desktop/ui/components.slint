@@ -1,5 +1,5 @@
 import { Palette } from "std-widgets.slint";
-import { Theme } from "theme.slint";
+import { Theme, Avatars } from "theme.slint";
 import { Icon } from "icons.slint";
 export { Icon }
 
@@ -8,16 +8,24 @@ export component Avatar {
     in property <color> tint;
     in property <length> size: 40px * Theme.scale;
     in property <int> presence: 0; // 0 none, 1 online, 2 away, 3 dnd
+    // The user's id: when a profile photo is cached for it, the photo replaces the initials.
+    in property <string> uid;
     width: size;
     height: size;
     Rectangle {
         border-radius: parent.width / 2;
         background: root.tint;
+        clip: true;
         Text {
             text: root.initials;
             color: white;
             font-size: root.size * 0.4;
             font-weight: 700;
+        }
+        if root.uid != "": Rectangle {
+            for a in Avatars.items: Rectangle {
+                if a.id == root.uid: Image { source: a.img; width: parent.width; height: parent.height; image-fit: cover; accessible-role: image; accessible-label: root.initials; }
+            }
         }
     }
     if root.presence > 0: Rectangle {

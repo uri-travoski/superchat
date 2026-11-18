@@ -5,12 +5,12 @@ import "fonts/Inter-SemiBold.ttf";
 import "fonts/Inter-Bold.ttf";
 import "fonts/Inter-Italic.ttf";
 import { LineEdit, ListView, ScrollView, Palette, TextEdit } from "std-widgets.slint";
-import { Theme, ConvItem, MsgItem, PersonItem, RowItem, BookmarkItem, BlockItem, FileItem, ReactItem, EmojiItem, FormFieldItem, FormOptionItem, FormButtonItem, SideRow, LabelItem, SavedRow, ActivityRow } from "theme.slint";
+import { Theme, Avatars, AvatarImg, ConvItem, MsgItem, PersonItem, RowItem, BookmarkItem, BlockItem, FileItem, ReactItem, EmojiItem, FormFieldItem, FormOptionItem, FormButtonItem, SideRow, LabelItem, SavedRow, ActivityRow } from "theme.slint";
 import { Avatar, Icon, IconButton, Fab, AppBar, BottomSheet, ModalCard, AlertDialog, SheetRow, SettingRow, Card, TextButton, Toggle, Link, Pill, PrimaryButton, GhostButton, SectionHeader, ToolButton, LabelChip, EmptyState, TabBar, CountBadge, MenuRow, MenuDivider } from "components.slint";
 import { MessageRow, Composer, PeoplePicker } from "chat.slint";
 import { Rail, TopBar, SideItem, DmRow, ActivityItem, SavedCard, BottomNav } from "shell.slint";
 import { DetailsView } from "details.slint";
-export { Theme, ConvItem, MsgItem, PersonItem, RowItem, BookmarkItem, BlockItem, FileItem, ReactItem, EmojiItem, FormFieldItem, FormOptionItem, FormButtonItem, SideRow, LabelItem, SavedRow, ActivityRow }
+export { Avatars, AvatarImg, Theme, ConvItem, MsgItem, PersonItem, RowItem, BookmarkItem, BlockItem, FileItem, ReactItem, EmojiItem, FormFieldItem, FormOptionItem, FormButtonItem, SideRow, LabelItem, SavedRow, ActivityRow }
 
 export component AppWindow inherits Window {
     title: "SuperChat";
@@ -127,6 +127,8 @@ export component AppWindow inherits Window {
     // ---- me / settings ----
     in-out property <string> me-name;
     in-out property <string> me-initials;
+    in-out property <string> me-id;
+    in-out property <string> current-user-id;
     in-out property <color> me-color: #888888;
     in-out property <string> presence-pref: "auto";
     in-out property <string> edit-name;
@@ -587,6 +589,7 @@ export component AppWindow inherits Window {
                             activity-unread: root.activity-unread;
                             dm-unread: root.dm-unread;
                             me-initials: root.me-initials;
+                            me-id: root.me-id;
                             me-color: root.me-color;
                             presence: root.presence-i;
                             picked(t) => { root.go-home-tab(t); }
@@ -782,7 +785,7 @@ export component AppWindow inherits Window {
                                             VerticalLayout {
                                                 padding: 18px;
                                                 spacing: 4px;
-                                                HorizontalLayout { alignment: center; Avatar { initials: root.me-initials; tint: root.me-color; size: 72px * min(Theme.scale, 1.2); presence: root.presence-i; } }
+                                                HorizontalLayout { alignment: center; Avatar { uid: root.me-id; initials: root.me-initials; tint: root.me-color; size: 72px * min(Theme.scale, 1.2); presence: root.presence-i; } }
                                                 Text { text: root.me-name; font-size: Theme.fs-large; font-weight: 700; color: Theme.text; horizontal-alignment: center; overflow: elide; }
                                                 if root.me-username != "": Text { text: "@" + root.me-username; font-size: Theme.fs; color: Theme.muted; horizontal-alignment: center; }
                                                 HorizontalLayout {
@@ -856,7 +859,7 @@ export component AppWindow inherits Window {
                                             spacing: 8px;
                                             if root.current-conv != "" && root.current-kind == "channel": Icon { name: root.is-conv-locked(root.current-conv) ? "lock" : "hash"; size: 20px * Theme.scale; tint: Theme.icon; y: (parent.height - self.height) / 2; }
                                             if root.current-conv != "" && root.current-kind == "group": Icon { name: "users"; size: 20px * Theme.scale; tint: Theme.icon; y: (parent.height - self.height) / 2; }
-                                            if root.current-conv != "" && (root.current-kind == "dm" || root.current-kind == "self"): Avatar { initials: root.current-initials; tint: root.current-color; size: 30px * Theme.scale; y: (parent.height - self.height) / 2; }
+                                            if root.current-conv != "" && (root.current-kind == "dm" || root.current-kind == "self"): Avatar { uid: root.current-user-id; initials: root.current-initials; tint: root.current-color; size: 30px * Theme.scale; y: (parent.height - self.height) / 2; }
                                             VerticalLayout {
                                                 alignment: center;
                                                 Text { text: root.current-title == "" ? "Choose a conversation" : root.current-title; font-size: Theme.fs * 1.12; font-weight: 700; color: Theme.text; overflow: elide; }
@@ -879,7 +882,7 @@ export component AppWindow inherits Window {
                                         accessible-label: root.member-count + " members";
                                         hp := HorizontalLayout {
                                             padding-left: 8px; padding-right: 8px; spacing: 6px;
-                                            for p[i] in root.head-people: Avatar { initials: p.initials; tint: p.color; size: 22px * Theme.scale; y: (parent.height - self.height) / 2; }
+                                            for p[i] in root.head-people: Avatar { uid: p.id; initials: p.initials; tint: p.color; size: 22px * Theme.scale; y: (parent.height - self.height) / 2; }
                                             Text { text: root.member-count; font-size: Theme.fs-small * 1.1; font-weight: 700; color: Theme.text; vertical-alignment: center; }
                                         }
                                         hpa := TouchArea { clicked => { root.open-details("members"); } }
@@ -985,7 +988,7 @@ export component AppWindow inherits Window {
                                         HorizontalLayout {
                                             padding-left: 14px;
                                             spacing: 10px;
-                                            Avatar { initials: p.initials; tint: p.color; size: 28px * Theme.scale; y: (parent.height - self.height) / 2; }
+                                            Avatar { uid: p.id; initials: p.initials; tint: p.color; size: 28px * Theme.scale; y: (parent.height - self.height) / 2; }
                                             Text { text: p.name + "  " + p.sub; font-size: Theme.fs; vertical-alignment: center; color: Theme.text; }
                                         }
                                         mt := TouchArea { clicked => { root.pick-mention(p.id); } }
@@ -1230,7 +1233,7 @@ export component AppWindow inherits Window {
                                             background: rt.pressed ? Theme.bubble-other : transparent;
                                             HorizontalLayout {
                                                 padding-left: 16px; padding-right: 16px; spacing: 14px;
-                                                if r.kind >= 2: Avatar { initials: r.initials; tint: r.color; size: 40px * Theme.scale; y: (parent.height - self.height) / 2; }
+                                                if r.kind >= 2: Avatar { uid: r.kind == 2 ? r.id : ""; initials: r.initials; tint: r.color; size: 40px * Theme.scale; y: (parent.height - self.height) / 2; }
                                                 if r.kind < 2: Rectangle { width: 40px; height: 40px; y: (parent.height - self.height) / 2; border-radius: 10px; background: Theme.surface;
                                                     Icon { name: r.kind == 1 ? "file" : "thread"; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; } }
                                                 VerticalLayout {
@@ -1385,7 +1388,7 @@ export component AppWindow inherits Window {
                                                 spacing: 6px;
                                                 HorizontalLayout {
                                                     Rectangle { width: 48px; }
-                                                    HorizontalLayout { horizontal-stretch: 1; alignment: center; Avatar { initials: root.me-initials; tint: root.me-color; size: 84px * min(Theme.scale, 1.2); presence: root.presence-pref == "dnd" ? 3 : (root.presence-pref == "away" ? 2 : 1); } }
+                                                    HorizontalLayout { horizontal-stretch: 1; alignment: center; Avatar { uid: root.me-id; initials: root.me-initials; tint: root.me-color; size: 84px * min(Theme.scale, 1.2); presence: root.presence-pref == "dnd" ? 3 : (root.presence-pref == "away" ? 2 : 1); } }
                                                     IconButton { icon: "edit"; label: "Edit profile"; clicked => { root.settings-page = "account"; } }
                                                 }
                                                 Text { text: root.me-name; font-size: Theme.fs-large; font-weight: 700; color: Theme.text; horizontal-alignment: center; overflow: elide; }
@@ -1428,7 +1431,7 @@ export component AppWindow inherits Window {
                                         if root.settings-page == "account": Card {
                                             VerticalLayout {
                                                 padding: 16px; spacing: 10px;
-                                                HorizontalLayout { alignment: center; Avatar { initials: root.me-initials; tint: root.me-color; size: 84px * min(Theme.scale, 1.2); } }
+                                                HorizontalLayout { alignment: center; Avatar { uid: root.me-id; initials: root.me-initials; tint: root.me-color; size: 84px * min(Theme.scale, 1.2); } }
                                                 Text { text: "Display name"; font-size: Theme.fs-small; color: Theme.muted; font-weight: 700; }
                                                 LineEdit { text <=> root.edit-name; placeholder-text: "Display name"; font-size: Theme.fs; accessible-label: "Display name"; }
                                                 HorizontalLayout { alignment: end; PrimaryButton { text: "Save"; clicked => { root.save-profile(root.edit-name); } } }
@@ -1654,7 +1657,7 @@ export component AppWindow inherits Window {
                                     Card {
                                         VerticalLayout {
                                             padding: 18px; spacing: 4px;
-                                            HorizontalLayout { alignment: center; Avatar { initials: root.current-initials; tint: root.current-color; size: 64px * min(Theme.scale, 1.2); } }
+                                            HorizontalLayout { alignment: center; Avatar { uid: root.current-user-id; initials: root.current-initials; tint: root.current-color; size: 64px * min(Theme.scale, 1.2); } }
                                             Text { text: (root.current-kind == "channel" ? "# " : "") + root.current-title; font-size: Theme.fs-large; font-weight: 700; color: Theme.text; horizontal-alignment: center; wrap: word-wrap; }
                                             Text { text: root.current-sub; font-size: Theme.fs; color: Theme.muted; horizontal-alignment: center; wrap: word-wrap; }
                                         }

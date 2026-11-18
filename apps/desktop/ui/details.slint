@@ -100,7 +100,7 @@ export component DetailsView {
                 background: mh.has-hover ? Theme.row-hover : transparent;
                 HorizontalLayout {
                     padding-left: 16px; padding-right: 8px; spacing: 14px;
-                    Avatar { initials: p.initials; tint: p.color; size: 38px * Theme.scale; y: (parent.height - self.height) / 2; }
+                    Avatar { uid: p.id; initials: p.initials; tint: p.color; size: 38px * Theme.scale; y: (parent.height - self.height) / 2; }
                     VerticalLayout { alignment: center; horizontal-stretch: 1;
                         Text { text: p.name; font-size: Theme.fs; color: Theme.text; overflow: elide; }
                         if p.sub != "": Text { text: p.sub; font-size: Theme.fs-small; color: Theme.muted; overflow: elide; }

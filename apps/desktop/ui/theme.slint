@@ -278,3 +278,21 @@ export global Theme {
     out property <color> ok: dark ? #5fd38a : #2e7d32;
     out property <color> warn: dark ? #ffd166 : #b26a00;
 }
+
+// NV-04: state of a sidebar drag. The row being dragged writes the pointer position, every row below the pointer
+// marks itself as the target (and whether the drop lands before or after it).
+export global Drag {
+    in-out property <bool> active: false;
+    in-out property <string> src;
+    in-out property <string> label;
+    in-out property <string> target;
+    in-out property <int> zone: 0;
+    in-out property <length> x;
+    in-out property <length> y;
+    public function reset() {
+        self.active = false;
+        self.src = "";
+        self.target = "";
+        self.zone = 0;
+    }
+}

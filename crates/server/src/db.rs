@@ -206,6 +206,7 @@ CREATE TABLE IF NOT EXISTS conv_prefs(
   section_id TEXT,
   mute_until_ms INTEGER,
   notify TEXT NOT NULL DEFAULT 'all',
+  position INTEGER,
   PRIMARY KEY(user_id, conv_id)
 );
 CREATE TABLE IF NOT EXISTS sections(
@@ -448,6 +449,9 @@ fn migrate(conn: &Connection) -> anyhow::Result<()> {
     }
     if !has_column(conn, "messages", "form")? {
         conn.execute("ALTER TABLE messages ADD COLUMN form TEXT", [])?;
+    }
+    if !has_column(conn, "conv_prefs", "position")? {
+        conn.execute("ALTER TABLE conv_prefs ADD COLUMN position INTEGER", [])?;
     }
     if !has_column(conn, "attachments", "meta")? {
         conn.execute("ALTER TABLE attachments ADD COLUMN meta TEXT", [])?;

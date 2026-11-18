@@ -1,5 +1,5 @@
 // The app shell: rail, top bar, sidebar rows, bottom navigation, list rows of the Activity / DMs / Later views.
-import { Theme, SideRow, ActivityRow, SavedRow, LabelItem } from "theme.slint";
+import { Theme, SideRow, ActivityRow, SavedRow, LabelItem, Drag } from "theme.slint";
 import { Icon } from "icons.slint";
 import { Avatar, PressArea, ToolButton, LabelChip, CountBadge, IconButton } from "components.slint";
 
@@ -137,6 +137,12 @@ export component SideItem {
     callback toggle;
     callback plus;
     callback menu(length, length);
+    callback dropped;
+    // NV-04: desktop rows (conversations and section headers) can be dragged to a new place.
+    property <bool> reorderable: root.wide && (r.kind == 1 || (r.kind == 0 && r.id != "sec:shortcuts" && r.id != "sec:archived"));
+    property <int> zone: (Drag.active && root.wide && (r.kind == 0 || r.kind == 1 || r.id == "sec:archived") && Drag.src != r.id && Drag.y >= root.absolute-position.y && Drag.y < root.absolute-position.y + root.height) ? (Drag.y < root.absolute-position.y + root.height / 2 ? 1 : 2) : 0;
+    changed zone => { if root.zone != 0 { Drag.target = r.id; Drag.zone = root.zone; } }
+    opacity: Drag.active && Drag.src == r.id ? 0.4 : 1.0;
     property <length> row-h: root.wide ? max(30px, 26px * Theme.scale) : max(52px, 46px * Theme.scale);
     height: r.kind == 0 ? (root.wide ? max(32px, 28px * Theme.scale) : max(48px, 40px * Theme.scale)) : (r.kind == 3 ? 56px * Theme.scale : (r.kind == 4 ? (root.wide ? 0px : 88px) : root.row-h));
     if r.kind == 0: Rectangle {
@@ -160,7 +166,15 @@ export component SideItem {
                 clicked => { root.plus(); }
             }
         }
-        hh := TouchArea { width: parent.width - (r.plus != "" ? (root.wide ? 30px * Theme.scale : 44px) : 0px); clicked => { root.toggle(); } }
+        hh := PressArea {
+            width: parent.width - (r.plus != "" ? (root.wide ? 30px * Theme.scale : 44px) : 0px);
+            draggable: root.reorderable;
+            tapped => { root.toggle(); }
+            long-pressed => { if r.id != "sec:shortcuts" && r.id != "sec:archived" { root.menu(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y); } }
+            drag-started => { Drag.src = r.id; Drag.label = r.title; Drag.active = true; }
+            drag-moved(x, y) => { Drag.x = x; Drag.y = y; }
+            drag-ended => { root.dropped(); }
+        }
     }
     if r.kind == 1 || r.kind == 2: Rectangle {
         accessible-role: button;
@@ -191,10 +205,17 @@ export component SideItem {
             if r.mentions == 0 && r.kind == 2 && r.count > 0 && r.unread == 0: Text { text: r.count; font-size: Theme.fs-small; color: Theme.muted; vertical-alignment: center; }
         }
         pa := PressArea {
+            draggable: root.reorderable;
             tapped => { root.clicked(); }
             long-pressed => { if r.kind == 1 { root.menu(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y); } }
+            drag-started => { Drag.src = r.id; Drag.label = r.title; Drag.active = true; }
+            drag-moved(x, y) => { Drag.x = x; Drag.y = y; }
+            drag-ended => { root.dropped(); }
         }
     }
+    // The drop marker: a line above or below this row (a section header takes a dragged conversation into the section).
+    if root.zone == 1: Rectangle { y: 0px; height: 2px; x: 8px; width: parent.width - 16px; background: Theme.accent; border-radius: 1px; }
+    if root.zone == 2: Rectangle { y: parent.height - 2px; height: 2px; x: 8px; width: parent.width - 16px; background: Theme.accent; border-radius: 1px; }
     if r.kind == 3: Text { x: 16px; width: parent.width - 32px; text: r.title; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; vertical-alignment: center; }
 }
 

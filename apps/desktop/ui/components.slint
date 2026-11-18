@@ -44,15 +44,31 @@ export component Avatar {
 export component PressArea inherits TouchArea {
     callback tapped;
     callback long-pressed;
+    // NV-04: with `draggable`, pulling the pointer away from where it went down starts a drag (the pointer position is
+    // reported in window coordinates); `drag-ended` fires when the button is released.
+    in property <bool> draggable: false;
+    callback drag-started;
+    callback drag-moved(length, length);
+    callback drag-ended;
     property <bool> fired: false;
+    property <bool> dragging: false;
     Timer {
         interval: 450ms;
         running: root.pressed && !root.fired && abs(root.mouse-x - root.pressed-x) < 12px && abs(root.mouse-y - root.pressed-y) < 12px;
         triggered => { root.fired = true; root.long-pressed(); }
     }
     pointer-event(e) => {
-        if e.kind == PointerEventKind.down && e.button == PointerEventButton.left { root.fired = false; }
+        if e.kind == PointerEventKind.down && e.button == PointerEventButton.left { root.fired = false; root.dragging = false; }
         if e.kind == PointerEventKind.up && e.button == PointerEventButton.right { root.long-pressed(); }
+        if e.kind == PointerEventKind.up && e.button == PointerEventButton.left && root.dragging { root.dragging = false; root.drag-ended(); }
+    }
+    moved => {
+        if root.draggable && root.pressed && !root.dragging && !root.fired && (abs(root.mouse-y - root.pressed-y) > 8px || abs(root.mouse-x - root.pressed-x) > 8px) {
+            root.dragging = true;
+            root.fired = true;
+            root.drag-started();
+        }
+        if root.dragging { root.drag-moved(root.absolute-position.x + root.mouse-x, root.absolute-position.y + root.mouse-y); }
     }
     clicked => { if !root.fired { root.tapped(); } }
 }

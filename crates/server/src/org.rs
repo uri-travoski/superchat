@@ -126,10 +126,10 @@ pub fn expand_mentions(conn: &Connection, hub: &Hub, conv_id: &str, sender: &str
 // ------------------------------------------------------------------ preferences, sections, drafts
 
 pub fn load_prefs(conn: &Connection, user_id: &str) -> AppResult<Vec<ConvPref>> {
-    let mut st = conn.prepare("SELECT conv_id,favourite,section_id,mute_until_ms,notify FROM conv_prefs WHERE user_id=?1")?;
+    let mut st = conn.prepare("SELECT conv_id,favourite,section_id,mute_until_ms,notify,position FROM conv_prefs WHERE user_id=?1")?;
     let v = st
         .query_map([user_id], |r| {
-            Ok(ConvPref { conv_id: r.get(0)?, favourite: r.get::<_, i64>(1)? != 0, section_id: r.get(2)?, mute_until_ms: r.get(3)?, notify: r.get(4)? })
+            Ok(ConvPref { conv_id: r.get(0)?, favourite: r.get::<_, i64>(1)? != 0, section_id: r.get(2)?, mute_until_ms: r.get(3)?, notify: r.get(4)?, position: r.get(5)? })
         })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(v)
@@ -138,9 +138,9 @@ pub fn load_prefs(conn: &Connection, user_id: &str) -> AppResult<Vec<ConvPref>> 
 pub fn pref_for(conn: &Connection, user_id: &str, conv_id: &str) -> AppResult<Option<ConvPref>> {
     Ok(conn
         .query_row(
-            "SELECT conv_id,favourite,section_id,mute_until_ms,notify FROM conv_prefs WHERE user_id=?1 AND conv_id=?2",
+            "SELECT conv_id,favourite,section_id,mute_until_ms,notify,position FROM conv_prefs WHERE user_id=?1 AND conv_id=?2",
             [user_id, conv_id],
-            |r| Ok(ConvPref { conv_id: r.get(0)?, favourite: r.get::<_, i64>(1)? != 0, section_id: r.get(2)?, mute_until_ms: r.get(3)?, notify: r.get(4)? }),
+            |r| Ok(ConvPref { conv_id: r.get(0)?, favourite: r.get::<_, i64>(1)? != 0, section_id: r.get(2)?, mute_until_ms: r.get(3)?, notify: r.get(4)?, position: r.get(5)? }),
         )
         .optional()?)
 }

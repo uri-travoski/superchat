@@ -189,3 +189,55 @@ async fn voice_message_carries_duration_and_waveform_to_the_recipient() {
     let r: Result<serde_json::Value, _> = alice.api().unwrap().put_json(&format!("/files/{att}/meta"), &big).await;
     assert!(r.is_err());
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn sidebar_order_of_conversations_and_sections_syncs_between_devices() {
+    let s = TestServer::start().await;
+    let (a_id, alice) = s.user("alice").await;
+    let (b_id, _bob) = s.user("bob").await;
+    let c1 = make_channel(&s, "alpha", &[&a_id, &b_id]).await;
+    let c2 = make_channel(&s, "beta", &[&a_id, &b_id]).await;
+    let c3 = make_channel(&s, "gamma", &[&a_id, &b_id]).await;
+    wait_conv(&alice, &c3).await;
+    let alice2 = s.new_client("alice-phone");
+    alice2.login(&s.url, "alice", "password-123", None).await.unwrap();
+    alice2.start();
+    wait_online(&alice2).await;
+    let all = [c1.clone(), c2.clone(), c3.clone()];
+    let ids = |c: &client_core::Client| -> Vec<String> { c.sorted_conversations(true, false, false).iter().map(|x| x.conversation.id.clone()).filter(|i| all.contains(i)).collect() };
+    assert_eq!(ids(&alice), vec![c1.clone(), c2.clone(), c3.clone()], "A-Z by default");
+
+    // Conversations: a hand-made order beats the list setting, on both devices.
+    alice.reorder_conversations(&[c3.clone(), c1.clone(), c2.clone()]).await.unwrap();
+    assert_eq!(ids(&alice), vec![c3.clone(), c1.clone(), c2.clone()]);
+    wait_until("order on device 2", || ids(&alice2) == vec![c3.clone(), c1.clone(), c2.clone()]).await;
+    // Another user's order is not affected.
+    assert_eq!(ids(&_bob), vec![c1.clone(), c2.clone(), c3.clone()]);
+    // Unknown or foreign conversations are refused.
+    assert!(alice.reorder_conversations(&["nope".to_string()]).await.is_err());
+    // Reset: the list setting rules again.
+    alice.reorder_conversations(&[]).await.unwrap();
+    assert_eq!(ids(&alice), vec![c1.clone(), c2.clone(), c3.clone()]);
+    wait_until("reset on device 2", || ids(&alice2) == vec![c1.clone(), c2.clone(), c3.clone()]).await;
+
+    // Sections: default order, then a custom one, then a saved order that includes the built-in sections.
+    assert_eq!(alice.section_order(), vec!["fav", "channels", "dms"]);
+    let a = alice.create_section("Projects").await.unwrap()[0].id.clone();
+    let b = alice.create_section("Later").await.unwrap().iter().find(|x| x.name == "Later").unwrap().id.clone();
+    assert_eq!(alice.section_order(), vec!["fav".to_string(), a.clone(), b.clone(), "channels".into(), "dms".into()]);
+    let want: Vec<String> = vec!["dms".into(), b.clone(), "fav".into(), "channels".into(), a.clone()];
+    alice.reorder_sections(&want).await.unwrap();
+    assert_eq!(alice.section_order(), want);
+    wait_until("section order on device 2", || alice2.section_order() == want).await;
+    // The order-only rows never show up as sections you can file conversations in.
+    assert_eq!(alice.sections().len(), 2);
+    assert!(alice.sections().iter().all(|x| x.builtin_key().is_none()));
+    // A section created later lands before Channels.
+    let c = alice.create_section("Fresh").await.unwrap().iter().find(|x| x.name == "Fresh").unwrap().id.clone();
+    let order = alice.section_order();
+    assert_eq!(order.iter().position(|k| *k == c).unwrap() + 1, order.iter().position(|k| k == "channels").unwrap());
+    // Bad keys are refused; an empty list puts the built-in sections back (custom ones keep their relative order).
+    assert!(alice.reorder_sections(&["builtin:nonsense".to_string()]).await.is_err());
+    alice.reorder_sections(&[]).await.unwrap();
+    assert_eq!(alice.section_order(), vec!["fav".to_string(), b, c, a, "channels".into(), "dms".into()]);
+}

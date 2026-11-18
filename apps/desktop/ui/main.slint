@@ -5,12 +5,12 @@ import "fonts/Inter-SemiBold.ttf";
 import "fonts/Inter-Bold.ttf";
 import "fonts/Inter-Italic.ttf";
 import { LineEdit, ListView, ScrollView, Palette, TextEdit } from "std-widgets.slint";
-import { Theme, Avatars, AvatarImg, ConvItem, MsgItem, PersonItem, RowItem, BookmarkItem, BlockItem, FileItem, ReactItem, EmojiItem, FormFieldItem, FormOptionItem, FormButtonItem, SideRow, LabelItem, SavedRow, ActivityRow } from "theme.slint";
+import { Theme, Avatars, AvatarImg, ConvItem, MsgItem, PersonItem, RowItem, BookmarkItem, BlockItem, FileItem, ReactItem, EmojiItem, FormFieldItem, FormOptionItem, FormButtonItem, SideRow, LabelItem, SavedRow, ActivityRow, Drag } from "theme.slint";
 import { Avatar, Icon, IconButton, Fab, AppBar, BottomSheet, ModalCard, AlertDialog, SheetRow, SettingRow, Card, TextButton, Toggle, Link, Pill, PrimaryButton, GhostButton, SectionHeader, ToolButton, LabelChip, EmptyState, TabBar, CountBadge, MenuRow, MenuDivider } from "components.slint";
 import { MessageRow, Composer, PeoplePicker } from "chat.slint";
 import { Rail, TopBar, SideItem, DmRow, ActivityItem, SavedCard, BottomNav } from "shell.slint";
 import { DetailsView } from "details.slint";
-export { Avatars, AvatarImg, Theme, ConvItem, MsgItem, PersonItem, RowItem, BookmarkItem, BlockItem, FileItem, ReactItem, EmojiItem, FormFieldItem, FormOptionItem, FormButtonItem, SideRow, LabelItem, SavedRow, ActivityRow }
+export { Avatars, AvatarImg, Drag, Theme, ConvItem, MsgItem, PersonItem, RowItem, BookmarkItem, BlockItem, FileItem, ReactItem, EmojiItem, FormFieldItem, FormOptionItem, FormButtonItem, SideRow, LabelItem, SavedRow, ActivityRow }
 
 export component AppWindow inherits Window {
     title: root.badge-counts && root.total-unread > 0 ? "(" + root.total-unread + ") SuperChat" : "SuperChat";
@@ -280,6 +280,9 @@ export component AppWindow inherits Window {
     callback notify-level(string, string);
     callback mark-unread(string);
     callback set-section(string, string);
+    callback reorder-drop(string, string, int);
+    callback move-row(string, int);
+    callback reset-order();
     callback new-section(string);
     callback set-presence(string);
     callback save-profile(string);
@@ -747,7 +750,11 @@ export component AppWindow inherits Window {
                                         clicked => { root.side-clicked(r.id, r.kind == 2 ? "link" : "conv"); if r.kind == 1 { root.show-chat = true; } }
                                         toggle => { root.side-toggle(r.id); }
                                         plus => { root.side-plus(r.plus); }
-                                        menu(x, y) => { root.menu-x = x; root.menu-y = y; root.open-conv-menu(r.id, r.title, r.favourite); }
+                                        menu(x, y) => { root.menu-x = x; root.menu-y = y; if r.kind == 0 { root.menu-conv = r.id; root.menu-title = r.title; root.menu-kind = "secmenu"; } else { root.open-conv-menu(r.id, r.title, r.favourite); } }
+                                        dropped => {
+                                            if Drag.target != "" && Drag.zone != 0 { root.reorder-drop(Drag.src, Drag.target, Drag.zone); }
+                                            Drag.reset();
+                                        }
                                     }
                                 }
                                 // DMs.
@@ -1901,6 +1908,7 @@ export component AppWindow inherits Window {
                     SheetRow { icon: "sort"; text: "Sort conversations"; detail: root.sort-alpha ? "A-Z" : "Activity"; chevron: true; clicked => { root.menu-kind = "sort"; } }
                     SheetRow { icon: "mail"; text: "Unread only"; checked: root.unread-only; clicked => { root.unread-only = !root.unread-only; root.setting-changed("sort"); root.menu-kind = ""; } }
                     SheetRow { icon: "bell-off"; text: "Hide muted"; checked: root.hide-muted; clicked => { root.hide-muted = !root.hide-muted; root.setting-changed("sort"); root.menu-kind = ""; } }
+                    SheetRow { icon: "sort"; text: "Reset the sidebar order"; clicked => { root.reset-order(); root.menu-kind = ""; } }
                 }
                 if root.menu-kind == "overflow": BottomSheet {
                     title: "Sort and filter"; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y;
@@ -1908,6 +1916,7 @@ export component AppWindow inherits Window {
                     SheetRow { icon: "sort"; text: "Sort"; detail: root.sort-alpha ? "A-Z" : "Activity"; chevron: true; clicked => { root.menu-kind = "sort"; } }
                     SheetRow { icon: "mail"; text: "Unread only"; checked: root.unread-only; clicked => { root.unread-only = !root.unread-only; root.setting-changed("sort"); root.menu-kind = ""; } }
                     SheetRow { icon: "bell-off"; text: "Hide muted"; checked: root.hide-muted; clicked => { root.hide-muted = !root.hide-muted; root.setting-changed("sort"); root.menu-kind = ""; } }
+                    SheetRow { icon: "sort"; text: "Reset the sidebar order"; clicked => { root.reset-order(); root.menu-kind = ""; } }
                     SheetRow { icon: "thread"; text: "Threads"; clicked => { root.menu-kind = ""; root.open-threads(); } }
                     SheetRow { icon: "clock"; text: root.scheduled-count > 0 ? "Drafts & sent (" + root.scheduled-count + " scheduled)" : "Drafts & sent"; clicked => { root.menu-kind = ""; root.open-drafts(); } }
                 }
@@ -1959,6 +1968,8 @@ export component AppWindow inherits Window {
                     SheetRow { icon: "bell"; text: "Notify me about"; chevron: true; clicked => { root.menu-kind = "notify"; } }
                     SheetRow { icon: "speaker"; text: "Notification sound"; chevron: true; clicked => { root.menu-kind = "sound"; } }
                     SheetRow { icon: "hash"; text: "Move to section"; chevron: true; clicked => { root.menu-kind = "section"; } }
+                    SheetRow { icon: "arrow-up"; text: "Move up in the list"; clicked => { root.move-row(root.menu-conv, -1); root.menu-kind = ""; } }
+                    SheetRow { icon: "arrow-down"; text: "Move down in the list"; clicked => { root.move-row(root.menu-conv, 1); root.menu-kind = ""; } }
                     SheetRow { icon: "lock"; text: root.lock-set ? (root.is-conv-locked(root.menu-conv) ? "Remove lock from this conversation" : "Lock conversation") : "Set up App Lock to lock conversations"; clicked => { if root.lock-set { root.toggle-conv-lock(root.menu-conv); root.menu-kind = ""; } else { root.menu-kind = ""; root.open-lock-setup(); } } }
                     SheetRow { icon: "info"; text: "View details"; clicked => { root.menu-kind = ""; root.select-conv(root.menu-conv); root.show-chat = true; root.open-details(root.wide ? "about" : ""); } }
                 }
@@ -1970,6 +1981,13 @@ export component AppWindow inherits Window {
                     SheetRow { icon: "calendar"; text: "Until tomorrow"; clicked => { root.mute(root.menu-conv, "tomorrow"); root.menu-kind = ""; } }
                     SheetRow { icon: "bell-off"; text: "Forever"; clicked => { root.mute(root.menu-conv, "forever"); root.menu-kind = ""; } }
                     SheetRow { icon: "bell"; text: "Unmute"; clicked => { root.mute(root.menu-conv, "off"); root.menu-kind = ""; } }
+                }
+                if root.menu-kind == "secmenu": BottomSheet {
+                    title: root.menu-title; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y; menu-width: 260px;
+                    dismiss => { root.menu-kind = ""; }
+                    SheetRow { icon: "arrow-up"; text: "Move section up"; clicked => { root.move-row(root.menu-conv, -1); root.menu-kind = ""; } }
+                    SheetRow { icon: "arrow-down"; text: "Move section down"; clicked => { root.move-row(root.menu-conv, 1); root.menu-kind = ""; } }
+                    SheetRow { icon: "sort"; text: "Reset the sidebar order"; clicked => { root.reset-order(); root.menu-kind = ""; } }
                 }
                 if root.menu-kind == "notify": BottomSheet {
                     title: "Notify me about"; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y;
@@ -2261,6 +2279,19 @@ export component AppWindow inherits Window {
                     LineEdit { text <=> root.new-channel-name; placeholder-text: "Channel name"; font-size: Theme.fs; accessible-label: "Channel name"; accepted => { root.create-channel(root.new-channel-name); } }
                 }
 
+                if Drag.active: Rectangle {
+                    x: min(max(Drag.x + 10px, 0px), parent.width - self.width - 4px);
+                    y: Drag.y - self.height / 2;
+                    width: gl.preferred-width + 24px;
+                    height: 28px * Theme.scale;
+                    background: Theme.surface;
+                    border-radius: Theme.r-sm;
+                    border-width: 1px;
+                    border-color: Theme.accent;
+                    drop-shadow-blur: 8px;
+                    drop-shadow-color: #00000040;
+                    gl := Text { text: Drag.label; font-size: Theme.fs; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; }
+                }
                 if root.toast != "": Rectangle {
                     y: parent.height - 96px;
                     height: tt2.preferred-height + 20px;

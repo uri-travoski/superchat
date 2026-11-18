@@ -618,6 +618,17 @@
         "id": {
           "type": "string"
         },
+        "meta": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AttachmentMeta"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "M-30/M-31: duration, waveform peaks, size and poster frame of voice messages and videos (set by the uploader)."
+        },
         "name": {
           "type": "string"
         },
@@ -637,6 +648,52 @@
         "name",
         "size"
       ],
+      "type": "object"
+    },
+    "AttachmentMeta": {
+      "description": "Media details the sender's app computes before sending: used to draw waveforms and video posters without downloading the file first. Everything is optional; the server only checks the size and field limits.",
+      "properties": {
+        "duration_ms": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "height": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "peaks": {
+          "description": "Loudness per slice of the recording, 0..=255, 64 values at most.",
+          "items": {
+            "format": "uint8",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "poster_b64": {
+          "description": "A small JPEG of the first video frame, base64 (at most about 40 KB).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "width": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
       "type": "object"
     },
     "BackupInfo": {
@@ -1259,6 +1316,14 @@
         "notify": {
           "description": "\"all\", \"mentions\" or \"nothing\" (N-03).",
           "type": "string"
+        },
+        "position": {
+          "description": "NV-04: the user's own order inside the section (lower first). Absent: not reordered, sorted by the list setting.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "section_id": {
           "type": [

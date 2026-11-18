@@ -441,11 +441,14 @@ pub struct ConvPref {
     pub mute_until_ms: Option<Ts>,
     /// "all", "mentions" or "nothing" (N-03).
     pub notify: String,
+    /// NV-04: the user's own order inside the section (lower first). Absent: not reordered, sorted by the list setting.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<i64>,
 }
 
 impl ConvPref {
     pub fn default_for(conv_id: &str) -> ConvPref {
-        ConvPref { conv_id: conv_id.to_string(), favourite: false, section_id: None, mute_until_ms: None, notify: "all".into() }
+        ConvPref { conv_id: conv_id.to_string(), favourite: false, section_id: None, mute_until_ms: None, notify: "all".into(), position: None }
     }
     pub fn is_muted(&self, now: Ts) -> bool {
         matches!(self.mute_until_ms, Some(-1)) || self.mute_until_ms.map(|t| t > now).unwrap_or(false)
@@ -470,6 +473,27 @@ pub struct Section {
     pub position: i64,
     #[serde(default)]
     pub collapsed: bool,
+}
+
+impl Section {
+    /// NV-04: the built-in sections (Favourites, Channels, Direct messages) are stored as order-only rows with ids
+    /// `builtin:<key>:<user id>`; returns `fav`, `channels` or `dms` for them, None for a real custom section.
+    pub fn builtin_key(&self) -> Option<&str> {
+        self.id.strip_prefix("builtin:").and_then(|r| r.split(':').next())
+    }
+}
+
+/// NV-04: the new order of some conversations in a section. An empty list clears every manual order of the user.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+pub struct ConvOrderRequest {
+    pub conv_ids: Vec<String>,
+}
+
+/// NV-04: the new order of the sidebar sections: custom section ids and the keys `builtin:fav`, `builtin:channels`,
+/// `builtin:dms`. An empty list puts the built-in sections back in their default places (custom ones keep their relative order).
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+pub struct SectionOrderRequest {
+    pub ids: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]

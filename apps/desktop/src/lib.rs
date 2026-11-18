@@ -7,6 +7,7 @@ slint::include_modules!();
 mod emoji_data;
 mod forms;
 mod model;
+mod reorder;
 pub mod handoff;
 pub mod nav;
 pub mod lock;
@@ -1764,6 +1765,7 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
 
     lock::install(&ui, &client, &osh);
     shell::install(&ui, &client, &osh);
+    reorder::install(&ui, &client, &osh);
 
     // ---- login screen helpers: a link pasted anywhere switches to link mode and supplies the server -------------
     {

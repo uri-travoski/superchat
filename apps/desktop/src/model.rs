@@ -508,6 +508,20 @@ pub struct SideOpts<'a> {
     pub drafts: usize,
 }
 
+/// NV-04: the section a conversation is listed in: "fav", a custom section id, "channels" or "dms".
+pub fn bucket_key(c: &Client, cs: &ConversationSummary, sections: &[proto::types::Section]) -> String {
+    let p = c.pref(&cs.conversation.id);
+    if p.favourite {
+        "fav".into()
+    } else if let Some(sid) = p.section_id.as_ref().filter(|sid| sections.iter().any(|s| &s.id == *sid)) {
+        sid.clone()
+    } else if cs.conversation.kind == ConversationKind::Channel {
+        "channels".into()
+    } else {
+        "dms".into()
+    }
+}
+
 /// The Home sidebar: Threads, Drafts & sent, Later, then Favourites, custom sections, Channels and Direct messages.
 /// A collapsed section still shows its unread conversations (like Slack), so nothing important hides.
 pub fn side_rows(c: &Client, o: &SideOpts, v: &View) -> Vec<SideRow> {
@@ -538,26 +552,14 @@ pub fn side_rows(c: &Client, o: &SideOpts, v: &View) -> Vec<SideRow> {
 
     let list = c.sorted_conversations(o.sort_alpha, o.unread_only, o.hide_muted);
     let sections = c.sections();
-    // bucket index: 0 favourites, 1..=n custom, n+1 channels, n+2 direct messages
-    let n = sections.len();
-    let mut buckets: Vec<Vec<ConversationSummary>> = vec![vec![]; n + 3];
+    let mut buckets: std::collections::HashMap<String, Vec<ConversationSummary>> = Default::default();
     let mut archived: Vec<ConversationSummary> = vec![];
     for cs in list {
         if cs.conversation.archived {
             archived.push(cs);
             continue;
         }
-        let p = c.pref(&cs.conversation.id);
-        let idx = if p.favourite {
-            0
-        } else if let Some(i) = p.section_id.as_ref().and_then(|sid| sections.iter().position(|s| &s.id == sid)) {
-            i + 1
-        } else if cs.conversation.kind == ConversationKind::Channel {
-            n + 1
-        } else {
-            n + 2
-        };
-        buckets[idx].push(cs);
+        buckets.entry(bucket_key(c, &cs, &sections)).or_default().push(cs);
     }
     let push_section = |out: &mut Vec<SideRow>, key: String, title: &str, plus: &str, collapsed: bool, list: &[ConversationSummary], hint: &str| {
         let mut h = blank_row(0, &key, title);
@@ -579,14 +581,25 @@ pub fn side_rows(c: &Client, o: &SideOpts, v: &View) -> Vec<SideRow> {
         }
     };
     let is = |k: &str| o.collapsed.iter().any(|x| x == k);
-    if !buckets[0].is_empty() {
-        push_section(&mut out, "sec:fav".into(), "Favourites", "", is("sec:fav"), &buckets[0], "");
+    let none: Vec<ConversationSummary> = vec![];
+    // NV-04: the sections in the user's own order (Favourites only when it has something in it).
+    for key in c.section_order() {
+        match key.as_str() {
+            "fav" => {
+                let l = buckets.get("fav").unwrap_or(&none);
+                if !l.is_empty() {
+                    push_section(&mut out, "sec:fav".into(), "Favourites", "", is("sec:fav"), l, "");
+                }
+            }
+            "channels" => push_section(&mut out, "sec:channels".into(), "Channels", "channel", is("sec:channels"), buckets.get("channels").unwrap_or(&none), "No channels yet. An admin can add you to channels."),
+            "dms" => push_section(&mut out, "sec:dms".into(), "Direct messages", "dm", is("sec:dms"), buckets.get("dms").unwrap_or(&none), "Start a conversation with the + button."),
+            id => {
+                if let Some(sec) = sections.iter().find(|s| s.id == id) {
+                    push_section(&mut out, format!("sec:{}", sec.id), &sec.name, "", sec.collapsed, buckets.get(id).unwrap_or(&none), "Move conversations here from their menu.");
+                }
+            }
+        }
     }
-    for (i, sec) in sections.iter().enumerate() {
-        push_section(&mut out, format!("sec:{}", sec.id), &sec.name, "", sec.collapsed, &buckets[i + 1], "Move conversations here from their menu.");
-    }
-    push_section(&mut out, "sec:channels".into(), "Channels", "channel", is("sec:channels"), &buckets[n + 1], "No channels yet. An admin can add you to channels.");
-    push_section(&mut out, "sec:dms".into(), "Direct messages", "dm", is("sec:dms"), &buckets[n + 2], "Start a conversation with the + button.");
     if !archived.is_empty() {
         // Archived conversations are read-only; the section starts collapsed (its key in the list means "expanded").
         push_section(&mut out, "sec:archived".into(), "Archived", "", !is("sec:archived"), &archived, "");

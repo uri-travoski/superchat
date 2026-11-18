@@ -68,6 +68,8 @@ pub fn api_router() -> Router<St> {
         .route("/admin/groups/{id}", patch(org::update_group).delete(org::delete_group))
         .route("/me/prefs", get(org::list_prefs))
         .route("/conversations/{id}/prefs", put(org::set_pref))
+        .route("/conversations/order", post(org::order_conversations))
+        .route("/sections/order", post(org::order_sections))
         .route("/sections", get(org::list_sections).post(org::create_section))
         .route("/sections/{id}", patch(org::update_section).delete(org::delete_section))
         .route("/drafts", get(org::list_drafts))

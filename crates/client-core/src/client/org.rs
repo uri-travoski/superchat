@@ -184,8 +184,56 @@ impl Client {
         self.pref(conv_id).is_muted(now_ms())
     }
 
+    /// The user's custom sections in their order (the built-in order-only rows are left out).
     pub fn sections(&self) -> Vec<Section> {
-        self.inner.store.sections()
+        self.inner.store.sections().into_iter().filter(|s| s.builtin_key().is_none()).collect()
+    }
+
+    /// NV-04: the order of all sidebar sections as keys: `fav`, `channels`, `dms` and custom section ids. Without a
+    /// saved order it is the default one (Favourites, custom sections, Channels, Direct messages).
+    pub fn section_order(&self) -> Vec<String> {
+        let all = self.inner.store.sections();
+        let mut keys: Vec<String> = all.iter().map(|s| s.builtin_key().map(str::to_string).unwrap_or_else(|| s.id.clone())).collect();
+        if !all.iter().any(|s| s.builtin_key().is_some()) {
+            keys.insert(0, "fav".into());
+        }
+        for b in ["channels", "dms"] {
+            if !keys.iter().any(|k| k == b) {
+                keys.push(b.into());
+            }
+        }
+        if !keys.iter().any(|k| k == "fav") {
+            keys.insert(0, "fav".into());
+        }
+        keys
+    }
+
+    /// NV-04: saves the order of the sidebar sections (keys as returned by `section_order`) for all the user's devices.
+    pub async fn reorder_sections(&self, keys: &[String]) -> Result<Vec<Section>> {
+        let ids: Vec<String> = keys.iter().map(|k| if matches!(k.as_str(), "fav" | "channels" | "dms") { format!("builtin:{k}") } else { k.clone() }).collect();
+        let v: Vec<Section> = self.api()?.post("/sections/order", &proto::SectionOrderRequest { ids }).await?;
+        self.inner.store.put_sections(&v)?;
+        self.changed(vec![]);
+        Ok(v)
+    }
+
+    /// NV-04: saves the order of some conversations (one section's list, top to bottom). An empty list resets every
+    /// manual order, so the list setting (activity or A-Z) rules again.
+    pub async fn reorder_conversations(&self, conv_ids: &[String]) -> Result<()> {
+        let prefs: Vec<ConvPref> = self.api()?.post("/conversations/order", &proto::ConvOrderRequest { conv_ids: conv_ids.to_vec() }).await?;
+        let mut all = self.inner.store.prefs();
+        if conv_ids.is_empty() {
+            for p in all.iter_mut() {
+                p.position = None;
+            }
+        }
+        for p in prefs {
+            all.retain(|x| x.conv_id != p.conv_id);
+            all.push(p);
+        }
+        self.inner.store.put_prefs(&all)?;
+        self.changed(conv_ids.to_vec());
+        Ok(())
     }
 
     pub async fn set_pref(&self, conv_id: &str, req: &ConvPrefRequest) -> Result<ConvPref> {
@@ -212,10 +260,22 @@ impl Client {
     }
 
     pub async fn create_section(&self, name: &str) -> Result<Vec<Section>> {
+        let before: Vec<String> = self.sections().into_iter().map(|s| s.id).collect();
         let v: Vec<Section> = self.api()?.post("/sections", &SectionRequest { name: Some(name.into()), ..Default::default() }).await?;
         self.inner.store.put_sections(&v)?;
+        // With a saved section order the new section goes before Channels (as it does without one).
+        if v.iter().any(|s| s.builtin_key().is_some()) {
+            if let Some(new) = v.iter().find(|s| s.builtin_key().is_none() && !before.contains(&s.id)) {
+                let mut keys: Vec<String> = self.section_order().into_iter().filter(|k| *k != new.id).collect();
+                let at = keys.iter().position(|k| k == "channels").unwrap_or(keys.len());
+                keys.insert(at, new.id.clone());
+                if let Ok(v2) = self.reorder_sections(&keys).await {
+                    return Ok(v2.into_iter().filter(|s| s.builtin_key().is_none()).collect());
+                }
+            }
+        }
         self.changed(vec![]);
-        Ok(v)
+        Ok(v.into_iter().filter(|s| s.builtin_key().is_none()).collect())
     }
 
     pub async fn update_section(&self, id: &str, req: &SectionRequest) -> Result<Vec<Section>> {
@@ -251,6 +311,8 @@ impl Client {
         } else {
             v.sort_by_key(|c| std::cmp::Reverse(c.conversation.last_message_ts.unwrap_or(c.conversation.created_ms)));
         }
+        // NV-04: conversations the user placed by hand keep that order (new ones, without a place, stay on top).
+        v.sort_by_key(|c| prefs.get(&c.conversation.id).and_then(|p| p.position).map(|p| (1, p)).unwrap_or((0, 0)));
         v.sort_by_key(|c| !prefs.get(&c.conversation.id).map(|p| p.favourite).unwrap_or(false));
         v
     }

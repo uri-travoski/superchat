@@ -425,15 +425,109 @@ pub async fn set_pref(State(st): State<St>, auth: Auth, Path(conv): Path<String>
                 }
                 let tx = c.transaction()?;
                 tx.execute(
-                    "INSERT INTO conv_prefs(user_id,conv_id,favourite,section_id,mute_until_ms,notify) VALUES(?1,?2,?3,?4,?5,?6)
-                     ON CONFLICT(user_id,conv_id) DO UPDATE SET favourite=excluded.favourite, section_id=excluded.section_id, mute_until_ms=excluded.mute_until_ms, notify=excluded.notify",
-                    params![auth.user_id, conv, p.favourite as i64, p.section_id, p.mute_until_ms, p.notify],
+                    "INSERT INTO conv_prefs(user_id,conv_id,favourite,section_id,mute_until_ms,notify,position) VALUES(?1,?2,?3,?4,?5,?6,?7)
+                     ON CONFLICT(user_id,conv_id) DO UPDATE SET favourite=excluded.favourite, section_id=excluded.section_id, mute_until_ms=excluded.mute_until_ms, notify=excluded.notify, position=excluded.position",
+                    params![auth.user_id, conv, p.favourite as i64, p.section_id, p.mute_until_ms, p.notify, p.position],
                 )?;
                 let mut em = Emitter::new();
                 em.emit(&tx, &auth.user_id, EventData::PrefUpdate { pref: p.clone() })?;
                 tx.commit()?;
                 em.flush(&hub);
                 Ok(p)
+            })
+            .await?,
+    ))
+}
+
+/// NV-04: stores the user's own order of some conversations (positions 0..n) and tells their other devices.
+pub async fn order_conversations(State(st): State<St>, auth: Auth, Json(req): Json<ConvOrderRequest>) -> J<Vec<ConvPref>> {
+    let hub = st.hub.clone();
+    Ok(Json(
+        st.db
+            .call(move |c| {
+                if req.conv_ids.len() > 2000 {
+                    return Err(AppError::validation("too many conversations"));
+                }
+                let tx = c.transaction()?;
+                let mut em = Emitter::new();
+                let mut out = vec![];
+                if req.conv_ids.is_empty() {
+                    // Reset: every manual order of this user goes away.
+                    let ids: Vec<String> = {
+                        let mut q = tx.prepare("SELECT conv_id FROM conv_prefs WHERE user_id=?1 AND position IS NOT NULL")?;
+                        let rows = q.query_map([&auth.user_id], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
+                        rows
+                    };
+                    tx.execute("UPDATE conv_prefs SET position=NULL WHERE user_id=?1", [&auth.user_id])?;
+                    for id in ids {
+                        if let Some(p) = pref_for(&tx, &auth.user_id, &id)? {
+                            em.emit(&tx, &auth.user_id, EventData::PrefUpdate { pref: p.clone() })?;
+                            out.push(p);
+                        }
+                    }
+                } else {
+                    for (i, id) in req.conv_ids.iter().enumerate() {
+                        member_conv(&tx, id, &auth.user_id)?;
+                        tx.execute(
+                            "INSERT INTO conv_prefs(user_id,conv_id,position) VALUES(?1,?2,?3) ON CONFLICT(user_id,conv_id) DO UPDATE SET position=excluded.position",
+                            params![auth.user_id, id, i as i64],
+                        )?;
+                        if let Some(p) = pref_for(&tx, &auth.user_id, id)? {
+                            em.emit(&tx, &auth.user_id, EventData::PrefUpdate { pref: p.clone() })?;
+                            out.push(p);
+                        }
+                    }
+                }
+                tx.commit()?;
+                em.flush(&hub);
+                Ok(out)
+            })
+            .await?,
+    ))
+}
+
+/// NV-04: the order of the sidebar sections, custom ones and the built-in Favourites / Channels / Direct messages.
+pub async fn order_sections(State(st): State<St>, auth: Auth, Json(req): Json<SectionOrderRequest>) -> J<Vec<Section>> {
+    let hub = st.hub.clone();
+    Ok(Json(
+        st.db
+            .call(move |c| {
+                let tx = c.transaction()?;
+                if req.ids.is_empty() {
+                    tx.execute("DELETE FROM sections WHERE user_id=?1 AND id LIKE 'builtin:%'", [&auth.user_id])?;
+                    // Custom sections keep their relative order, renumbered from 0.
+                    let ids: Vec<String> = {
+                        let mut q = tx.prepare("SELECT id FROM sections WHERE user_id=?1 ORDER BY position, rowid")?;
+                        let rows = q.query_map([&auth.user_id], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
+                        rows
+                    };
+                    for (i, id) in ids.iter().enumerate() {
+                        tx.execute("UPDATE sections SET position=?2 WHERE id=?1", params![id, i as i64])?;
+                    }
+                } else {
+                    for (i, key) in req.ids.iter().enumerate() {
+                        if let Some(b) = key.strip_prefix("builtin:") {
+                            if !matches!(b, "fav" | "channels" | "dms") {
+                                return Err(AppError::validation("unknown built-in section"));
+                            }
+                            let id = format!("builtin:{b}:{}", auth.user_id);
+                            tx.execute(
+                                "INSERT INTO sections(id,user_id,name,position,collapsed) VALUES(?1,?2,'',?3,0) ON CONFLICT(id) DO UPDATE SET position=excluded.position",
+                                params![id, auth.user_id, i as i64],
+                            )?;
+                        } else {
+                            let n = tx.execute("UPDATE sections SET position=?3 WHERE id=?1 AND user_id=?2", params![key, auth.user_id, i as i64])?;
+                            if n == 0 {
+                                return Err(AppError::not_found("section not found"));
+                            }
+                        }
+                    }
+                }
+                let mut em = Emitter::new();
+                let s = emit_sections(&tx, &mut em, &auth.user_id)?;
+                tx.commit()?;
+                em.flush(&hub);
+                Ok(s)
             })
             .await?,
     ))
@@ -459,7 +553,7 @@ pub async fn create_section(State(st): State<St>, auth: Auth, Json(req): Json<Se
                 if name.is_empty() || name.chars().count() > 40 {
                     return Err(AppError::validation("section name must be 1-40 characters"));
                 }
-                let n: i64 = c.query_row("SELECT COUNT(*) FROM sections WHERE user_id=?1", [&auth.user_id], |r| r.get(0))?;
+                let n: i64 = c.query_row("SELECT COUNT(*) FROM sections WHERE user_id=?1 AND id NOT LIKE 'builtin:%'", [&auth.user_id], |r| r.get(0))?;
                 if n >= 30 {
                     return Err(AppError::conflict("too many sections"));
                 }

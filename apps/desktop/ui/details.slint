@@ -1,0 +1,193 @@
+// The content of one page of a conversation's details: About, Members, Settings, Files, Pins, Bookmarks, Home.
+// Desktop shows these behind tabs in a modal; the phone shows them as full pages that go back to the details list.
+import { LineEdit, ScrollView, ListView } from "std-widgets.slint";
+import { Theme, PersonItem, RowItem, BookmarkItem } from "theme.slint";
+import { Icon } from "icons.slint";
+import { Avatar, SheetRow, SettingRow, Card, PrimaryButton, GhostButton, EmptyState, ToolButton, SectionHeader } from "components.slint";
+
+export component DetailsView {
+    in property <string> page;
+    in property <string> title;
+    in property <string> kind;
+    in property <string> topic;
+    in property <string> created;
+    in property <int> member-count;
+    in property <[PersonItem]> members;
+    in property <[RowItem]> files;
+    in property <[RowItem]> pins;
+    in property <[BookmarkItem]> bookmarks;
+    in property <[RowItem]> home;
+    in property <bool> can-manage;
+    in property <bool> can-curate;
+    in property <bool> is-admin;
+    in property <bool> muted;
+    in property <string> notify-text;
+    in property <bool> lock-set;
+    in property <bool> locked;
+    in property <bool> favourite;
+    in property <bool> is-channel;
+    in property <bool> phone: false;
+    in-out property <string> topic-edit;
+    callback add-people;
+    callback remove-member(string, string);
+    callback save-topic(string);
+    callback open-file(string);
+    callback open-pin(string, string);
+    callback open-link(string);
+    callback add-bookmark;
+    callback mute;
+    callback notify;
+    callback lock-toggle;
+    callback favourite-toggle;
+    callback section;
+    callback mark-unread;
+    callback home-action(string, string);
+    callback open-members-of(string);
+
+    if root.page == "about": ScrollView {
+        VerticalLayout {
+            padding: 16px;
+            spacing: 14px;
+            alignment: start;
+            Card {
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 6px;
+                    Text { text: root.kind == "channel" ? "Channel" : (root.kind == "group" ? "Group conversation" : (root.kind == "self" ? "Notes to self" : "Direct message")); font-size: Theme.fs-small; color: Theme.muted; font-weight: 700; }
+                    Text { text: (root.kind == "channel" ? "# " : "") + root.title; font-size: Theme.fs-title; font-weight: 800; color: Theme.text; wrap: word-wrap; }
+                }
+            }
+            if root.kind == "channel" || root.kind == "group": Card {
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 8px;
+                    Text { text: "Topic"; font-size: Theme.fs-small; color: Theme.muted; font-weight: 700; }
+                    if !root.can-manage: Text { text: root.topic == "" ? "No topic set." : root.topic; font-size: Theme.fs; color: Theme.text; wrap: word-wrap; }
+                    if root.can-manage: LineEdit { text <=> root.topic-edit; placeholder-text: "Add a topic"; font-size: Theme.fs; accessible-label: "Topic"; accepted(t) => { root.save-topic(t); } }
+                    if root.can-manage: HorizontalLayout { alignment: end; GhostButton { text: "Save topic"; clicked => { root.save-topic(root.topic-edit); } } }
+                }
+            }
+            Card {
+                SettingRow { icon: "users"; badge: #3b82f6; title: "Members"; summary: root.member-count + ""; clicked => { root.open-members-of(""); } divider: root.created != ""; }
+                if root.created != "": SettingRow { icon: "calendar"; badge: #64748b; title: "Created"; summary: root.created; chevron: false; divider: false; }
+            }
+        }
+    }
+    if root.page == "members": VerticalLayout {
+        if root.can-manage: Rectangle {
+            height: max(60px, 50px * Theme.scale);
+            background: ap.has-hover ? Theme.row-hover : transparent;
+            accessible-role: button;
+            accessible-label: "Add people";
+            HorizontalLayout {
+                padding-left: 16px;
+                spacing: 14px;
+                Rectangle { width: 36px; height: 36px; y: (parent.height - self.height) / 2; border-radius: 10px; background: Theme.accent; Icon { name: "user-plus"; size: 20px; tint: Theme.on-accent; weight: 2px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; } }
+                Text { text: "Add people"; font-size: Theme.fs; font-weight: 700; color: Theme.accent-text; vertical-alignment: center; }
+            }
+            ap := TouchArea { clicked => { root.add-people(); } }
+        }
+        if !root.can-manage && root.is-channel: HorizontalLayout { padding: 12px; padding-bottom: 4px; Text { text: "Only owners and admins can add or remove people."; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; } }
+        ListView {
+            vertical-stretch: 1;
+            for p[i] in root.members: Rectangle {
+                height: max(60px, 48px * Theme.scale);
+                background: mh.has-hover ? Theme.row-hover : transparent;
+                HorizontalLayout {
+                    padding-left: 16px; padding-right: 8px; spacing: 14px;
+                    Avatar { initials: p.initials; tint: p.color; size: 38px * Theme.scale; y: (parent.height - self.height) / 2; }
+                    VerticalLayout { alignment: center; horizontal-stretch: 1;
+                        Text { text: p.name; font-size: Theme.fs; color: Theme.text; overflow: elide; }
+                        if p.sub != "": Text { text: p.sub; font-size: Theme.fs-small; color: Theme.muted; overflow: elide; }
+                    }
+                    if root.can-manage && p.tag != "me": ToolButton { icon: "close"; label: "Remove " + p.name; size: 40px; y: (parent.height - self.height) / 2; clicked => { root.remove-member(p.id, p.name); } }
+                }
+                mh := TouchArea { z: -1; }
+            }
+        }
+    }
+    if root.page == "settings": ScrollView {
+        VerticalLayout {
+            padding: 16px;
+            spacing: 14px;
+            alignment: start;
+            Card {
+                SettingRow { icon: "bell"; badge: #e8590c; title: "Notify me about"; summary: root.notify-text; clicked => { root.notify(); } }
+                SettingRow { icon: "bell-off"; badge: #dc2626; title: "Mute"; summary: root.muted ? "Muted" : "Off"; clicked => { root.mute(); } }
+                SettingRow { icon: "star"; badge: #f59e0b; title: "Favourite"; has-switch: true; on: root.favourite; toggled => { root.favourite-toggle(); } }
+                SettingRow { icon: "hash"; badge: #0d9488; title: "Move to section"; clicked => { root.section(); } }
+                SettingRow { icon: "mail"; badge: #64748b; title: "Mark as unread"; chevron: false; clicked => { root.mark-unread(); } divider: false; }
+            }
+            Card {
+                if root.lock-set: SettingRow { icon: "lock"; badge: #16a34a; title: root.locked ? "Unlock this conversation" : "Lock conversation"; summary: root.locked ? "Locked" : ""; chevron: false; clicked => { root.lock-toggle(); } divider: false; }
+                if !root.lock-set: SettingRow { icon: "lock"; badge: #16a34a; title: "Set up App Lock to lock conversations"; clicked => { root.lock-toggle(); } divider: false; }
+            }
+            Text { text: "Locked conversations are hidden until you unlock with your PIN."; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
+        }
+    }
+    if root.page == "files" && root.files.length == 0: EmptyState { icon: "file"; title: "No files yet"; hint: "Files shared in this conversation show up here. Use + in the message box to attach one."; }
+    if root.page == "files" && root.files.length > 0: ListView {
+        for f[i] in root.files: Rectangle {
+            height: max(64px, 52px * Theme.scale);
+            background: ft.has-hover ? Theme.row-hover : transparent;
+            HorizontalLayout {
+                padding-left: 16px; padding-right: 16px; spacing: 14px;
+                Rectangle { width: 40px; height: 40px; y: (parent.height - self.height) / 2; border-radius: 10px; background: Theme.surface; Icon { name: "file"; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; } }
+                VerticalLayout { alignment: center; horizontal-stretch: 1;
+                    Text { text: f.title; font-size: Theme.fs; color: Theme.text; overflow: elide; }
+                    Text { text: f.sub; font-size: Theme.fs-small; color: Theme.muted; overflow: elide; }
+                }
+            }
+            ft := TouchArea { clicked => { root.open-file(f.id); } }
+        }
+    }
+    if root.page == "pins" && root.pins.length == 0: EmptyState { icon: "pin"; title: "No pinned messages"; hint: "Pin an important message from its ... menu so everyone can find it here."; }
+    if root.page == "pins" && root.pins.length > 0: ListView {
+        for p[i] in root.pins: Rectangle {
+            height: max(68px, 56px * Theme.scale);
+            background: pn.has-hover ? Theme.row-hover : transparent;
+            HorizontalLayout {
+                padding-left: 16px; padding-right: 16px; spacing: 14px;
+                Icon { name: "pin"; y: (parent.height - self.height) / 2; }
+                VerticalLayout { alignment: center; horizontal-stretch: 1;
+                    Text { text: p.title; font-size: Theme.fs-small; color: Theme.muted; overflow: elide; }
+                    Text { text: p.text; font-size: Theme.fs; color: Theme.text; overflow: elide; }
+                }
+            }
+            pn := TouchArea { clicked => { root.open-pin(p.id, p.conv); } }
+        }
+    }
+    if root.page == "bookmarks": ScrollView {
+        VerticalLayout {
+            alignment: start;
+            if root.can-curate: SheetRow { icon: "plus"; text: "Add a bookmark"; clicked => { root.add-bookmark(); } }
+            if root.bookmarks.length == 0: EmptyState { icon: "bookmark"; title: "No bookmarks"; hint: root.can-curate ? "Add links everyone in this conversation should find quickly." : "Owners and admins can add links here for everyone."; }
+            for b in root.bookmarks: SheetRow { icon: "link"; text: b.title; detail: b.url; clicked => { root.open-link(b.url); } }
+        }
+    }
+    if root.page == "home" && root.home.length == 0: EmptyState { icon: "home"; title: "No Home page"; hint: "This app has not published a Home page."; }
+    if root.page == "home": ScrollView {
+        VerticalLayout {
+            padding: 16px;
+            spacing: 8px;
+            alignment: start;
+            for h in root.home: VerticalLayout {
+                spacing: 4px;
+                if h.kind == 0: Text { text: h.text; font-size: Theme.fs-title; font-weight: 700; wrap: word-wrap; color: Theme.text; }
+                if h.kind == 1: Text { text: h.text; font-size: Theme.fs; wrap: word-wrap; color: Theme.text; }
+                if h.kind == 2: Rectangle { height: 1px; background: Theme.line; }
+                if h.kind == 3: HorizontalLayout { alignment: start; if h.sub == "primary": PrimaryButton { text: h.text; clicked => { root.home-action("button", h.id); } } if h.sub != "primary": GhostButton { text: h.text; danger: h.sub == "danger"; clicked => { root.home-action("button", h.id); } } }
+                if h.kind == 4: Rectangle {
+                    border-radius: Theme.r-md; background: Theme.surface;
+                    height: hf.preferred-height;
+                    hf := VerticalLayout {
+                        padding: 14px; spacing: 6px;
+                        if h.title != "": Text { text: h.title; font-weight: 700; font-size: Theme.fs; wrap: word-wrap; color: Theme.text; }
+                        if h.text != "": Text { text: h.text; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
+                        HorizontalLayout { alignment: start; PrimaryButton { text: "Open form"; clicked => { root.home-action("form", h.id); } } }
+                    }
+                }
+            }
+        }
+    }
+}

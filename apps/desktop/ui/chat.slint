@@ -1,0 +1,620 @@
+// Message list and composer building blocks shared by desktop and phone.
+import { TextEdit } from "std-widgets.slint";
+import { Theme, MsgItem, PersonItem, LabelItem, EmojiItem } from "theme.slint";
+import { Icon } from "icons.slint";
+import { Avatar, PressArea, Link, PrimaryButton, GhostButton, ToolButton, LabelChip, MenuRow, MenuDivider } from "components.slint";
+
+// One reaction under a message (emoji + count, highlighted when it is mine).
+export component ReactionPill {
+    in property <string> emoji;
+    in property <int> count;
+    in property <bool> mine;
+    in property <image> img;
+    in property <bool> has-img;
+    callback clicked;
+    height: 26px * Theme.scale;
+    width: rch.preferred-width;
+    accessible-role: button;
+    accessible-label: root.emoji + " " + root.count;
+    Rectangle {
+        border-radius: self.height / 2;
+        border-width: 1px;
+        border-color: root.mine ? Theme.accent : Theme.line;
+        background: root.mine ? Theme.accent.with-alpha(0.18) : (ta.has-hover ? Theme.row-hover : transparent);
+        rch := HorizontalLayout {
+            padding-left: 8px;
+            padding-right: 8px;
+            spacing: 4px;
+            if root.has-img: Image { source: root.img; width: 16px * Theme.scale; height: 16px * Theme.scale; y: (parent.height - self.height) / 2; }
+            if !root.has-img: Text { text: root.emoji; font-size: Theme.fs-small * 1.1; vertical-alignment: center; }
+            Text { text: root.count; font-size: Theme.fs-small * 1.1; vertical-alignment: center; color: Theme.text; }
+        }
+        ta := TouchArea { clicked => { root.clicked(); } }
+    }
+}
+
+// "3 replies  Last reply 2:14 PM" under a message, with the avatars of the people who replied.
+export component ThreadSummary {
+    in property <int> replies;
+    in property <[PersonItem]> people;
+    in property <string> last;
+    in property <bool> unread: false;
+    callback clicked;
+    height: max(34px, 30px * Theme.scale);
+    width: row.preferred-width + 16px;
+    accessible-role: button;
+    accessible-label: root.replies + " replies, open the thread";
+    Rectangle {
+        border-radius: Theme.r-sm;
+        background: ta.has-hover ? Theme.surface : transparent;
+        border-width: ta.has-hover ? 1px : 0px;
+        border-color: Theme.line;
+        row := HorizontalLayout {
+            padding-left: 6px;
+            padding-right: 8px;
+            spacing: 6px;
+            for p[i] in root.people: Avatar { initials: p.initials; tint: p.color; size: 22px * Theme.scale; y: (parent.height - self.height) / 2; }
+            Text { text: root.replies == 1 ? "1 reply" : root.replies + " replies"; font-size: Theme.fs-small * 1.1; font-weight: 700; color: Theme.accent-text; vertical-alignment: center; }
+            if root.last != "": Text { text: ta.has-hover ? "View thread" : "Last reply " + root.last; font-size: Theme.fs-small; color: Theme.muted; vertical-alignment: center; }
+            if root.unread: Rectangle { width: 8px; height: 8px; y: (parent.height - self.height) / 2; border-radius: 4px; background: Theme.accent; }
+            if ta.has-hover: Icon { name: "chevron-right"; size: 16px; tint: Theme.icon-soft; y: (parent.height - self.height) / 2; }
+        }
+        ta := TouchArea { clicked => { root.clicked(); } }
+    }
+}
+
+// The floating toolbar over a hovered message row (desktop).
+export component HoverToolbar {
+    in property <[EmojiItem]> quick;
+    in property <bool> saved;
+    in property <bool> in-thread;
+    callback react(string);
+    callback more-reactions;
+    callback reply;
+    callback forward;
+    callback save;
+    callback more;
+    width: tb.preferred-width + 8px;
+    height: 34px * Theme.scale;
+    Rectangle {
+        background: Theme.toolbar-bg;
+        border-radius: Theme.r-sm;
+        border-width: 1px;
+        border-color: Theme.line;
+        drop-shadow-blur: 6px;
+        drop-shadow-offset-y: 1px;
+        drop-shadow-color: #00000040;
+        tb := HorizontalLayout {
+            padding: 2px;
+            spacing: 0px;
+            for e[i] in root.quick: Rectangle {
+                width: 30px * Theme.scale;
+                height: 30px * Theme.scale;
+                border-radius: Theme.r-sm;
+                background: qa.has-hover ? Theme.surface-high : transparent;
+                accessible-role: button;
+                accessible-label: "React " + e.ch;
+                if e.has-img: Image { source: e.img; width: 18px * Theme.scale; height: 18px * Theme.scale; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+                if !e.has-img: Text { text: e.ch; font-size: 16px * Theme.scale; horizontal-alignment: center; vertical-alignment: center; }
+                qa := TouchArea { clicked => { root.react(e.ch); } }
+            }
+            ToolButton { icon: "emoji"; label: "Add reaction"; size: 30px * Theme.scale; clicked => { root.more-reactions(); } }
+            if !root.in-thread: ToolButton { icon: "thread"; label: "Reply in thread"; size: 30px * Theme.scale; clicked => { root.reply(); } }
+            ToolButton { icon: "forward"; label: "Forward"; size: 30px * Theme.scale; clicked => { root.forward(); } }
+            ToolButton { icon: "bookmark"; label: root.saved ? "Remove from saved items" : "Save for later"; filled: root.saved; active: root.saved; size: 30px * Theme.scale; clicked => { root.save(); } }
+            ToolButton { icon: "more-h"; label: "More actions"; size: 30px * Theme.scale; clicked => { root.more(); } }
+        }
+    }
+}
+
+// A flat chat message: avatar + name + time on the first row of a run, compact continuation rows after it.
+export component MessageRow inherits Rectangle {
+    in property <MsgItem> m;
+    in property <bool> selected;
+    in property <bool> in-thread: false;
+    in property <bool> wide: false;
+    in property <[EmojiItem]> quick;
+    in property <string> playing-id;
+    in property <bool> highlight: false;
+    callback actions(length, length);
+    callback react(string);
+    callback more-reactions(length, length);
+    callback retry;
+    callback open-thread;
+    callback forward;
+    callback save;
+    callback open-file(string);
+    callback open-link(string);
+    callback form-action(string);
+    callback play-audio(string);
+    callback edit-save(string);
+    callback edit-cancel;
+    in property <string> editing-id;
+    in-out property <string> edit-text;
+    in-out property <bool> hovering: false;
+    property <bool> show-bar: root.wide && root.hovering && !root.m.deleted && !root.m.system && root.m.state != 1 && root.m.state != 2 && root.editing-id != root.m.id;
+    background: root.selected || root.highlight ? Theme.row-sel : (root.hovering && root.wide && !root.m.system ? Theme.row-hover : transparent);
+    VerticalLayout {
+        if m.day != "": HorizontalLayout {
+            alignment: center;
+            padding-top: 10px;
+            padding-bottom: 6px;
+            Rectangle {
+                border-radius: 14px;
+                border-width: 1px;
+                border-color: Theme.line;
+                background: Theme.bg;
+                width: dl.preferred-width + 24px;
+                height: dl.preferred-height + 10px;
+                dl := Text { text: m.day; font-size: Theme.fs-small; color: Theme.text; font-weight: 700; }
+            }
+        }
+        if m.divider: HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            spacing: 8px;
+            height: 22px;
+            Rectangle { height: 1px; background: Theme.danger; y: 11px; horizontal-stretch: 1; }
+            Text { text: "New messages"; color: Theme.danger; font-size: Theme.fs-small; font-weight: 700; vertical-alignment: center; }
+            Rectangle { height: 1px; background: Theme.danger; y: 11px; horizontal-stretch: 1; }
+        }
+        if m.system: HorizontalLayout {
+            alignment: center;
+            padding: 6px;
+            Text { text: m.blocks.length > 0 ? m.blocks[0].text : ""; font-size: Theme.fs-small * 1.05; color: Theme.muted; font-italic: true; horizontal-alignment: center; wrap: word-wrap; }
+        }
+        if !m.system: ha := PressArea {
+            changed has-hover => { root.hovering = self.has-hover; }
+            tapped => { }
+            long-pressed => { root.actions(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y); }
+            HorizontalLayout {
+                spacing: 10px;
+                padding-left: 12px;
+                padding-right: 12px;
+                padding-top: m.grouped ? 1px : (Theme.compact ? 3px : 6px);
+                padding-bottom: Theme.compact ? 1px : 3px;
+                Rectangle {
+                    width: (Theme.compact ? 26px : 36px) * Theme.scale;
+                    if !m.grouped: Avatar { initials: m.initials; tint: m.color; size: (Theme.compact ? 26px : 36px) * Theme.scale; y: 2px; }
+                    if m.grouped && root.hovering && root.wide: Text { text: m.time; font-size: Theme.fs-small * 0.85; color: Theme.muted; horizontal-alignment: center; y: 3px; }
+                }
+                VerticalLayout {
+                    spacing: 2px;
+                    horizontal-stretch: 1;
+                    if !m.grouped: HorizontalLayout {
+                        spacing: 8px;
+                        Text { text: m.sender; font-size: Theme.fs; font-weight: 800; color: Theme.text; }
+                        if m.is-app: Rectangle {
+                            width: apptag.preferred-width + 10px;
+                            height: apptag.preferred-height + 2px;
+                            y: 2px;
+                            border-radius: 3px;
+                            background: Theme.accent.with-alpha(0.22);
+                            accessible-role: text;
+                            accessible-label: "App";
+                            apptag := Text { text: "APP"; font-size: Theme.fs-small * 0.8; font-weight: 800; color: Theme.accent-text; horizontal-alignment: center; vertical-alignment: center; }
+                        }
+                        Text {
+                            text: m.time + (m.state == 1 ? "  sending..." : "") + (m.state == 2 ? "  not sent" : "") + (m.state == 3 ? "  \u{2713}" : "");
+                            font-size: Theme.fs-small;
+                            color: m.state == 2 ? Theme.danger : Theme.muted;
+                            vertical-alignment: bottom;
+                        }
+                        if m.pinned: Icon { name: "pin"; size: 14px; tint: Theme.icon-soft; y: 3px; }
+                        if m.saved: Icon { name: "bookmark"; size: 14px; filled: true; tint: Theme.accent-text; y: 3px; }
+                        Rectangle { horizontal-stretch: 1; }
+                        if m.state == 2: Link { text: "Retry"; clicked => { root.retry(); } }
+                    }
+                    if m.grouped && (m.state == 1 || m.state == 2 || m.pinned || m.saved): HorizontalLayout {
+                        spacing: 6px;
+                        if m.state == 1: Text { text: "sending..."; font-size: Theme.fs-small; color: Theme.muted; }
+                        if m.state == 2: Text { text: "not sent"; font-size: Theme.fs-small; color: Theme.danger; }
+                        if m.state == 2: Link { text: "Retry"; clicked => { root.retry(); } }
+                        if m.pinned: Icon { name: "pin"; size: 14px; tint: Theme.icon-soft; }
+                        if m.saved: Icon { name: "bookmark"; size: 14px; filled: true; tint: Theme.accent-text; }
+                    }
+                    if m.forwarded != "": Text { text: "\u{21AA} " + m.forwarded; font-size: Theme.fs-small; color: Theme.muted; font-italic: true; }
+                    if m.quote != "": Rectangle {
+                        height: qt.preferred-height + 6px;
+                        Rectangle { x: 0; width: 3px; background: Theme.accent; }
+                        qt := Text { x: 10px; width: parent.width - 10px; text: m.quote; font-size: Theme.fs-small; color: Theme.muted; overflow: elide; }
+                    }
+                    if m.deleted: Text { text: "Message deleted"; font-size: Theme.fs; font-italic: true; color: Theme.muted; }
+                    if root.editing-id == m.id: VerticalLayout {
+                        spacing: 6px;
+                        Rectangle {
+                            border-radius: Theme.r-sm;
+                            border-width: 2px;
+                            border-color: Theme.accent;
+                            background: Theme.bg;
+                            height: max(48px, et.preferred-height + 16px);
+                            et := TextInput {
+                                x: 10px; y: 8px; width: parent.width - 20px;
+                                text <=> root.edit-text;
+                                font-size: Theme.fs;
+                                color: Theme.text;
+                                wrap: word-wrap;
+                                single-line: false;
+                                accessible-label: "Edit message";
+                                init => { self.focus(); }
+                                key-pressed(e) => {
+                                    if e.text == Key.Return && !e.modifiers.shift { root.edit-save(root.edit-text); return accept; }
+                                    if e.text == Key.Escape { root.edit-cancel(); return accept; }
+                                    reject
+                                }
+                            }
+                        }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: end;
+                            Text { text: "Enter to save, Esc to cancel"; font-size: Theme.fs-small; color: Theme.muted; vertical-alignment: center; horizontal-stretch: 1; }
+                            GhostButton { text: "Cancel"; clicked => { root.edit-cancel(); } }
+                            PrimaryButton { text: "Save"; clicked => { root.edit-save(root.edit-text); } }
+                        }
+                    }
+                    if !m.deleted && root.editing-id != m.id: VerticalLayout {
+                        spacing: 4px;
+                        for b in m.blocks: VerticalLayout {
+                            if b.kind == 1: Rectangle {
+                                background: Theme.bubble-other;
+                                border-radius: 6px;
+                                height: ct.preferred-height + 16px;
+                                ct := Text { x: 8px; y: 8px; width: parent.width - 16px; text: b.text; font-family: "monospace"; font-size: Theme.fs * 0.92; wrap: word-wrap; color: Theme.text; }
+                            }
+                            if b.kind == 2: Rectangle {
+                                height: qs.preferred-height + 4px;
+                                Rectangle { x: 0; width: 3px; background: Theme.line; }
+                                qs := StyledText { x: 10px; width: parent.width - 10px; text: b.styled; default-color: Theme.muted; default-font-size: Theme.fs; link-color: Theme.accent; link-clicked(l) => { root.open-link(l); } }
+                            }
+                            if b.kind == 0: StyledText {
+                                text: b.styled;
+                                default-color: Theme.text;
+                                default-font-size: Theme.fs;
+                                link-color: Theme.accent;
+                                link-clicked(l) => { root.open-link(l); }
+                            }
+                        }
+                        if m.edited: Text { text: "(edited)"; font-size: Theme.fs-small; color: Theme.muted; }
+                        for f in m.files: VerticalLayout {
+                            spacing: 3px;
+                            if f.has-img: HorizontalLayout {
+                                alignment: start;
+                                Image {
+                                    source: f.img;
+                                    width: (root.wide ? 300px : 220px) * Theme.scale;
+                                    height: self.width * f.img.height / max(1, f.img.width);
+                                    image-fit: contain;
+                                    accessible-role: image;
+                                    accessible-label: f.name;
+                                    TouchArea { clicked => { root.open-file(f.id); } }
+                                }
+                            }
+                            HorizontalLayout {
+                                alignment: start;
+                                Rectangle {
+                                    height: max(40px, 34px * Theme.scale);
+                                    width: max(220px, fr.preferred-width + 24px);
+                                    border-radius: 8px;
+                                    border-width: 1px;
+                                    border-color: Theme.line;
+                                    background: fta.has-hover ? Theme.bubble-other : Theme.bg;
+                                    fr := HorizontalLayout {
+                                        padding-left: 10px;
+                                        padding-right: 10px;
+                                        spacing: 8px;
+                                        Icon { name: f.kind == 1 ? "image" : (f.kind == 3 ? "mic" : "file"); size: 20px; y: (parent.height - self.height) / 2; }
+                                        Text { text: f.removed ? "File removed" : f.name + "  (" + f.size + ")"; font-size: Theme.fs-small; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; color: Theme.text; }
+                                        if !f.removed: Text { text: f.kind == 3 ? (root.playing-id == f.id ? "Stop" : "Play") : (f.kind == 2 ? "Play" : "Open"); color: Theme.accent-text; font-size: Theme.fs-small; vertical-alignment: center; }
+                                    }
+                                    fta := TouchArea { enabled: !f.removed; clicked => { if f.kind == 3 { root.play-audio(f.id); } else { root.open-file(f.id); } } }
+                                }
+                            }
+                        }
+                        if m.has-form: Rectangle {
+                            border-radius: 10px;
+                            border-width: 1px;
+                            border-color: Theme.line;
+                            background: Theme.surface;
+                            height: fc.preferred-height + 2px;
+                            accessible-role: groupbox;
+                            accessible-label: m.form-title;
+                            fc := VerticalLayout {
+                                padding: 12px;
+                                spacing: 8px;
+                                if m.form-title != "": Text { text: m.form-title; font-size: Theme.fs; font-weight: 700; wrap: word-wrap; color: Theme.text; }
+                                if m.form-desc != "": Text { text: m.form-desc; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
+                                if m.responded: Text { text: "\u{2713} You responded"; font-size: Theme.fs-small; color: Theme.accent-text; font-weight: 700; }
+                                if !m.responded: HorizontalLayout {
+                                    spacing: 8px;
+                                    alignment: start;
+                                    if m.form-fields: PrimaryButton { text: "Fill in"; clicked => { root.form-action(""); } }
+                                    for b in m.form-buttons: HorizontalLayout {
+                                        if b.style == "primary" && !m.form-fields: PrimaryButton { text: b.label + (b.modal ? "..." : ""); clicked => { root.form-action(b.id); } }
+                                        if b.style != "primary" || m.form-fields: GhostButton { text: b.label + (b.modal ? "..." : ""); danger: b.style == "danger"; clicked => { root.form-action(b.id); } }
+                                    }
+                                }
+                            }
+                        }
+                        if m.reactions.length > 0: HorizontalLayout {
+                            spacing: 6px;
+                            alignment: start;
+                            padding-top: 2px;
+                            for r in m.reactions: ReactionPill { emoji: r.emoji; count: r.count; mine: r.mine; img: r.img; has-img: r.has-img; clicked => { root.react(r.emoji); } }
+                            if root.hovering || !root.wide: Rectangle {
+                                width: 30px * Theme.scale;
+                                height: 26px * Theme.scale;
+                                border-radius: self.height / 2;
+                                border-width: 1px;
+                                border-color: Theme.line;
+                                accessible-role: button;
+                                accessible-label: "Add reaction";
+                                Icon { name: "emoji"; size: 16px; tint: Theme.icon; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+                                TouchArea { clicked => { root.more-reactions(self.absolute-position.x, self.absolute-position.y); } }
+                            }
+                        }
+                        if m.replies > 0 && !root.in-thread: ThreadSummary { replies: m.replies; people: m.reply-people; last: m.reply-time; unread: m.reply-unread; clicked => { root.open-thread(); } }
+                    }
+                }
+            }
+            if root.show-bar: HoverToolbar {
+                x: parent.width - self.width - 14px;
+                y: 2px;
+                quick: root.quick;
+                saved: root.m.saved;
+                in-thread: root.in-thread;
+                react(e) => { root.react(e); }
+                more-reactions => { root.more-reactions(self.absolute-position.x, self.absolute-position.y + self.height + 4px); }
+                reply => { root.open-thread(); }
+                forward => { root.forward(); }
+                save => { root.save(); }
+                more => { root.actions(self.absolute-position.x + self.width - 220px, self.absolute-position.y + self.height + 4px); }
+            }
+
+        }
+    }
+}
+
+// The message box. Desktop: formatting row inside the box, a bottom row with attach, emoji, mention and a split Send
+// button (the arrow opens "Schedule message"). Phone: attach, field, formatting toggle, emoji and Send.
+export component Composer inherits Rectangle {
+    in-out property <string> text;
+    in property <string> placeholder: "Message";
+    in property <bool> wide: false;
+    in property <bool> editing: false;
+    in property <bool> recording: false;
+    in property <bool> can-record: false;
+    in property <bool> formatting: false;
+    in property <bool> allow-schedule: true;
+    in property <string> also-label;
+    in-out property <bool> also-on: false;
+    callback send;
+    callback edited(string);
+    callback format(string);
+    callback attach;
+    callback emoji;
+    callback mention;
+    callback schedule;
+    callback toggle-format;
+    callback cancel-edit;
+    callback record-toggle;
+    callback up-edit;
+    callback focus-lost;
+    out property <bool> has-focus: fs.has-focus;
+    public function focus-input() { ti.focus(); }
+    property <bool> can-send: root.text != "";
+    height: col.preferred-height;
+    col := VerticalLayout {
+        spacing: 4px;
+        if root.also-label != "": Rectangle {
+            height: 28px * Theme.scale;
+            HorizontalLayout {
+                padding-left: 14px;
+                spacing: 8px;
+                Rectangle {
+                    width: 18px * Theme.scale;
+                    height: self.width;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: 4px;
+                    border-width: 2px;
+                    border-color: root.also-on ? Theme.accent : Theme.icon-soft;
+                    background: root.also-on ? Theme.accent : transparent;
+                    accessible-role: checkbox;
+                    accessible-checked: root.also-on;
+                    accessible-label: root.also-label;
+                    if root.also-on: Icon { name: "check"; size: 14px; tint: Theme.on-accent; weight: 2.5px; x: (parent.width - self.width) / 2 - 2px; y: (parent.height - self.height) / 2 - 2px; }
+                    TouchArea { clicked => { root.also-on = !root.also-on; } }
+                }
+                Text { text: root.also-label; font-size: Theme.fs-small * 1.05; color: Theme.text; vertical-alignment: center; }
+            }
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+            height: box.preferred-height;
+            // Desktop box.
+            if root.wide: Rectangle {
+                border-radius: Theme.r-md;
+                border-width: fs.has-focus ? 2px : 1px;
+                border-color: fs.has-focus ? Theme.accent : Theme.icon-soft.with-alpha(0.7);
+                background: Theme.bg;
+            }
+            if !root.wide: Rectangle { border-radius: 24px; background: Theme.surface; }
+            box := VerticalLayout {
+                padding: root.wide ? 8px : 4px;
+                padding-left: root.wide ? 10px : 4px;
+                spacing: 2px;
+                if root.wide && (root.formatting || true): HorizontalLayout {
+                    spacing: 0px;
+                    height: 30px * Theme.scale;
+                    ToolButton { icon: "bold"; label: "Bold"; size: 28px * Theme.scale; glyph: 16px; clicked => { root.format("*"); } }
+                    ToolButton { icon: "italic"; label: "Italic"; size: 28px * Theme.scale; glyph: 16px; clicked => { root.format("_"); } }
+                    ToolButton { icon: "strike"; label: "Strikethrough"; size: 28px * Theme.scale; glyph: 16px; clicked => { root.format("~"); } }
+                    Rectangle { width: 9px; Rectangle { width: 1px; height: 16px; y: 6px; x: 4px; background: Theme.line; } }
+                    ToolButton { icon: "list-ordered"; label: "Numbered list"; size: 28px * Theme.scale; glyph: 16px; clicked => { root.format("1. "); } }
+                    ToolButton { icon: "list-bullet"; label: "Bulleted list"; size: 28px * Theme.scale; glyph: 16px; clicked => { root.format("- "); } }
+                    ToolButton { icon: "quote"; label: "Quote"; size: 28px * Theme.scale; glyph: 16px; clicked => { root.format("> "); } }
+                    Rectangle { width: 9px; Rectangle { width: 1px; height: 16px; y: 6px; x: 4px; background: Theme.line; } }
+                    ToolButton { icon: "code"; label: "Code"; size: 28px * Theme.scale; glyph: 16px; clicked => { root.format("`"); } }
+                    ToolButton { icon: "code-block"; label: "Code block"; size: 28px * Theme.scale; glyph: 16px; clicked => { root.format("```\n"); } }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                if !root.wide && root.formatting: HorizontalLayout {
+                    padding-left: 10px;
+                    height: 36px * Theme.scale;
+                    ToolButton { icon: "bold"; label: "Bold"; size: 34px * Theme.scale; clicked => { root.format("*"); } }
+                    ToolButton { icon: "italic"; label: "Italic"; size: 34px * Theme.scale; clicked => { root.format("_"); } }
+                    ToolButton { icon: "strike"; label: "Strikethrough"; size: 34px * Theme.scale; clicked => { root.format("~"); } }
+                    ToolButton { icon: "code"; label: "Code"; size: 34px * Theme.scale; clicked => { root.format("`"); } }
+                    ToolButton { icon: "quote"; label: "Quote"; size: 34px * Theme.scale; clicked => { root.format("> "); } }
+                    ToolButton { icon: "list-bullet"; label: "List"; size: 34px * Theme.scale; clicked => { root.format("- "); } }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                HorizontalLayout {
+                    spacing: 2px;
+                    if !root.wide: ToolButton { icon: "plus"; label: "Attach"; size: 44px; glyph: 24px; y: (parent.height - self.height) / 2; clicked => { root.attach(); } }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        height: max(root.wide ? 28px * Theme.scale : 40px, min(ti.preferred-height + 8px, 170px * Theme.scale));
+                        if root.text == "": Text { x: root.wide ? 4px : 12px; text: root.editing ? "Editing message" : root.placeholder; color: Theme.muted; font-size: Theme.fs; vertical-alignment: center; }
+                        fs := FocusScope {
+                            capture-key-pressed(e) => {
+                                if e.text == Key.Return && !e.modifiers.shift && !e.modifiers.control { if root.text != "" { root.send(); } return accept; }
+                                if e.text == Key.Return && e.modifiers.control { if root.text != "" { root.send(); } return accept; }
+                                if e.text == Key.UpArrow && root.text == "" { root.up-edit(); return accept; }
+                                if e.text == Key.Escape && root.editing { root.cancel-edit(); return accept; }
+                                reject
+                            }
+                            ti := TextInput {
+                                x: root.wide ? 4px : 12px;
+                                y: 4px;
+                                width: parent.width - (root.wide ? 8px : 16px);
+                                text <=> root.text;
+                                font-size: Theme.fs;
+                                color: Theme.text;
+                                wrap: word-wrap;
+                                single-line: false;
+                                accessible-label: root.placeholder;
+                                edited => { root.edited(self.text); }
+                            }
+                        }
+                        TouchArea { z: -1; clicked => { ti.focus(); } }
+                    }
+                    if !root.wide: ToolButton { icon: "aa"; label: "Formatting"; size: 40px; glyph: 22px; active: root.formatting; y: (parent.height - self.height) / 2; clicked => { root.toggle-format(); } }
+                    if !root.wide: ToolButton { icon: "emoji"; label: "Emoji"; size: 40px; glyph: 22px; y: (parent.height - self.height) / 2; clicked => { root.emoji(); } }
+                    if !root.wide && root.editing: ToolButton { icon: "close"; label: "Cancel editing"; size: 40px; glyph: 22px; y: (parent.height - self.height) / 2; clicked => { root.cancel-edit(); } }
+                    if !root.wide: Rectangle {
+                        width: 48px;
+                        height: 48px;
+                        y: (parent.height - self.height) / 2;
+                        accessible-role: button;
+                        accessible-label: (root.can-send || !root.can-record) ? (root.editing ? "Save" : "Send") : (root.recording ? "Stop recording" : "Record a voice message");
+                        Rectangle {
+                            width: 42px; height: 42px; border-radius: 21px;
+                            x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+                            background: root.recording ? Theme.danger : (root.can-send || !root.can-record ? Theme.accent : Theme.surface-high);
+                            Icon { name: (root.can-send || !root.can-record) ? (root.editing ? "check" : "send") : "mic"; size: 22px; tint: root.recording ? Theme.on-danger : (root.can-send || !root.can-record ? Theme.on-accent : Theme.icon); weight: 2px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+                        }
+                        TouchArea { clicked => { if root.can-send || !root.can-record { root.send(); } else { root.record-toggle(); } } }
+                    }
+                }
+                if root.wide: HorizontalLayout {
+                    spacing: 0px;
+                    height: 32px * Theme.scale;
+                    ToolButton { icon: "plus"; label: "Attach files, record, or schedule"; size: 30px * Theme.scale; glyph: 20px; clicked => { root.attach(); } }
+                    ToolButton { icon: "emoji"; label: "Emoji"; size: 30px * Theme.scale; clicked => { root.emoji(); } }
+                    ToolButton { icon: "at"; label: "Mention someone"; size: 30px * Theme.scale; clicked => { root.mention(); } }
+                    if root.can-record: ToolButton { icon: "mic"; label: root.recording ? "Stop recording" : "Record a voice message"; tint: root.recording ? Theme.danger : Theme.icon; size: 30px * Theme.scale; clicked => { root.record-toggle(); } }
+                    Rectangle { horizontal-stretch: 1; }
+                    if root.editing: GhostButton { text: "Cancel"; clicked => { root.cancel-edit(); } y: (parent.height - self.height) / 2; }
+                    Rectangle {
+                        width: sendrow.preferred-width;
+                        height: 30px * Theme.scale;
+                        y: (parent.height - self.height) / 2;
+                        border-radius: Theme.r-sm;
+                        background: root.can-send ? Theme.accent : Theme.surface-high;
+                        sendrow := HorizontalLayout {
+                            Rectangle {
+                                width: 34px * Theme.scale;
+                                accessible-role: button;
+                                accessible-label: root.editing ? "Save" : "Send";
+                                Icon { name: root.editing ? "check" : "send"; size: 18px; weight: 2px; tint: root.can-send ? Theme.on-accent : Theme.muted; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+                                TouchArea { clicked => { if root.can-send { root.send(); } } }
+                            }
+                            if root.allow-schedule && !root.editing: Rectangle { width: 1px; background: root.can-send ? Theme.on-accent.with-alpha(0.4) : Theme.line; }
+                            if root.allow-schedule && !root.editing: Rectangle {
+                                width: 24px * Theme.scale;
+                                accessible-role: button;
+                                accessible-label: "Schedule message";
+                                Icon { name: "chevron-down"; size: 16px; weight: 2px; tint: root.can-send ? Theme.on-accent : Theme.muted; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+                                TouchArea { clicked => { root.schedule(); } }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Multi-select list of people (Add people, New message). The Rust side keeps `sel` in the model.
+export component PeoplePicker {
+    in property <[PersonItem]> people;
+    in-out property <string> query;
+    in property <string> hint: "Search people";
+    in property <string> empty-text: "No one to add.";
+    in property <bool> single: false; // a click picks one person at once (New message)
+    callback filter(string);
+    callback toggle(string);
+    VerticalLayout {
+        spacing: 6px;
+        Rectangle {
+            height: max(40px, 34px * Theme.scale);
+            border-radius: Theme.r-sm;
+            border-width: 1px;
+            border-color: Theme.line;
+            background: Theme.bg;
+            HorizontalLayout {
+                padding-left: 10px;
+                spacing: 8px;
+                Icon { name: "search"; size: 18px; tint: Theme.icon-soft; y: (parent.height - self.height) / 2; }
+                TextInput {
+                    text <=> root.query;
+                    font-size: Theme.fs;
+                    color: Theme.text;
+                    vertical-alignment: center;
+                    single-line: true;
+                    accessible-label: root.hint;
+                    edited => { root.filter(self.text); }
+                }
+            }
+            if root.query == "": Text { x: 36px; text: root.hint; font-size: Theme.fs; color: Theme.muted; vertical-alignment: center; }
+        }
+        if root.people.length == 0: Text { text: root.empty-text; font-size: Theme.fs; color: Theme.muted; wrap: word-wrap; }
+        for p[i] in root.people: Rectangle {
+            height: max(52px, 44px * Theme.scale);
+            border-radius: Theme.r-sm;
+            background: pa.has-hover ? Theme.row-hover : (p.sel ? Theme.row-sel : transparent);
+            accessible-role: checkbox;
+            accessible-label: p.name;
+            accessible-checked: p.sel;
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+                spacing: 12px;
+                Avatar { initials: p.initials; tint: p.color; size: 34px * Theme.scale; y: (parent.height - self.height) / 2; }
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 1;
+                    Text { text: p.name; font-size: Theme.fs; color: Theme.text; overflow: elide; }
+                    if p.sub != "": Text { text: p.sub; font-size: Theme.fs-small; color: Theme.muted; overflow: elide; }
+                }
+                if p.tag != "": Text { text: p.tag; font-size: Theme.fs-small; color: Theme.muted; vertical-alignment: center; }
+                if !root.single: Rectangle {
+                    width: 22px; height: 22px; y: (parent.height - self.height) / 2; border-radius: 5px;
+                    border-width: 2px; border-color: p.sel ? Theme.accent : Theme.icon-soft; background: p.sel ? Theme.accent : transparent;
+                    if p.sel: Icon { name: "check"; size: 16px; tint: Theme.on-accent; weight: 2.5px; x: (parent.width - self.width) / 2 - 2px; y: (parent.height - self.height) / 2 - 2px; }
+                }
+            }
+            pa := TouchArea { clicked => { root.toggle(p.id); } }
+        }
+    }
+}

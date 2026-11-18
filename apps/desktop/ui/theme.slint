@@ -71,6 +71,16 @@ export struct FileItem {
     removed: bool,
 }
 
+export struct PersonItem {
+    id: string,
+    name: string,
+    initials: string,
+    color: color,
+    sub: string,
+    sel: bool,
+    tag: string,
+}
+
 export struct MsgItem {
     id: string,
     sender: string,
@@ -99,14 +109,12 @@ export struct MsgItem {
     form-fields: bool,
     form-buttons: [FormButtonItem],
     responded: bool,
-}
-
-export struct PersonItem {
-    id: string,
-    name: string,
-    initials: string,
-    color: color,
-    sub: string,
+    grouped: bool, // continuation of the previous sender's run: no avatar or name
+    system: bool,
+    saved: bool,
+    reply-people: [PersonItem],
+    reply-time: string,
+    reply-unread: bool,
 }
 
 // One row of a generic list: search results, threads, files, pins, sessions, quick switcher.
@@ -122,6 +130,71 @@ export struct RowItem {
     initials: string,
     color: color,
     header: string,
+    pre: string,
+    hit: string,
+    post: string,
+}
+
+// One row of the sidebar, the DM list or the phone Home list.
+export struct SideRow {
+    kind: int, // 0 section header, 1 conversation, 2 quick link (Threads, Drafts, Later), 3 hint text
+    id: string,
+    title: string,
+    icon: string,
+    initials: string,
+    color: color,
+    unread: int,
+    mentions: int,
+    muted: bool,
+    favourite: bool,
+    collapsed: bool,
+    count: int,
+    conv-kind: string, // dm, self, group, channel
+    presence: int,
+    locked: bool,
+    draft: bool,
+    plus: string, // header "+" action: channel, dm or empty
+    preview: string,
+    stamp: string,
+}
+
+export struct LabelItem {
+    id: string,
+    name: string,
+    tint: color,
+    on: bool,
+}
+
+// A saved message of the Later view.
+export struct SavedRow {
+    id: string,
+    conv: string,
+    conv-title: string,
+    sender: string,
+    initials: string,
+    color: color,
+    time: string,
+    text: string,
+    deleted: bool,
+    labels: [LabelItem],
+}
+
+export struct ActivityRow {
+    id: string,
+    kind: int, // 0 mention, 1 reaction, 2 thread reply
+    actor: string,
+    initials: string,
+    color: color,
+    title: string,
+    snippet: string,
+    conv: string,
+    msg: string,
+    root: string,
+    time: string,
+    unread: bool,
+    emoji: string,
+    img: image,
+    has-img: bool,
 }
 
 export struct BookmarkItem {
@@ -173,6 +246,13 @@ export global Theme {
     out property <color> bubble-mine: accent.with-alpha(0.2);
     out property <color> bubble-other: dark ? #ffffff14 : #00000010;
     out property <color> sidebar: dark ? #1c1f24 : #ffffff;
+    // Slack-style shell: a darker rail, a tinted sidebar, hover rows and a floating toolbar.
+    out property <color> rail: dark ? #121417 : #e8ecf2;
+    out property <color> side-bg: dark ? #181b20 : #f3f5f9;
+    out property <color> row-hover: dark ? #ffffff0d : #00000009;
+    out property <color> row-sel: accent.with-alpha(dark ? 0.26 : 0.16);
+    out property <color> toolbar-bg: dark ? #2b3038 : #ffffff;
+    out property <color> mention-bg: dark ? #f2c94c26 : #fff3c4;
     out property <color> danger: dark ? #ff8a80 : #c62828;
     out property <color> on-danger: dark ? #1c1f24 : #ffffff;
     out property <color> ok: dark ? #5fd38a : #2e7d32;

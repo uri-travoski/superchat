@@ -12,6 +12,8 @@ pub mod nav;
 pub mod lock;
 pub mod platform;
 mod sched;
+mod shell;
+mod shortcodes;
 
 use client_core::logic::{datefmt, emoji, initials, markup, searchq};
 use client_core::secrets::SecretStore;
@@ -254,6 +256,7 @@ struct St {
     shared: Option<Shared>,
     home_bot: String,
     home_forms: Vec<proto::automation::Form>,
+    pp_sel: HashSet<String>,
 }
 
 type Sh = Arc<Mutex<St>>;
@@ -386,6 +389,7 @@ fn refresh(ui: &AppWindow, c: &Client, sh: &Sh) {
     let me_id = c.my_id().unwrap_or_default();
     ui.set_conversations(model(model::conv_items(c, g.prefs.sort == "alpha", g.prefs.unread_only, g.prefs.hide_muted, &v)));
     ui.set_total_unread(c.unread_total() as i32);
+    shell::refresh_shell(ui, c, &g);
     ui.set_scheduled_count(c.scheduled_pending(None).len() as i32);
     ui.set_ai_enabled(c.ai_enabled());
     if let Some(me) = c.me() {
@@ -424,9 +428,13 @@ fn refresh(ui: &AppWindow, c: &Client, sh: &Sh) {
                 Some(u) => {
                     let mut p = model::person(&u);
                     p.sub = if m.role == "owner" { format!("@{}  |  owner", u.username).into() } else { p.sub };
+                    if m.user_id == me_id {
+                        p.tag = "me".into();
+                        p.name = format!("{} (you)", u.display_name).into();
+                    }
                     p
                 }
-                None => PersonItem { id: m.user_id.clone().into(), name: "Unknown".into(), initials: "?".into(), color: color_of(&m.user_id), sub: Default::default() },
+                None => PersonItem { id: m.user_id.clone().into(), name: "Unknown".into(), initials: "?".into(), color: color_of(&m.user_id), sub: Default::default(), sel: false, tag: Default::default() },
             })
             .collect(),
     ));
@@ -454,6 +462,7 @@ fn refresh(ui: &AppWindow, c: &Client, sh: &Sh) {
         .into(),
     );
     ui.set_current_fav(c.pref(&cur).favourite);
+    shell::refresh_details(ui, c, &cs, &me_id, &v);
     ui.set_can_write(!cs.conversation.archived);
     ui.set_bookmarks(model(model::bookmarks(c, &cur)));
     let is_admin = c.me().map(|m| m.user.role.is_admin()).unwrap_or(false);
@@ -471,7 +480,7 @@ fn refresh(ui: &AppWindow, c: &Client, sh: &Sh) {
         g.prefs.sort = "activity".into();
     }
     let (items, first_unread) = {
-        let mut cx = Ctx { c, me: me_id.clone(), v: &v, atts: &mut atts, want_images: &mut want, pinned: pinned.clone(), replies: c.reply_counts(&cur), can_pin: is_admin || cs.conversation.members.iter().any(|m| m.user_id == me_id && m.role == "owner") };
+        let mut cx = Ctx { c, me: me_id.clone(), v: &v, atts: &mut atts, want_images: &mut want, pinned: pinned.clone(), replies: c.reply_counts(&cur), can_pin: is_admin || cs.conversation.members.iter().any(|m| m.user_id == me_id && m.role == "owner"), saved: c.saved_items().into_iter().map(|s| s.item.message_id).collect() };
         model::msg_items(&mut cx, &cur, limit, g.read_mark)
     };
     g.atts = atts;
@@ -529,7 +538,8 @@ fn refresh(ui: &AppWindow, c: &Client, sh: &Sh) {
     if let Some((tc, root)) = g.thread.clone() {
         if let Some(rm) = c.store().message(&root).ok().flatten() {
             let mut atts = std::mem::take(&mut g.atts);
-            let mut cx = Ctx { c, me: me_id.clone(), v: &v, atts: &mut atts, want_images: &mut want, pinned: HashSet::new(), replies: Default::default(), can_pin: false };
+            let mut cx = Ctx { c, me: me_id.clone(), v: &v, atts: &mut atts, want_images: &mut want, pinned: HashSet::new(), replies: c.reply_counts(&tc), can_pin: false, saved: c.saved_items().into_iter().map(|s| s.item.message_id).collect() };
+            ui.set_thread_conv_title(conv_title_of_id(c, &tc).into());
             let rt = client_core::TimelineItem { message: rm, state: client_core::SendState::Sent, local: false, error: None };
             ui.set_thread_root(model::msg_item(&mut cx, &rt, String::new(), false));
             let replies: Vec<_> = c.thread_replies(&tc, &root).iter().map(|t| model::msg_item(&mut cx, t, String::new(), false)).collect();
@@ -553,6 +563,10 @@ fn refresh(ui: &AppWindow, c: &Client, sh: &Sh) {
             });
         }
     }
+}
+
+fn conv_title_of_id(c: &Client, id: &str) -> String {
+    c.conversations().into_iter().find(|x| x.conversation.id == id).map(|cs| c.conversation_title(&cs)).unwrap_or_default()
 }
 
 /// The bot on the other side of a direct message, if it is one.
@@ -688,6 +702,10 @@ fn select_conv(ui: &AppWindow, c: &Client, sh: &Sh, id: &str, push_history: bool
     }
     ui.set_current_conv(id.into());
     ui.set_thread_id("".into());
+    ui.set_info_open(false);
+    ui.set_info_page("".into());
+    ui.set_editing_id("".into());
+    ui.set_emoji_sugg(model(vec![]));
     ui.set_tab(0);
     ui.set_screen("".into());
     ui.set_show_chat(true);
@@ -954,8 +972,10 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
             let mut parts = what2.split(':');
             let screen = parts.next().unwrap_or("");
             let conv = parts.next().unwrap_or("");
-            let cs = c.conversations().into_iter().find(|x| c.conversation_title(x).eq_ignore_ascii_case(conv)).or_else(|| c.conversations().into_iter().next());
-            if let (Some(cs), false) = (&cs, screen.starts_with("lock")) {
+            let third = what2.split(':').nth(2).unwrap_or("");
+            let find = |name: &str| c.conversations().into_iter().find(|x| c.conversation_title(x).eq_ignore_ascii_case(name));
+            let cs = find(conv).or_else(|| find(third)).or_else(|| c.conversations().into_iter().next());
+            if let (Some(cs), false) = (&cs, screen.starts_with("lock") || screen == "tab") {
                 select_conv(&ui, &c, &sh, &cs.conversation.id, true);
             }
             if screen.starts_with("lock") {
@@ -986,14 +1006,66 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                     ui.set_settings_page(conv.into());
                 }
                 "sheet" => ui.set_menu_kind(conv.into()),
-                "info" => {
-                    ui.set_info_open(true);
-                    let t = parts.next().unwrap_or("0").parse::<i32>().unwrap_or(0);
-                    ui.set_info_tab(t);
-                    if t == 1 || t == 2 {
-                        ui.set_tab(t);
-                        ui.invoke_tab_changed(t);
+                "info" | "details" => ui.invoke_open_details(conv.into()),
+                "tab" => ui.invoke_go_home_tab(conv.into()),
+                "addpeople" => ui.invoke_add_people(),
+                "newmessage" => ui.invoke_new_message(),
+                "help" => ui.set_menu_kind("help".into()),
+                "labels" => {
+                    ui.set_label_msg("".into());
+                    ui.set_label_open(true);
+                }
+                "labelpick" => {
+                    let n = ui.get_messages().row_count();
+                    if let Some(m) = (0..n).rev().filter_map(|i| ui.get_messages().row_data(i)).find(|m| !m.deleted && !m.system) {
+                        ui.invoke_label_picker(m.id);
                     }
+                }
+                "savedemo" => {
+                    let n = ui.get_messages().row_count();
+                    for (k, m) in (0..n).rev().filter_map(|i| ui.get_messages().row_data(i)).filter(|m| !m.deleted && !m.system).take(3).enumerate() {
+                        let cc = c.clone();
+                        let id = m.id.to_string();
+                        let first = k == 0;
+                        c.handle().spawn(async move {
+                            let _ = cc.save_message(&id, None).await;
+                            if first {
+                                if let Ok(l) = cc.create_label("Follow up", "#e8590c").await {
+                                    if let Some(l) = l.first() {
+                                        let _ = cc.set_saved_labels(&id, &[l.id.clone()]).await;
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    ui.set_main_tab("later".into());
+                }
+                "menu" => {
+                    let n = ui.get_messages().row_count();
+                    if let Some(m) = (0..n).rev().filter_map(|i| ui.get_messages().row_data(i)).find(|m| !m.deleted && !m.system && !m.mine) {
+                        ui.set_sel_msg(m.clone());
+                        ui.set_menu_msg(m.id.clone());
+                        ui.set_menu_x(520.0);
+                        ui.set_menu_y(260.0);
+                        ui.set_menu_kind("msg".into());
+                    }
+                }
+                "convmenu" => {
+                    ui.set_menu_x(40.0);
+                    ui.set_menu_y(260.0);
+                    ui.invoke_open_conv_menu(ui.get_current_conv(), ui.get_current_title(), false);
+                }
+                "editdemo" => ui.invoke_up_edit(),
+                "searchq" => {
+                    ui.invoke_open_search();
+                    ui.set_search_text(parts.next().unwrap_or("").into());
+                    ui.invoke_search(ui.get_search_text());
+                }
+                "searchmenu" => {
+                    ui.invoke_open_search();
+                    ui.set_menu_x(380.0);
+                    ui.set_menu_y(120.0);
+                    ui.set_menu_kind(conv.into());
                 }
                 "msgsheet" => {
                     use slint::Model;
@@ -1038,6 +1110,8 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                 ui.set_tab(1);
             } else if screen == "pins" {
                 ui.set_tab(2);
+            } else if screen == "bookmarks" {
+                ui.set_tab(4);
             }
             if screen == "search" {
                 ui.set_search_text(parts.next().unwrap_or("").into());
@@ -1236,6 +1310,7 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
     }
 
     lock::install(&ui, &client, &osh);
+    shell::install(&ui, &client, &osh);
 
     // ---- login screen helpers: a link pasted anywhere switches to link mode and supplies the server -------------
     {
@@ -1477,6 +1552,11 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                 }
             }
             if let Some(ui) = wk.upgrade() {
+                // "Also send to #channel": the same text goes to the channel too, quoting the thread's first message.
+                if ui.get_thread_also() {
+                    let _ = c.send_text(&conv, &t, SendOptions { thread_root: None, reply_to: Some(root.clone()) });
+                    ui.set_thread_also(false);
+                }
                 refresh(&ui, &c, &sh);
             }
         });
@@ -1588,6 +1668,10 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                 _ => vec![],
             };
             ui.set_mentions(model(list));
+            ui.set_emoji_sugg(model(match shortcodes::query(&t) {
+                Some(q) => model::emoji_items(shortcodes::matches(&q)),
+                None => vec![],
+            }));
         });
         let wk = ui.as_weak();
         ui.on_pick_mention(move |username| {
@@ -1604,8 +1688,10 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
             let Some(ui) = wk.upgrade() else { return };
             let t = ui.get_composer().to_string();
             let m = marker.as_str();
-            let out = if m == "> " || m == "- " {
+            let out = if m == "> " || m == "- " || m == "1. " {
                 if t.starts_with(m) { t[m.len()..].to_string() } else { format!("{m}{t}") }
+            } else if m == "```\n" {
+                format!("{t}```\n\n```")
             } else {
                 let chars: Vec<char> = t.chars().collect();
                 let end = chars.len();
@@ -2061,6 +2147,7 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                 g.search_gen += 1;
                 g.search_gen
             };
+            let tab_now = ui.get_search_tab();
             let ai = ui.get_ai_on() && ui.get_ai_enabled();
             if ai {
                 ui.set_ai_busy(true);
@@ -2094,11 +2181,24 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                 let mut rows: Vec<RowItem> = vec![];
                 if let Ok(r) = r {
                     for h in &r.hits {
-                        rows.push(row(0, &h.message.id, &h.message.conv_id, format!("{}  in {}  |  {}", c2.display_name(&h.message.sender_id), c2.conversations().into_iter().find(|x| x.conversation.id == h.message.conv_id).map(|cs| c2.conversation_title(&cs)).unwrap_or_default(), datefmt::format_date(h.message.ts, off)), model::plain(&h.snippet.replace("[[", "").replace("]]", "")).split_whitespace().collect::<Vec<_>>().join(" "), String::new()));
-                    }
-                    let n = rows.len();
-                    if n > 0 {
-                        rows[0].header = "Messages".into();
+                        let title = format!("{}  in {}  |  {}", c2.display_name(&h.message.sender_id), c2.conversations().into_iter().find(|x| x.conversation.id == h.message.conv_id).map(|cs| c2.conversation_title(&cs)).unwrap_or_default(), datefmt::format_date(h.message.ts, off));
+                        let flat = |t: &str| model::plain(t).split_whitespace().collect::<Vec<_>>().join(" ");
+                        let mut it = row(0, &h.message.id, &h.message.conv_id, title, flat(&h.snippet.replace("[[", "").replace("]]", "")), String::new());
+                        // The server marks the match as [[...]]; show it highlighted.
+                        if let (Some(a), Some(b)) = (h.snippet.find("[["), h.snippet.find("]]")) {
+                            if a < b {
+                                it.pre = flat(&h.snippet[..a]).into();
+                                it.hit = h.snippet[a + 2..b].to_string().into();
+                                it.post = flat(&h.snippet[b + 2..]).into();
+                                if h.snippet[..a].ends_with(' ') {
+                                    it.pre = format!("{} ", it.pre).into();
+                                }
+                                if h.snippet[b + 2..].starts_with(' ') {
+                                    it.post = format!(" {}", it.post).into();
+                                }
+                            }
+                        }
+                        rows.push(it);
                     }
                     let start = rows.len();
                     for fh in &r.files {
@@ -2125,6 +2225,12 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                     let mut g = sh2.lock().unwrap();
                     for fh in r.files {
                         g.atts.insert(fh.attachment.id.clone(), fh.attachment);
+                    }
+                    drop(g);
+                    let tab = tab_now;
+                    rows.retain(|r| r.kind == tab);
+                    for r in rows.iter_mut() {
+                        r.header = Default::default();
                     }
                 }
                 let _ = slint::invoke_from_event_loop(move || {

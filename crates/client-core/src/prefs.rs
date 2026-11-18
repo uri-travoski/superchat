@@ -44,6 +44,8 @@ pub struct Prefs {
     pub saved_searches: Vec<String>,
     /// Quick switcher history.
     pub spell_check: bool,
+    /// Sidebar sections the user collapsed (`sec:fav`, `sec:channels`, `sec:dms`).
+    pub collapsed_sections: Vec<String>,
 }
 
 impl Default for Prefs {
@@ -75,6 +77,7 @@ impl Default for Prefs {
             recent_searches: vec![],
             saved_searches: vec![],
             spell_check: true,
+            collapsed_sections: vec![],
         }
     }
 }

@@ -12,6 +12,17 @@ pub struct SavedView {
 impl Client {
     // ------------------------------------------------------------------ membership (owners and admins)
 
+    /// Admins set the topic of a channel or group conversation.
+    pub async fn set_topic(&self, conv_id: &str, topic: &str) -> Result<()> {
+        let s: ConversationSummary = self
+            .api()?
+            .patch(&format!("/conversations/{conv_id}"), &proto::types::UpdateConversation { name: None, topic: Some(topic.to_string()), archived: None })
+            .await?;
+        self.inner.store.put_conversation(&s)?;
+        self.changed(vec![conv_id.to_string()]);
+        Ok(())
+    }
+
     /// Whether the signed-in user may add and remove people in this conversation (server owners and admins).
     pub fn can_manage_members(&self, conv_id: &str) -> bool {
         let Some(me) = self.me() else { return false };

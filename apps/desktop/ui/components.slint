@@ -1,5 +1,5 @@
 import { Palette } from "std-widgets.slint";
-import { Theme, ConvItem, MsgItem, BlockItem, FileItem, ReactItem, RowItem, FormButtonItem } from "theme.slint";
+import { Theme } from "theme.slint";
 import { Icon } from "icons.slint";
 export { Icon }
 
@@ -356,6 +356,9 @@ export component BottomSheet inherits Rectangle {
     in property <bool> wide: false;
     in property <bool> menu: false;
     in property <length> inset-bottom: 0px;
+    in property <length> anchor-x: -1px;
+    in property <length> anchor-y: -1px;
+    in property <length> menu-width: 280px;
     callback dismiss;
     property <bool> shown: false;
     property <length> drag: 0px;
@@ -365,10 +368,10 @@ export component BottomSheet inherits Rectangle {
     animate background { duration: Theme.reduce-motion ? 0ms : 180ms; }
     TouchArea { clicked => { root.dismiss(); } }
     card := Rectangle {
-        width: root.wide ? (root.menu ? 280px : 400px) : root.width;
+        width: root.wide ? (root.menu ? root.menu-width : 400px) : root.width;
         height: min(root.max-h, (root.wide ? 8px : 28px) + ttl.preferred-height + body.content-height + root.inset-bottom + 8px);
-        x: root.wide ? (root.menu ? root.width - self.width - 12px : (root.width - self.width) / 2) : 0px;
-        y: root.wide ? (root.menu ? 8px : max(12px, (root.height - self.height) / 2)) : (root.shown ? root.height - self.height + root.drag : root.height);
+        x: root.wide ? (root.menu ? (root.anchor-x >= 0px ? min(max(8px, root.anchor-x), root.width - self.width - 8px) : root.width - self.width - 12px) : (root.width - self.width) / 2) : 0px;
+        y: root.wide ? (root.menu ? (root.anchor-y >= 0px ? max(8px, min(root.anchor-y, root.height - self.height - 8px)) : 8px) : max(12px, (root.height - self.height) / 2)) : (root.shown ? root.height - self.height + root.drag : root.height);
         background: Theme.sheet-bg;
         border-top-left-radius: Theme.r-sheet;
         border-top-right-radius: Theme.r-sheet;
@@ -500,322 +503,151 @@ export component AlertDialog inherits Rectangle {
     }
 }
 
-export component ConvRow {
-    in property <ConvItem> item;
-    in property <bool> selected;
+
+// A small count badge (unread, mentions).
+export component CountBadge {
+    in property <int> n;
+    in property <bool> hot: false; // mentions: red
+    in property <bool> quiet: false; // muted: grey
+    width: max(20px * Theme.scale, lbl.preferred-width + 12px);
+    height: 20px * Theme.scale;
+    Rectangle {
+        border-radius: self.height / 2;
+        background: root.quiet ? Theme.icon-soft : (root.hot ? Theme.danger : Theme.accent);
+        lbl := Text {
+            text: root.n > 99 ? "99+" : root.n;
+            font-size: Theme.fs-small * 0.92;
+            font-weight: 700;
+            color: root.quiet ? Theme.bg : (root.hot ? Theme.on-danger : Theme.on-accent);
+        }
+    }
+}
+
+// A coloured label chip (Later view, label picker).
+export component LabelChip {
+    in property <string> text;
+    in property <color> tint: Theme.accent;
+    in property <bool> on: false;
+    in property <bool> removable: false;
     callback clicked;
-    callback long-pressed;
-    height: Theme.compact ? max(56px, 44px * Theme.scale) : max(72px, 58px * Theme.scale);
+    callback removed;
+    height: 26px * Theme.scale;
+    min-width: row.preferred-width;
     accessible-role: button;
-    accessible-label: root.item.title + (root.item.unread > 0 ? ", " + root.item.unread + " unread" : "") + (root.item.muted ? ", muted" : "");
-    VerticalLayout {
-        if root.item.header != "": SectionHeader { text: root.item.header; }
-        Rectangle {
-            vertical-stretch: 1;
-            background: root.selected ? Theme.accent.with-alpha(0.16) : (ta.pressed ? Theme.bubble-other : (ta.has-hover ? Theme.bubble-other.with-alpha(0.5) : transparent));
-            HorizontalLayout {
-                padding-left: 16px;
-                padding-right: 16px;
-                spacing: 14px;
-                Avatar {
-                    initials: root.item.initials;
-                    tint: root.item.color;
-                    size: (Theme.compact ? 36px : 48px) * Theme.scale;
-                    y: (parent.height - self.height) / 2;
-                }
-                VerticalLayout {
-                    alignment: center;
-                    spacing: 3px;
-                    HorizontalLayout {
-                        spacing: 6px;
-                        Text {
-                            text: root.item.title;
-                            font-size: Theme.fs * 1.05;
-                            font-weight: root.item.unread > 0 ? 700 : 600;
-                            color: Theme.text;
-                            overflow: elide;
-                            horizontal-stretch: 1;
-                        }
-                        if root.item.favourite: Icon { name: "star"; size: 14px; tint: Theme.warn; y: (parent.height - self.height) / 2; }
-                        Text {
-                            text: root.item.stamp;
-                            font-size: Theme.fs-small;
-                            color: root.item.unread > 0 && !root.item.muted ? Theme.accent-text : Theme.muted;
-                        }
-                    }
-                    if !Theme.compact: HorizontalLayout {
-                        spacing: 6px;
-                        Text {
-                            text: root.item.preview;
-                            font-size: Theme.fs * 0.93;
-                            color: Theme.muted;
-                            overflow: elide;
-                            horizontal-stretch: 1;
-                        }
-                        if root.item.muted: Icon { name: "bell-off"; size: 16px; tint: Theme.icon-soft; y: (parent.height - self.height) / 2; }
-                        if root.item.unread > 0: Rectangle {
-                            width: max(22px, badge.preferred-width + 14px);
-                            height: 22px * Theme.scale;
-                            border-radius: 11px * Theme.scale;
-                            background: root.item.muted ? Theme.icon-soft : (root.item.mentions > 0 ? Theme.danger : Theme.accent);
-                            badge := Text {
-                                text: root.item.unread;
-                                color: root.item.muted ? Theme.bg : (root.item.mentions > 0 ? Theme.on-danger : Theme.on-accent);
-                                font-size: Theme.fs-small;
-                                font-weight: 700;
-                            }
-                        }
-                    }
-                }
-            }
-            ta := PressArea {
-                tapped => { root.clicked(); }
-                long-pressed => { root.long-pressed(); }
-            }
+    accessible-label: "Label " + root.text;
+    Rectangle {
+        border-radius: self.height / 2;
+        background: root.on ? root.tint : root.tint.with-alpha(0.18);
+        border-width: 1px;
+        border-color: root.tint.with-alpha(0.7);
+        row := HorizontalLayout {
+            padding-left: 9px;
+            padding-right: root.removable ? 4px : 9px;
+            spacing: 4px;
+            Text { text: root.text; font-size: Theme.fs-small * 1.05; font-weight: 600; color: root.on ? white : Theme.text; vertical-alignment: center; }
+            if root.removable: Icon { name: "close"; size: 14px; tint: Theme.icon; weight: 2px; y: (parent.height - self.height) / 2; }
         }
+        TouchArea { clicked => { root.clicked(); } }
     }
 }
 
-export component MessageRow {
-    in property <MsgItem> m;
-    in property <bool> selected;
-    in property <bool> in-thread: false;
-    in property <bool> tap-opens: false;
-    callback actions;
-    callback react(string);
-    callback retry;
-    callback open-thread;
-    callback open-file(string);
-    callback open-link(string);
-    callback form-action(string);
-    in property <string> playing-id;
-    callback play-audio(string);
+// The helpful line shown for an empty list: icon, title, one sentence, optional action.
+export component EmptyState {
+    in property <string> icon: "info";
+    in property <string> title;
+    in property <string> hint;
+    in property <string> action;
+    callback act;
     VerticalLayout {
-        spacing: 3px;
-        if m.day != "": HorizontalLayout {
-            alignment: center;
-            padding-top: 8px;
-            Rectangle {
-                border-radius: 12px;
-                background: Theme.bubble-other;
-                width: dl.preferred-width + 20px;
-                height: dl.preferred-height + 8px;
-                dl := Text { text: m.day; font-size: Theme.fs-small; color: Theme.muted; font-weight: 700; }
-            }
-        }
-        if m.divider: HorizontalLayout {
-            padding-left: 12px;
-            padding-right: 12px;
-            spacing: 8px;
-            Rectangle { height: 1px; background: Theme.danger; y: 8px; horizontal-stretch: 1; }
-            Text { text: "New messages"; color: Theme.danger; font-size: Theme.fs-small; font-weight: 700; }
-            Rectangle { height: 1px; background: Theme.danger; y: 8px; horizontal-stretch: 1; }
-        }
-        Rectangle {
-            background: root.selected ? Theme.bubble-other : transparent;
-            HorizontalLayout {
-                spacing: 10px;
-                padding-left: 12px;
-                padding-right: 12px;
-                padding-top: Theme.compact ? 1px : 4px;
-                padding-bottom: Theme.compact ? 1px : 4px;
-                Avatar {
-                    initials: m.initials;
-                    tint: m.color;
-                    size: (Theme.compact ? 26px : 34px) * Theme.scale;
-                    y: 2px;
-                }
-                VerticalLayout {
-                    spacing: 2px;
-                    horizontal-stretch: 1;
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Text {
-                            text: m.sender;
-                            font-size: Theme.fs;
-                            font-weight: 700;
-                        }
-                        if m.is-app: Rectangle {
-                            width: apptag.preferred-width + 10px;
-                            height: apptag.preferred-height + 2px;
-                            y: 2px;
-                            border-radius: 3px;
-                            background: Theme.accent.with-alpha(0.22);
-                            accessible-role: text;
-                            accessible-label: "App";
-                            apptag := Text { text: "APP"; font-size: Theme.fs-small * 0.8; font-weight: 800; color: Theme.accent; horizontal-alignment: center; vertical-alignment: center; }
-                        }
-                        Text {
-                            text: m.time + (m.edited ? " (edited)" : "") + (m.state == 1 ? "  sending..." : "") + (m.state == 2 ? "  not sent" : "") + (m.state == 3 ? "  \u{2713}" : "") + (m.pinned ? "  pinned" : "");
-                            font-size: Theme.fs-small;
-                            color: m.state == 2 ? Theme.danger : Theme.muted;
-                            vertical-alignment: bottom;
-                        }
-                        Rectangle { horizontal-stretch: 1; }
-                        if m.state == 2: Link { text: "Retry"; clicked => { root.retry(); } }
-                    }
-                    if m.forwarded != "": Text { text: "\u{21AA} " + m.forwarded; font-size: Theme.fs-small; color: Theme.muted; font-italic: true; }
-                    if m.quote != "": Rectangle {
-                        height: qt.preferred-height + 6px;
-                        Rectangle { x: 0; width: 3px; background: Theme.accent; }
-                        qt := Text {
-                            x: 10px;
-                            width: parent.width - 10px;
-                            text: m.quote;
-                            font-size: Theme.fs-small;
-                            color: Theme.muted;
-                            overflow: elide;
-                        }
-                    }
-                    if m.deleted: Text {
-                        text: "Message deleted";
-                        font-size: Theme.fs;
-                        font-italic: true;
-                        color: Theme.muted;
-                    }
-                    if !m.deleted: VerticalLayout {
-                        spacing: 4px;
-                        for b in m.blocks: VerticalLayout {
-                            if b.kind == 1: Rectangle {
-                                background: Theme.bubble-other;
-                                border-radius: 6px;
-                                height: ct.preferred-height + 16px;
-                                ct := Text {
-                                    x: 8px;
-                                    y: 8px;
-                                    width: parent.width - 16px;
-                                    text: b.text;
-                                    font-family: "monospace";
-                                    font-size: Theme.fs * 0.92;
-                                    wrap: word-wrap;
-                                }
-                            }
-                            if b.kind == 2: Rectangle {
-                                height: qs.preferred-height + 4px;
-                                Rectangle { x: 0; width: 3px; background: Theme.line; }
-                                qs := StyledText {
-                                    x: 10px;
-                                    width: parent.width - 10px;
-                                    text: b.styled;
-                                    default-color: Theme.muted;
-                                    default-font-size: Theme.fs;
-                                    link-color: Theme.accent;
-                                    link-clicked(l) => { root.open-link(l); }
-                                }
-                            }
-                            if b.kind == 0: StyledText {
-                                text: b.styled;
-                                default-color: Theme.text;
-                                default-font-size: Theme.fs;
-                                link-color: Theme.accent;
-                                selectable: true;
-                                link-clicked(l) => { root.open-link(l); }
-                            }
-                        }
-                        for f in m.files: VerticalLayout {
-                            spacing: 3px;
-                            if f.has-img: HorizontalLayout {
-                                alignment: start;
-                                Image {
-                                    source: f.img;
-                                    width: 240px * Theme.scale;
-                                    height: self.width * f.img.height / max(1, f.img.width);
-                                    image-fit: contain;
-                                    accessible-role: image;
-                                    accessible-label: f.name;
-                                    TouchArea { clicked => { root.open-file(f.id); } }
-                                }
-                            }
-                            Rectangle {
-                                height: max(36px, 30px * Theme.scale);
-                                border-radius: 8px;
-                                border-width: 1px;
-                                border-color: Theme.line;
-                                background: fta.has-hover ? Theme.bubble-other : transparent;
-                                HorizontalLayout {
-                                    padding-left: 10px;
-                                    padding-right: 10px;
-                                    spacing: 8px;
-                                    Icon { name: f.kind == 1 ? "image" : (f.kind == 3 ? "mic" : "file"); size: 20px; y: (parent.height - self.height) / 2; }
-                                    Text {
-                                        text: f.removed ? "File removed" : f.name + "  (" + f.size + ")";
-                                        font-size: Theme.fs-small;
-                                        vertical-alignment: center;
-                                        overflow: elide;
-                                        horizontal-stretch: 1;
-                                    }
-                                    if !f.removed: Text {
-                                        text: f.kind == 3 ? (root.playing-id == f.id ? "Stop" : "Play") : (f.kind == 2 ? "Play" : "Open");
-                                        color: Theme.accent;
-                                        font-size: Theme.fs-small;
-                                        vertical-alignment: center;
-                                    }
-                                }
-                                fta := TouchArea { enabled: !f.removed; clicked => { if f.kind == 3 { root.play-audio(f.id); } else { root.open-file(f.id); } } }
-                            }
-                        }
-                        if m.has-form: Rectangle {
-                            border-radius: 10px;
-                            border-width: 1px;
-                            border-color: Theme.line;
-                            background: Theme.bubble-other;
-                            height: fc.preferred-height + 2px;
-                            accessible-role: groupbox;
-                            accessible-label: m.form-title;
-                            fc := VerticalLayout {
-                                padding: 12px;
-                                spacing: 8px;
-                                if m.form-title != "": Text { text: m.form-title; font-size: Theme.fs; font-weight: 700; wrap: word-wrap; }
-                                if m.form-desc != "": Text { text: m.form-desc; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
-                                if m.responded: Text { text: "\u{2713} You responded"; font-size: Theme.fs-small; color: Theme.accent-text; font-weight: 700; }
-                                if !m.responded: HorizontalLayout {
-                                    spacing: 8px;
-                                    alignment: start;
-                                    if m.form-fields: PrimaryButton { text: "Fill in"; clicked => { root.form-action(""); } }
-                                    for b in m.form-buttons: HorizontalLayout {
-                                        if b.style == "primary" && !m.form-fields: PrimaryButton { text: b.label + (b.modal ? "..." : ""); clicked => { root.form-action(b.id); } }
-                                        if b.style != "primary" || m.form-fields: GhostButton { text: b.label + (b.modal ? "..." : ""); danger: b.style == "danger"; clicked => { root.form-action(b.id); } }
-                                    }
-                                }
-                            }
-                        }
-                        if m.reactions.length > 0: HorizontalLayout {
-                            spacing: 6px;
-                            alignment: start;
-                            for r in m.reactions: Rectangle {
-                                height: 26px * Theme.scale;
-                                width: rch.preferred-width;
-                                border-radius: self.height / 2;
-                                border-width: 1px;
-                                border-color: r.mine ? Theme.accent : Theme.line;
-                                background: r.mine ? Theme.accent.with-alpha(0.18) : transparent;
-                                accessible-role: button;
-                                accessible-label: r.emoji + " " + r.count;
-                                rch := HorizontalLayout {
-                                    padding-left: 8px;
-                                    padding-right: 8px;
-                                    spacing: 4px;
-                                    if r.has-img: Image { source: r.img; width: 16px * Theme.scale; height: 16px * Theme.scale; y: (parent.height - self.height) / 2; }
-                                    if !r.has-img: Text { text: r.emoji; font-size: Theme.fs-small * 1.1; vertical-alignment: center; }
-                                    Text { text: r.count; font-size: Theme.fs-small * 1.1; vertical-alignment: center; }
-                                }
-                                TouchArea { clicked => { root.react(r.emoji); } }
-                            }
-                        }
-                        if m.replies > 0 && !root.in-thread: Link {
-                            text: m.replies == 1 ? "1 reply" : m.replies + " replies";
-                            strong: true;
-                            clicked => { root.open-thread(); }
-                        }
-                    }
-                }
-            }
-            PressArea {
-                z: -1;
-                tapped => { if root.tap-opens { root.actions(); } }
-                long-pressed => { root.actions(); }
-            }
-        }
+        alignment: center;
+        padding: 24px;
+        spacing: 8px;
+        HorizontalLayout { alignment: center; Icon { name: root.icon; size: 36px; tint: Theme.icon-soft; weight: 1.5px; } }
+        Text { text: root.title; font-size: Theme.fs-title * 0.95; font-weight: 700; color: Theme.text; horizontal-alignment: center; wrap: word-wrap; }
+        Text { text: root.hint; font-size: Theme.fs; color: Theme.muted; horizontal-alignment: center; wrap: word-wrap; }
+        if root.action != "": HorizontalLayout { alignment: center; padding-top: 6px; PrimaryButton { text: root.action; clicked => { root.act(); } } }
     }
 }
 
+// A tab bar with an underline on the active tab (conversation tabs, details tabs, search tabs).
+export component TabBar {
+    in property <[string]> tabs;
+    in property <int> current;
+    in property <bool> fill: false; // tabs share the width (phone)
+    callback picked(int);
+    height: max(40px, 34px * Theme.scale);
+    HorizontalLayout {
+        padding-left: root.fill ? 0px : 12px;
+        spacing: root.fill ? 0px : 4px;
+        alignment: root.fill ? stretch : start;
+        for t[i] in root.tabs: Rectangle {
+            horizontal-stretch: root.fill ? 1 : 0;
+            min-width: lbl.preferred-width + 24px;
+            accessible-role: AccessibleRole.tab;
+            accessible-label: t;
+            accessible-checked: root.current == i;
+            background: ta.has-hover && root.current != i ? Theme.row-hover : transparent;
+            border-radius: Theme.r-sm;
+            lbl := Text { text: t; font-size: Theme.fs * 0.95; font-weight: root.current == i ? 700 : 500; color: root.current == i ? Theme.text : Theme.muted; horizontal-alignment: center; vertical-alignment: center; }
+            if root.current == i: Rectangle { y: parent.height - 3px; height: 3px; border-radius: 1.5px; background: Theme.accent; x: 10px; width: parent.width - 20px; }
+            ta := TouchArea { clicked => { root.picked(i); } }
+        }
+    }
+    Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; z: -1; }
+}
+
+// A desktop menu row (right-click and dropdown menus).
+export component MenuRow {
+    in property <string> icon;
+    in property <string> text;
+    in property <string> hint;
+    in property <bool> danger: false;
+    in property <bool> checked: false;
+    in property <bool> enabled: true;
+    callback clicked;
+    height: max(34px, 30px * Theme.scale);
+    accessible-role: button;
+    accessible-label: root.text;
+    Rectangle {
+        border-radius: Theme.r-sm;
+        background: ta.has-hover && root.enabled ? Theme.accent.with-alpha(0.18) : transparent;
+        HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 10px;
+            spacing: 10px;
+            if root.icon != "": Icon { name: root.icon; size: 18px; tint: root.danger ? Theme.danger : Theme.icon; y: (parent.height - self.height) / 2; }
+            Text { text: root.text; font-size: Theme.fs * 0.95; color: !root.enabled ? Theme.muted : (root.danger ? Theme.danger : Theme.text); vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+            if root.hint != "": Text { text: root.hint; font-size: Theme.fs-small; color: Theme.muted; vertical-alignment: center; }
+            if root.checked: Icon { name: "check"; size: 16px; tint: Theme.accent-text; y: (parent.height - self.height) / 2; }
+        }
+        ta := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
+    }
+}
+
+export component MenuDivider {
+    height: 9px;
+    Rectangle { y: 4px; height: 1px; background: Theme.line; }
+}
+
+// A small square icon button for toolbars (hover toolbar, formatting row).
+export component ToolButton {
+    in property <string> icon;
+    in property <string> label;
+    in property <bool> active: false;
+    in property <length> size: 30px;
+    in property <length> glyph: 18px;
+    in property <bool> filled: false;
+    in property <brush> tint: Theme.icon;
+    out property <bool> hovered: ta.has-hover;
+    callback clicked;
+    width: root.size;
+    height: root.size;
+    accessible-role: button;
+    accessible-label: root.label;
+    Rectangle {
+        border-radius: Theme.r-sm;
+        background: root.active ? Theme.accent.with-alpha(0.22) : (ta.pressed ? Theme.bubble-other : (ta.has-hover ? Theme.row-hover.with-alpha(0.14) : transparent));
+        Icon { name: root.icon; size: root.glyph; filled: root.filled; tint: root.active ? Theme.accent-text : root.tint; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+    }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}

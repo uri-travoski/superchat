@@ -1,0 +1,368 @@
+// The app shell: rail, top bar, sidebar rows, bottom navigation, list rows of the Activity / DMs / Later views.
+import { Theme, SideRow, ActivityRow, SavedRow, LabelItem } from "theme.slint";
+import { Icon } from "icons.slint";
+import { Avatar, PressArea, ToolButton, LabelChip, CountBadge, IconButton } from "components.slint";
+
+// The thin left rail (desktop): server tile, Home / DMs / Activity / Later / More, and the profile button.
+export component Rail {
+    in property <string> tab;
+    in property <string> server-initials;
+    in property <int> activity-unread;
+    in property <int> dm-unread;
+    in property <string> me-initials;
+    in property <color> me-color;
+    in property <int> presence: 1;
+    callback picked(string);
+    callback server-clicked;
+    callback profile-clicked;
+    width: 68px * max(1.0, Theme.scale * 0.9);
+    Rectangle {
+        background: Theme.rail;
+        VerticalLayout {
+            padding-top: 10px;
+            padding-bottom: 12px;
+            spacing: 6px;
+            alignment: start;
+            HorizontalLayout {
+                alignment: center;
+                height: 44px * Theme.scale;
+                Rectangle {
+                    width: 40px * Theme.scale;
+                    height: self.width;
+                    border-radius: 10px * Theme.scale;
+                    background: Theme.accent;
+                    accessible-role: button;
+                    accessible-label: "Server menu";
+                    Text { text: root.server-initials; color: Theme.on-accent; font-weight: 800; font-size: Theme.fs * 1.15; horizontal-alignment: center; vertical-alignment: center; }
+                    TouchArea { clicked => { root.server-clicked(); } }
+                }
+            }
+            for t[i] in [{id: "home", icon: "home", label: "Home"}, {id: "dms", icon: "chat", label: "DMs"}, {id: "activity", icon: "bell", label: "Activity"}, {id: "later", icon: "bookmark", label: "Later"}, {id: "more", icon: "more-h", label: "More"}]: Rectangle {
+                height: 58px * Theme.scale;
+                accessible-role: button;
+                accessible-label: t.label + (t.id == "activity" && root.activity-unread > 0 ? ", " + root.activity-unread + " unread" : "");
+                accessible-checked: root.tab == t.id;
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+                    HorizontalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 40px * Theme.scale;
+                            height: 32px * Theme.scale;
+                            border-radius: 10px;
+                            background: root.tab == t.id ? Theme.accent.with-alpha(0.25) : (ta.has-hover ? Theme.row-hover : transparent);
+                            Icon { name: t.icon; size: 22px * Theme.scale; filled: root.tab == t.id && t.id == "bookmark"; tint: root.tab == t.id ? Theme.accent-text : Theme.icon; weight: root.tab == t.id ? 2.2px : 1.75px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+                            if (t.id == "activity" && root.activity-unread > 0) || (t.id == "dms" && root.dm-unread > 0): Rectangle {
+                                x: parent.width - 16px; y: -2px; width: 16px; height: 16px; border-radius: 8px; background: Theme.danger;
+                                Text { text: t.id == "activity" ? (root.activity-unread > 9 ? "9+" : root.activity-unread) : (root.dm-unread > 9 ? "9+" : root.dm-unread); font-size: 10px; font-weight: 800; color: Theme.on-danger; horizontal-alignment: center; vertical-alignment: center; }
+                            }
+                        }
+                    }
+                    Text { text: t.label; font-size: Theme.fs-small * 0.92; font-weight: root.tab == t.id ? 700 : 500; color: root.tab == t.id ? Theme.text : Theme.muted; horizontal-alignment: center; }
+                }
+                ta := TouchArea { clicked => { root.picked(t.id); } }
+            }
+            Rectangle { vertical-stretch: 1; }
+            HorizontalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 38px * Theme.scale;
+                    height: self.width;
+                    accessible-role: button;
+                    accessible-label: "Your profile and status";
+                    Avatar { initials: root.me-initials; tint: root.me-color; size: parent.width; presence: root.presence; }
+                    TouchArea { clicked => { root.profile-clicked(); } }
+                }
+            }
+        }
+    }
+    Rectangle { x: parent.width - 1px; width: 1px; background: Theme.line; }
+}
+
+// Top bar (desktop): history arrows, the centred search field, help.
+export component TopBar {
+    in property <string> server-name;
+    in property <bool> can-back;
+    in property <bool> can-forward;
+    callback back;
+    callback forward;
+    callback search;
+    callback help;
+    height: max(44px, 36px * Theme.scale);
+    Rectangle {
+        background: Theme.rail;
+        HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            spacing: 4px;
+            ToolButton { icon: "chevron-left"; label: "Back"; size: 30px * Theme.scale; tint: root.can-back ? Theme.icon : Theme.icon-soft.with-alpha(0.4); y: (parent.height - self.height) / 2; clicked => { root.back(); } }
+            ToolButton { icon: "chevron-right"; label: "Forward"; size: 30px * Theme.scale; tint: root.can-forward ? Theme.icon : Theme.icon-soft.with-alpha(0.4); y: (parent.height - self.height) / 2; clicked => { root.forward(); } }
+            Rectangle { horizontal-stretch: 1; }
+            Rectangle {
+                width: min(560px, max(240px, parent.width * 0.45));
+                height: 30px * Theme.scale;
+                y: (parent.height - self.height) / 2;
+                border-radius: Theme.r-sm;
+                background: sa.has-hover ? Theme.surface-high : Theme.surface;
+                border-width: 1px;
+                border-color: Theme.line;
+                accessible-role: button;
+                accessible-label: "Search " + root.server-name;
+                HorizontalLayout {
+                    padding-left: 10px;
+                    spacing: 8px;
+                    Icon { name: "search"; size: 16px; tint: Theme.icon; y: (parent.height - self.height) / 2; }
+                    Text { text: "Search " + root.server-name; font-size: Theme.fs * 0.95; color: Theme.muted; vertical-alignment: center; overflow: elide; }
+                }
+                sa := TouchArea { clicked => { root.search(); } }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            ToolButton { icon: "help"; label: "Help and keyboard shortcuts"; size: 30px * Theme.scale; y: (parent.height - self.height) / 2; clicked => { root.help(); } }
+        }
+    }
+    Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
+}
+
+// One row of the sidebar / Home list: a section header, a conversation, a quick link or a hint.
+export component SideItem {
+    in property <SideRow> r;
+    in property <bool> selected;
+    in property <bool> wide: true;
+    callback clicked;
+    callback toggle;
+    callback plus;
+    callback menu(length, length);
+    property <length> row-h: root.wide ? max(30px, 26px * Theme.scale) : max(52px, 46px * Theme.scale);
+    height: r.kind == 0 ? (root.wide ? max(32px, 28px * Theme.scale) : max(48px, 40px * Theme.scale)) : (r.kind == 3 ? 56px * Theme.scale : root.row-h);
+    if r.kind == 0: Rectangle {
+        accessible-role: button;
+        accessible-label: r.title + (r.collapsed ? ", collapsed" : ", expanded");
+        background: hh.has-hover ? Theme.row-hover : transparent;
+        border-radius: Theme.r-sm;
+        HorizontalLayout {
+            padding-left: 8px;
+            padding-right: 4px;
+            spacing: 4px;
+            Icon { name: r.collapsed ? "chevron-right" : "chevron-down"; size: 16px; tint: Theme.icon-soft; y: (parent.height - self.height) / 2; }
+            Text { text: r.title; font-size: Theme.fs * (root.wide ? 0.95 : 1.0); font-weight: 700; color: Theme.muted; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+            if r.collapsed && r.unread > 0: Rectangle { width: 8px; height: 8px; y: (parent.height - self.height) / 2; border-radius: 4px; background: Theme.accent; }
+            if r.plus != "": ToolButton {
+                icon: "plus";
+                label: r.plus == "channel" ? "Add or browse channels" : (r.plus == "dm" ? "New message" : "Add");
+                size: root.wide ? 26px * Theme.scale : 40px;
+                y: (parent.height - self.height) / 2;
+                tint: Theme.icon;
+                clicked => { root.plus(); }
+            }
+        }
+        hh := TouchArea { width: parent.width - (r.plus != "" ? (root.wide ? 30px * Theme.scale : 44px) : 0px); clicked => { root.toggle(); } }
+    }
+    if r.kind == 1 || r.kind == 2: Rectangle {
+        accessible-role: button;
+        accessible-label: r.title + (r.unread > 0 ? ", " + r.unread + " unread" : "") + (r.mentions > 0 ? ", " + r.mentions + " mentions" : "") + (r.muted ? ", muted" : "");
+        accessible-checked: root.selected;
+        background: root.selected ? Theme.row-sel : (pa.has-hover ? Theme.row-hover : transparent);
+        border-radius: Theme.r-sm;
+        HorizontalLayout {
+            padding-left: root.wide ? 12px : 16px;
+            padding-right: 8px;
+            spacing: root.wide ? 8px : 14px;
+            if r.kind == 2: Icon { name: r.icon; size: (root.wide ? 18px : 22px) * Theme.scale; tint: Theme.icon; y: (parent.height - self.height) / 2; }
+            if r.kind == 1 && (r.conv-kind == "channel"): Icon { name: r.locked ? "lock" : "hash"; size: (root.wide ? 18px : 22px) * Theme.scale; tint: r.muted ? Theme.icon-soft.with-alpha(0.6) : Theme.icon; y: (parent.height - self.height) / 2; }
+            if r.kind == 1 && r.conv-kind == "group": Icon { name: "users"; size: (root.wide ? 18px : 22px) * Theme.scale; tint: Theme.icon; y: (parent.height - self.height) / 2; }
+            if r.kind == 1 && (r.conv-kind == "dm" || r.conv-kind == "self"): Avatar { initials: r.initials; tint: r.color; size: (root.wide ? 22px : 32px) * Theme.scale; presence: r.presence; y: (parent.height - self.height) / 2; }
+            Text {
+                text: r.title;
+                font-size: Theme.fs * (root.wide ? 0.97 : 1.03);
+                font-weight: (r.unread > 0 || r.mentions > 0) ? 800 : 400;
+                color: r.muted ? Theme.muted.with-alpha(0.75) : (r.unread > 0 ? Theme.text : Theme.text.with-alpha(0.9));
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+            if r.draft: Icon { name: "edit"; size: 14px; tint: Theme.icon-soft; y: (parent.height - self.height) / 2; }
+            if r.mentions > 0: CountBadge { n: r.mentions; hot: true; y: (parent.height - self.height) / 2; }
+            if r.mentions == 0 && r.unread > 0 && (r.kind == 2 || !root.wide): CountBadge { n: r.unread; quiet: r.muted; y: (parent.height - self.height) / 2; }
+            if r.mentions == 0 && r.kind == 2 && r.count > 0 && r.unread == 0: Text { text: r.count; font-size: Theme.fs-small; color: Theme.muted; vertical-alignment: center; }
+        }
+        pa := PressArea {
+            tapped => { root.clicked(); }
+            long-pressed => { if r.kind == 1 { root.menu(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y); } }
+        }
+    }
+    if r.kind == 3: Text { x: 16px; width: parent.width - 32px; text: r.title; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; vertical-alignment: center; }
+}
+
+// A direct-message row of the DMs list: avatar with presence, name, last message, time and unread badge.
+export component DmRow {
+    in property <SideRow> r;
+    in property <bool> selected;
+    callback clicked;
+    callback menu(length, length);
+    height: max(64px, 54px * Theme.scale);
+    accessible-role: button;
+    accessible-label: r.title + (r.unread > 0 ? ", " + r.unread + " unread" : "") + ", " + r.preview;
+    Rectangle {
+        background: root.selected ? Theme.row-sel : (pa.has-hover ? Theme.row-hover : transparent);
+        HorizontalLayout {
+            padding-left: 14px;
+            padding-right: 12px;
+            spacing: 12px;
+            if r.conv-kind == "group": Rectangle { width: 40px * Theme.scale; height: self.width; y: (parent.height - self.height) / 2; border-radius: 10px; background: r.color; Icon { name: "users"; size: 22px; tint: white; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; } }
+            if r.conv-kind != "group": Avatar { initials: r.initials; tint: r.color; size: 40px * Theme.scale; presence: r.presence; y: (parent.height - self.height) / 2; }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 1;
+                spacing: 1px;
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: r.title; font-size: Theme.fs; font-weight: r.unread > 0 ? 800 : 600; color: r.muted ? Theme.muted : Theme.text; overflow: elide; horizontal-stretch: 1; }
+                    Text { text: r.stamp; font-size: Theme.fs-small; color: Theme.muted; }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: r.preview; font-size: Theme.fs-small * 1.05; color: r.unread > 0 ? Theme.text : Theme.muted; font-weight: r.unread > 0 ? 600 : 400; overflow: elide; horizontal-stretch: 1; }
+                    if r.mentions > 0: CountBadge { n: r.mentions; hot: true; }
+                    if r.mentions == 0 && r.unread > 0: CountBadge { n: r.unread; quiet: r.muted; }
+                }
+            }
+        }
+        pa := PressArea {
+            tapped => { root.clicked(); }
+            long-pressed => { root.menu(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y); }
+        }
+    }
+}
+
+// One entry of the Activity view.
+export component ActivityItem {
+    in property <ActivityRow> a;
+    callback clicked;
+    height: max(76px, 64px * Theme.scale);
+    accessible-role: button;
+    accessible-label: a.title + ". " + a.snippet + (a.unread ? ". Unread" : "");
+    Rectangle {
+        background: pa.has-hover ? Theme.row-hover : (a.unread ? Theme.accent.with-alpha(0.07) : transparent);
+        HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            spacing: 12px;
+            Rectangle {
+                width: 8px;
+                Rectangle { width: 8px; height: 8px; y: 14px; border-radius: 4px; background: a.unread ? Theme.accent : transparent; }
+            }
+            Rectangle {
+                width: 38px * Theme.scale;
+                height: self.width;
+                y: 10px;
+                Avatar { initials: a.initials; tint: a.color; size: parent.width; }
+                Rectangle {
+                    x: parent.width - 16px; y: parent.height - 16px; width: 18px; height: 18px; border-radius: 9px; background: Theme.bg; border-width: 1px; border-color: Theme.line;
+                    if a.kind == 0: Icon { name: "at"; size: 12px; tint: Theme.accent-text; weight: 2.2px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+                    if a.kind == 2: Icon { name: "thread"; size: 12px; tint: Theme.accent-text; weight: 2.2px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+                    if a.kind == 1 && a.has-img: Image { source: a.img; width: 12px; height: 12px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+                    if a.kind == 1 && !a.has-img: Text { text: a.emoji; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 1;
+                spacing: 2px;
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: a.title; font-size: Theme.fs * 0.97; font-weight: a.unread ? 800 : 600; color: Theme.text; overflow: elide; horizontal-stretch: 1; }
+                    Text { text: a.time; font-size: Theme.fs-small; color: Theme.muted; }
+                }
+                Text { text: a.snippet; font-size: Theme.fs-small * 1.05; color: Theme.muted; overflow: elide; }
+            }
+        }
+        pa := TouchArea { clicked => { root.clicked(); } }
+    }
+    Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; x: 70px; }
+}
+
+// A saved message (Later view): conversation, sender, text, label chips and its two actions.
+export component SavedCard {
+    in property <SavedRow> s;
+    callback clicked;
+    callback label;
+    callback remove;
+    height: card.preferred-height + 1px;
+    card := Rectangle {
+        background: pa.has-hover ? Theme.row-hover : transparent;
+        height: col.preferred-height;
+        col := VerticalLayout {
+            padding: 12px;
+            padding-left: 14px;
+            spacing: 4px;
+            HorizontalLayout {
+                spacing: 8px;
+                Icon { name: "bookmark"; size: 16px; filled: true; tint: Theme.accent-text; y: 2px; }
+                Text { text: s.conv-title; font-size: Theme.fs-small * 1.05; color: Theme.muted; font-weight: 700; overflow: elide; horizontal-stretch: 1; }
+                Text { text: s.time; font-size: Theme.fs-small; color: Theme.muted; }
+            }
+            HorizontalLayout {
+                spacing: 10px;
+                if !s.deleted: Avatar { initials: s.initials; tint: s.color; size: 30px * Theme.scale; }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 1px;
+                    if !s.deleted: Text { text: s.sender; font-size: Theme.fs; font-weight: 700; color: Theme.text; }
+                    Text { text: s.deleted ? "Message deleted" : s.text; font-size: Theme.fs; color: s.deleted ? Theme.muted : Theme.text; font-italic: s.deleted; wrap: word-wrap; max-height: 5 * Theme.fs * 1.4; overflow: elide; }
+                }
+            }
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+                for l in s.labels: LabelChip { text: l.name; tint: l.tint; }
+                Rectangle { horizontal-stretch: 1; }
+                ToolButton { icon: "tag"; label: "Labels"; size: 28px * Theme.scale; glyph: 16px; clicked => { root.label(); } }
+                ToolButton { icon: "close"; label: "Remove from saved items"; size: 28px * Theme.scale; glyph: 16px; clicked => { root.remove(); } }
+            }
+        }
+        pa := TouchArea { z: -1; clicked => { root.clicked(); } }
+    }
+    Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
+}
+
+// Phone bottom navigation: Home, DMs, Activity, You.
+export component BottomNav {
+    in property <string> tab;
+    in property <int> activity-unread;
+    in property <int> dm-unread;
+    callback picked(string);
+    height: max(60px, 52px * Theme.scale);
+    Rectangle {
+        background: Theme.sidebar;
+        Rectangle { height: 1px; background: Theme.line; }
+        HorizontalLayout {
+            for t[i] in [{id: "home", icon: "home", label: "Home"}, {id: "dms", icon: "chat", label: "DMs"}, {id: "activity", icon: "bell", label: "Activity"}, {id: "you", icon: "person", label: "You"}]: Rectangle {
+                horizontal-stretch: 1;
+                accessible-role: button;
+                accessible-label: t.label + (t.id == "activity" && root.activity-unread > 0 ? ", " + root.activity-unread + " unread" : "") + (t.id == "dms" && root.dm-unread > 0 ? ", " + root.dm-unread + " unread" : "");
+                accessible-checked: root.tab == t.id;
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+                    HorizontalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 56px;
+                            height: 30px * Theme.scale;
+                            border-radius: 15px * Theme.scale;
+                            background: root.tab == t.id ? Theme.accent.with-alpha(0.25) : transparent;
+                            Icon { name: t.icon; size: 24px * min(Theme.scale, 1.3); filled: false; tint: root.tab == t.id ? Theme.accent-text : Theme.icon; weight: root.tab == t.id ? 2.2px : 1.75px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+                            if (t.id == "activity" && root.activity-unread > 0) || (t.id == "dms" && root.dm-unread > 0): Rectangle {
+                                x: parent.width / 2 + 6px; y: -2px; width: 18px; height: 18px; border-radius: 9px; background: Theme.danger;
+                                Text { text: t.id == "activity" ? (root.activity-unread > 9 ? "9+" : root.activity-unread) : (root.dm-unread > 9 ? "9+" : root.dm-unread); font-size: 10px; font-weight: 800; color: Theme.on-danger; horizontal-alignment: center; vertical-alignment: center; }
+                            }
+                        }
+                    }
+                    Text { text: t.label; font-size: Theme.fs-small * 0.95; font-weight: root.tab == t.id ? 700 : 500; color: root.tab == t.id ? Theme.text : Theme.muted; horizontal-alignment: center; }
+                }
+                TouchArea { clicked => { root.picked(t.id); } }
+            }
+        }
+    }
+}

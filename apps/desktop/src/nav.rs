@@ -35,6 +35,15 @@ pub struct NavState {
     pub lock_entry_open: bool,
     pub attach_open: bool,
     pub jump_open: bool,
+    /// People picker and label picker modals.
+    pub pp_open: bool,
+    pub label_open: bool,
+    /// Details page / tab ("" = the details list on a phone, About on desktop).
+    pub info_page: String,
+    /// Conversation tab: 0 Messages, 1 Files, 2 Pins, 3 Home, 4 Bookmarks.
+    pub tab: i32,
+    /// Main tab: home, dms, activity, later, you.
+    pub main_tab: String,
 }
 
 /// What one Back press closed.
@@ -50,11 +59,16 @@ pub enum Closed {
     LockEntry,
     AttachBar,
     JumpBar,
+    PeoplePicker,
+    LabelPicker,
     SettingsPage,
     Screen,
-    Thread,
+    InfoPage,
     Info,
+    Thread,
+    ConvTab,
     Chat,
+    MainTab,
 }
 
 /// Layers from the top down; the first one that is open is closed by Back.
@@ -62,22 +76,30 @@ pub fn top(s: &NavState) -> Option<Closed> {
     if !s.signed_in {
         return None;
     }
-    let layers: [(bool, Closed); 15] = [
+    let layers: [(bool, Closed); 20] = [
         (s.tofu_open, Closed::Tofu),
         (!s.confirm.is_empty(), Closed::Confirm),
         (s.form_open, Closed::Form),
         (s.schedule_open, Closed::Schedule),
         (s.bookmark_open, Closed::Bookmark),
         (s.new_channel_open, Closed::NewChannel),
+        (s.pp_open, Closed::PeoplePicker),
+        (s.label_open, Closed::LabelPicker),
         (!s.menu_kind.is_empty(), Closed::Sheet),
         (s.lock_entry_open, Closed::LockEntry),
         (s.attach_open, Closed::AttachBar),
         (s.jump_open, Closed::JumpBar),
         (s.screen == "settings" && !s.settings_page.is_empty(), Closed::SettingsPage),
         (!s.screen.is_empty(), Closed::Screen),
-        (s.thread_open, Closed::Thread),
+        // A details sub-page goes back to the details list (phone); the desktop modal closes in one step.
+        (s.info_open && s.has_conv && !s.wide && !s.info_page.is_empty(), Closed::InfoPage),
         (s.info_open && s.has_conv, Closed::Info),
+        (s.thread_open, Closed::Thread),
+        // Files / Pins / Bookmarks tabs go back to Messages (Esc).
+        (s.wide && s.has_conv && s.tab != 0, Closed::ConvTab),
         (!s.wide && s.show_chat, Closed::Chat),
+        // Phone: each bottom tab returns to Home before the app is left.
+        (!s.wide && !s.show_chat && s.main_tab != "home" && !s.main_tab.is_empty(), Closed::MainTab),
     ];
     layers.into_iter().find(|(open, _)| *open).map(|(_, l)| l)
 }
@@ -96,14 +118,22 @@ pub fn pop(s: &mut NavState) -> Option<Closed> {
         Closed::LockEntry => s.lock_entry_open = false,
         Closed::AttachBar => s.attach_open = false,
         Closed::JumpBar => s.jump_open = false,
+        Closed::PeoplePicker => s.pp_open = false,
+        Closed::LabelPicker => s.label_open = false,
         Closed::SettingsPage => s.settings_page.clear(),
         Closed::Screen => {
             s.screen.clear();
             s.settings_page.clear();
         }
         Closed::Thread => s.thread_open = false,
-        Closed::Info => s.info_open = false,
+        Closed::InfoPage => s.info_page.clear(),
+        Closed::Info => {
+            s.info_open = false;
+            s.info_page.clear();
+        }
+        Closed::ConvTab => s.tab = 0,
         Closed::Chat => s.show_chat = false,
+        Closed::MainTab => s.main_tab = "home".into(),
     }
     Some(layer)
 }
@@ -128,6 +158,11 @@ pub fn read(ui: &AppWindow) -> NavState {
         lock_entry_open: ui.get_lock_entry_open(),
         attach_open: ui.get_attach_open(),
         jump_open: ui.get_jump_open(),
+        pp_open: ui.get_pp_open(),
+        label_open: ui.get_label_open(),
+        info_page: ui.get_info_page().to_string(),
+        tab: ui.get_tab(),
+        main_tab: ui.get_main_tab().to_string(),
     }
 }
 
@@ -146,17 +181,23 @@ pub fn handle_back(ui: &AppWindow) -> bool {
         Closed::LockEntry => ui.invoke_lock_cancel(),
         Closed::AttachBar => ui.set_attach_open(false),
         Closed::JumpBar => ui.set_jump_open(false),
+        Closed::PeoplePicker => ui.set_pp_open(false),
+        Closed::LabelPicker => ui.set_label_open(false),
         Closed::SettingsPage => ui.set_settings_page("".into()),
         Closed::Screen => {
             ui.set_screen("".into());
             ui.set_settings_page("".into());
         }
         Closed::Thread => ui.invoke_close_thread(),
+        Closed::InfoPage => ui.set_info_page("".into()),
         Closed::Info => {
             ui.set_info_open(false);
+            ui.set_info_page("".into());
             ui.set_tab(0);
         }
+        Closed::ConvTab => ui.set_tab(0),
         Closed::Chat => ui.set_show_chat(false),
+        Closed::MainTab => ui.invoke_go_home_tab("home".into()),
     }
     true
 }
@@ -308,7 +349,63 @@ mod tests {
             confirm: "remove-pin".into(),
             ..phone()
         };
-        assert_eq!(presses(&mut s), vec![Closed::Confirm, Closed::Sheet, Closed::SettingsPage, Closed::Screen, Closed::Thread, Closed::Info, Closed::Chat]);
+        assert_eq!(presses(&mut s), vec![Closed::Confirm, Closed::Sheet, Closed::SettingsPage, Closed::Screen, Closed::Info, Closed::Thread, Closed::Chat]);
         assert_eq!(pop(&mut s), None);
+    }
+
+    #[test]
+    fn phone_details_subpage_returns_to_details_then_chat() {
+        // Chat > details > Files > back > details > back > chat > back > list.
+        let mut s = NavState { show_chat: true, has_conv: true, info_open: true, info_page: "files".into(), main_tab: "home".into(), ..phone() };
+        assert_eq!(presses(&mut s), vec![Closed::InfoPage, Closed::Info, Closed::Chat]);
+    }
+
+    #[test]
+    fn desktop_details_modal_closes_in_one_step_over_a_thread() {
+        let mut s = NavState { wide: true, has_conv: true, show_chat: true, info_open: true, info_page: "members".into(), thread_open: true, ..phone() };
+        assert_eq!(presses(&mut s), vec![Closed::Info, Closed::Thread]);
+    }
+
+    #[test]
+    fn conversation_tabs_go_back_to_messages_on_desktop() {
+        let mut s = NavState { wide: true, has_conv: true, show_chat: true, tab: 1, ..phone() };
+        assert_eq!(presses(&mut s), vec![Closed::ConvTab]);
+        assert_eq!(s.tab, 0);
+        let mut s = NavState { wide: true, has_conv: true, show_chat: true, tab: 4, menu_kind: "emoji".into(), ..phone() };
+        assert_eq!(presses(&mut s), vec![Closed::Sheet, Closed::ConvTab]);
+    }
+
+    #[test]
+    fn pickers_close_before_the_page_below() {
+        let mut s = NavState { show_chat: true, has_conv: true, info_open: true, info_page: "members".into(), pp_open: true, ..phone() };
+        assert_eq!(presses(&mut s), vec![Closed::PeoplePicker, Closed::InfoPage, Closed::Info, Closed::Chat]);
+        let mut s = NavState { main_tab: "later".into(), label_open: true, ..phone() };
+        assert_eq!(presses(&mut s), vec![Closed::LabelPicker, Closed::MainTab]);
+    }
+
+    #[test]
+    fn phone_tabs_return_to_home_then_exit() {
+        for tab in ["dms", "activity", "later", "you"] {
+            let mut s = NavState { main_tab: tab.into(), ..phone() };
+            assert_eq!(pop(&mut s), Some(Closed::MainTab), "{tab}");
+            assert_eq!(s.main_tab, "home");
+            assert_eq!(pop(&mut s), None, "{tab}: Home then leaves the app");
+        }
+        // A chat opened from a tab goes back to that tab, then Home, then out.
+        let mut s = NavState { main_tab: "activity".into(), show_chat: true, has_conv: true, ..phone() };
+        assert_eq!(presses(&mut s), vec![Closed::Chat, Closed::MainTab]);
+        // Desktop: tabs are a rail, not a stack.
+        let mut s = NavState { wide: true, main_tab: "later".into(), ..phone() };
+        assert_eq!(pop(&mut s), None);
+    }
+
+    #[test]
+    fn every_screen_has_a_way_back() {
+        // Any screen name opens a layer that Back closes, so no page is a dead end.
+        for screen in ["search", "threads", "drafts", "switcher", "settings", "people"] {
+            let mut s = NavState { screen: screen.into(), ..phone() };
+            assert_eq!(pop(&mut s), Some(Closed::Screen), "{screen}");
+            assert_eq!(pop(&mut s), None);
+        }
     }
 }

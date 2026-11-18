@@ -1,9 +1,9 @@
 //! Turns client-core data into Slint models. Pure functions of the cache; no UI handles here.
 
-use crate::{BlockItem, BookmarkItem, ConvItem, EmojiItem, FileItem, MsgItem, PersonItem, ReactItem, RowItem};
+use crate::{ActivityRow, BlockItem, BookmarkItem, ConvItem, EmojiItem, FileItem, LabelItem, MsgItem, PersonItem, ReactItem, RowItem, SavedRow, SideRow};
 use client_core::logic::{datefmt, initials, markup};
 use client_core::{Client, SendState, TimelineItem};
-use proto::types::{Attachment, ConversationKind, ConversationSummary, Message};
+use proto::types::{Attachment, ConversationKind, ConversationSummary, Message, MessageKind};
 use slint::{ModelRc, SharedString, VecModel};
 use std::collections::{HashMap, HashSet};
 
@@ -168,6 +168,7 @@ pub struct Ctx<'a> {
     pub pinned: HashSet<String>,
     pub replies: HashMap<String, i64>,
     pub can_pin: bool,
+    pub saved: HashSet<String>,
 }
 
 pub fn msg_item(cx: &mut Ctx, t: &TimelineItem, day: String, divider: bool) -> MsgItem {
@@ -176,6 +177,8 @@ pub fn msg_item(cx: &mut Ctx, t: &TimelineItem, day: String, divider: bool) -> M
     let accent = ACCENTS[cx.v.accent.min(3)].0;
     let blocks: Vec<BlockItem> = if m.deleted {
         vec![]
+    } else if m.kind == MessageKind::System {
+        vec![BlockItem { kind: 0, styled: slint::StyledText::from_plain_text(&plain(&m.body)), text: plain(&m.body).into() }]
     } else {
         markup::ui_blocks(&m.body, accent)
             .into_iter()
@@ -225,6 +228,30 @@ pub fn msg_item(cx: &mut Ctx, t: &TimelineItem, day: String, divider: bool) -> M
         .and_then(|id| cx.c.store().message(id).ok().flatten())
         .map(|q| format!("{}: {}", cx.c.display_name(&q.sender_id), preview_of(&q)))
         .unwrap_or_default();
+    let system = m.kind == MessageKind::System;
+    let (reply_people, reply_time) = if cx.replies.get(&m.id).copied().unwrap_or(0) > 0 {
+        let rs = cx.c.thread_replies(&m.conv_id, &m.id);
+        let mut seen: Vec<String> = vec![];
+        for r in rs.iter().rev() {
+            if !seen.contains(&r.message.sender_id) {
+                seen.push(r.message.sender_id.clone());
+            }
+            if seen.len() == 3 {
+                break;
+            }
+        }
+        let people: Vec<PersonItem> = seen
+            .iter()
+            .map(|id| {
+                let n = cx.c.display_name(id);
+                PersonItem { id: id.clone().into(), name: n.clone().into(), initials: initials::initials(&n).into(), color: color_of(id), sub: SharedString::new(), sel: false, tag: SharedString::new() }
+            })
+            .collect();
+        let last = rs.last().map(|r| datefmt::list_stamp(r.message.ts, cx.v.now, cx.v.off, cx.v.hour24)).unwrap_or_default();
+        (people, last)
+    } else {
+        (vec![], String::new())
+    };
     let forwarded = m.forwarded.as_ref().map(|f| format!("Forwarded from {}", cx.c.display_name(&f.sender_id))).unwrap_or_default();
     MsgItem {
         id: m.id.clone().into(),
@@ -259,6 +286,12 @@ pub fn msg_item(cx: &mut Ctx, t: &TimelineItem, day: String, divider: bool) -> M
         form_fields: m.form.as_ref().map(|f| !f.fields.is_empty()).unwrap_or(false),
         form_buttons: model(m.form.as_ref().map(crate::forms::buttons).unwrap_or_default()),
         responded: cx.c.i_responded(m),
+        grouped: false,
+        system,
+        saved: cx.saved.contains(&m.id),
+        reply_people: model(reply_people),
+        reply_time: reply_time.into(),
+        reply_unread: false,
     }
 }
 
@@ -268,6 +301,7 @@ pub fn msg_items(cx: &mut Ctx, conv: &str, limit: usize, last_read: i64) -> (Vec
     let mut last_day = i64::MIN;
     let mut first_unread = None;
     let mut out = vec![];
+    let mut prev: Option<(String, i64, bool)> = None;
     for t in cx.c.timeline(conv, limit, None).into_iter().filter(|t| t.message.thread_root.is_none() || t.message.thread_root.as_deref() == Some("")) {
         let m = &t.message;
         let day = datefmt::local_day(m.ts, cx.v.off);
@@ -277,13 +311,17 @@ pub fn msg_items(cx: &mut Ctx, conv: &str, limit: usize, last_read: i64) -> (Vec
         if divider {
             first_unread = Some(out.len());
         }
-        out.push(msg_item(cx, &t, label, divider));
+        let mut it = msg_item(cx, &t, label.clone(), divider);
+        let system = it.system;
+        it.grouped = !system && label.is_empty() && !divider && prev.as_ref().map(|(s, ts, sys)| !*sys && *s == m.sender_id && (m.ts - *ts).abs() < 5 * 60_000).unwrap_or(false);
+        prev = Some((m.sender_id.clone(), m.ts, system));
+        out.push(it);
     }
     (out, first_unread)
 }
 
 pub fn person(u: &proto::types::User) -> PersonItem {
-    PersonItem { id: u.id.clone().into(), name: u.display_name.clone().into(), initials: initials::initials(&u.display_name).into(), color: color_of(&u.id), sub: format!("@{}", u.username).into() }
+    PersonItem { id: u.id.clone().into(), name: u.display_name.clone().into(), initials: initials::initials(&u.display_name).into(), color: color_of(&u.id), sub: format!("@{}", u.username).into(), sel: false, tag: SharedString::new() }
 }
 
 pub fn row(kind: i32, id: &str, conv: &str, title: String, text: String, sub: String) -> RowItem {
@@ -293,15 +331,285 @@ pub fn row(kind: i32, id: &str, conv: &str, title: String, text: String, sub: St
         conv: conv.into(),
         title: title.clone().into(),
         sub: sub.into(),
-        text: text.into(),
+        text: text.clone().into(),
         badge: 0,
         flag: false,
         initials: initials::initials(&title).into(),
         color: color_of(id),
         header: SharedString::new(),
+        pre: text.clone().into(),
+        hit: SharedString::new(),
+        post: SharedString::new(),
     }
 }
 
 pub fn bookmarks(c: &Client, conv: &str) -> Vec<BookmarkItem> {
     c.bookmarks(conv).into_iter().filter_map(|b| b.url.clone().map(|u| BookmarkItem { id: b.id.into(), title: b.title.into(), url: u.into() })).collect()
+}
+
+
+// ------------------------------------------------------------------------------------------------
+// 1.2: sidebar, DM list, Activity, Later
+
+fn presence_of(c: &Client, cs: &ConversationSummary, me: &str) -> i32 {
+    if cs.conversation.kind != ConversationKind::Dm {
+        return 0;
+    }
+    cs.conversation
+        .members
+        .iter()
+        .find(|m| m.user_id != me)
+        .and_then(|m| c.user(&m.user_id))
+        .and_then(|u| u.presence)
+        .map(|p| match p {
+            proto::types::Presence::Online => 1,
+            proto::types::Presence::Away => 2,
+            proto::types::Presence::Dnd => 3,
+            proto::types::Presence::Offline => 0,
+        })
+        .unwrap_or(0)
+}
+
+fn conv_row(c: &Client, cs: &ConversationSummary, me: &str, v: &View) -> SideRow {
+    let title = c.conversation_title(cs);
+    let p = c.pref(&cs.conversation.id);
+    let last = c.timeline(&cs.conversation.id, 1, None).pop();
+    let (preview, ts) = match &last {
+        Some(t) => {
+            let who = if t.message.sender_id == me { "You".to_string() } else { c.display_name(&t.message.sender_id) };
+            let body = preview_of(&t.message);
+            (if cs.conversation.kind == ConversationKind::Dm || t.message.kind == MessageKind::System { body } else { format!("{who}: {body}") }, t.message.ts)
+        }
+        None => (String::new(), 0),
+    };
+    SideRow {
+        kind: 1,
+        id: cs.conversation.id.clone().into(),
+        title: title.clone().into(),
+        icon: SharedString::new(),
+        initials: initials::initials(&title).into(),
+        color: color_of(&cs.conversation.id),
+        unread: if cs.unread > 0 { cs.unread as i32 } else if cs.marked_unread { 1 } else { 0 },
+        mentions: cs.mentions as i32,
+        muted: p.is_muted(v.now),
+        favourite: p.favourite,
+        collapsed: false,
+        count: 0,
+        conv_kind: match cs.conversation.kind {
+            ConversationKind::Dm => "dm",
+            ConversationKind::SelfNote => "self",
+            ConversationKind::GroupDm => "group",
+            ConversationKind::Channel => "channel",
+        }
+        .into(),
+        presence: presence_of(c, cs, me),
+        locked: false,
+        draft: !c.draft(&cs.conversation.id).trim().is_empty(),
+        plus: SharedString::new(),
+        preview: preview.into(),
+        stamp: if ts > 0 { datefmt::list_stamp(ts, v.now, v.off, v.hour24).into() } else { SharedString::new() },
+    }
+}
+
+fn blank_row(kind: i32, id: &str, title: &str) -> SideRow {
+    SideRow {
+        kind,
+        id: id.into(),
+        title: title.into(),
+        icon: SharedString::new(),
+        initials: SharedString::new(),
+        color: slint::Color::from_rgb_u8(0, 0, 0),
+        unread: 0,
+        mentions: 0,
+        muted: false,
+        favourite: false,
+        collapsed: false,
+        count: 0,
+        conv_kind: SharedString::new(),
+        presence: 0,
+        locked: false,
+        draft: false,
+        plus: SharedString::new(),
+        preview: SharedString::new(),
+        stamp: SharedString::new(),
+    }
+}
+
+pub struct SideOpts<'a> {
+    pub sort_alpha: bool,
+    pub unread_only: bool,
+    pub hide_muted: bool,
+    pub collapsed: &'a [String],
+    pub drafts: usize,
+}
+
+/// The Home sidebar: Threads, Drafts & sent, Later, then Favourites, custom sections, Channels and Direct messages.
+/// A collapsed section still shows its unread conversations (like Slack), so nothing important hides.
+pub fn side_rows(c: &Client, o: &SideOpts, v: &View) -> Vec<SideRow> {
+    let me = c.my_id().unwrap_or_default();
+    let mut out = vec![];
+    let mut threads = blank_row(2, "threads", "Threads");
+    threads.icon = "thread".into();
+    threads.unread = c.thread_unread_total() as i32;
+    out.push(threads);
+    let mut drafts = blank_row(2, "drafts", "Drafts & sent");
+    drafts.icon = "edit".into();
+    drafts.count = (o.drafts + c.scheduled_pending(None).len()) as i32;
+    out.push(drafts);
+    let mut later = blank_row(2, "later", "Later");
+    later.icon = "bookmark".into();
+    later.count = c.saved_items().len() as i32;
+    out.push(later);
+
+    let list = c.sorted_conversations(o.sort_alpha, o.unread_only, o.hide_muted);
+    let sections = c.sections();
+    // bucket index: 0 favourites, 1..=n custom, n+1 channels, n+2 direct messages
+    let n = sections.len();
+    let mut buckets: Vec<Vec<ConversationSummary>> = vec![vec![]; n + 3];
+    for cs in list {
+        let p = c.pref(&cs.conversation.id);
+        let idx = if p.favourite {
+            0
+        } else if let Some(i) = p.section_id.as_ref().and_then(|sid| sections.iter().position(|s| &s.id == sid)) {
+            i + 1
+        } else if cs.conversation.kind == ConversationKind::Channel {
+            n + 1
+        } else {
+            n + 2
+        };
+        buckets[idx].push(cs);
+    }
+    let push_section = |out: &mut Vec<SideRow>, key: String, title: &str, plus: &str, collapsed: bool, list: &[ConversationSummary], hint: &str| {
+        let mut h = blank_row(0, &key, title);
+        h.collapsed = collapsed;
+        h.plus = plus.into();
+        h.count = list.len() as i32;
+        h.unread = list.iter().map(|c| c.unread as i32).sum();
+        out.push(h);
+        let mut shown = 0;
+        for cs in list {
+            if collapsed && cs.unread == 0 && !cs.marked_unread {
+                continue;
+            }
+            shown += 1;
+            out.push(conv_row(c, cs, &me, v));
+        }
+        if !collapsed && shown == 0 && !hint.is_empty() {
+            out.push(blank_row(3, "", hint));
+        }
+    };
+    let is = |k: &str| o.collapsed.iter().any(|x| x == k);
+    if !buckets[0].is_empty() {
+        push_section(&mut out, "sec:fav".into(), "Favourites", "", is("sec:fav"), &buckets[0], "");
+    }
+    for (i, sec) in sections.iter().enumerate() {
+        push_section(&mut out, format!("sec:{}", sec.id), &sec.name, "", sec.collapsed, &buckets[i + 1], "Move conversations here from their menu.");
+    }
+    push_section(&mut out, "sec:channels".into(), "Channels", "channel", is("sec:channels"), &buckets[n + 1], "No channels yet. An admin can add you to channels.");
+    push_section(&mut out, "sec:dms".into(), "Direct messages", "dm", is("sec:dms"), &buckets[n + 2], "Start a conversation with the + button.");
+    out
+}
+
+/// Direct messages, group conversations and notes to self, newest first.
+pub fn dm_rows(c: &Client, v: &View) -> Vec<SideRow> {
+    let me = c.my_id().unwrap_or_default();
+    c.sorted_conversations(false, false, false)
+        .into_iter()
+        .filter(|cs| cs.conversation.kind != ConversationKind::Channel)
+        .map(|cs| conv_row(c, &cs, &me, v))
+        .collect()
+}
+
+/// Activity entries: filter 0 all, 1 mentions, 2 threads, 3 reactions.
+pub fn activity_rows(c: &Client, filter: i32, v: &View) -> Vec<ActivityRow> {
+    c.activity()
+        .into_iter()
+        .filter(|a| match filter {
+            1 => a.kind == "mention",
+            2 => a.kind == "thread_reply",
+            3 => a.kind == "reaction",
+            _ => true,
+        })
+        .filter_map(|a| {
+            let m = c.store().message(&a.message_id).ok().flatten();
+            let actor = c.display_name(&a.actor_id);
+            let conv_title = c.conversations().into_iter().find(|x| x.conversation.id == a.conv_id).map(|cs| {
+                let t = c.conversation_title(&cs);
+                if cs.conversation.kind == ConversationKind::Channel { format!("#{t}") } else { t }
+            })?;
+            let (kind, title) = match a.kind.as_str() {
+                "mention" => (0, format!("{actor} mentioned you in {conv_title}")),
+                "reaction" => (1, format!("{actor} reacted {} to your message in {conv_title}", a.emoji.clone().unwrap_or_default())),
+                _ => (2, format!("{actor} replied in a thread in {conv_title}")),
+            };
+            let img = a.emoji.as_deref().and_then(emoji_image);
+            Some(ActivityRow {
+                id: a.id.clone().into(),
+                kind,
+                actor: actor.clone().into(),
+                initials: initials::initials(&actor).into(),
+                color: color_of(&a.actor_id),
+                title: title.into(),
+                snippet: m.map(|m| preview_of(&m)).unwrap_or_default().into(),
+                conv: a.conv_id.clone().into(),
+                msg: a.message_id.clone().into(),
+                root: a.thread_root.clone().unwrap_or_default().into(),
+                time: datefmt::list_stamp(a.ts, v.now, v.off, v.hour24).into(),
+                unread: a.unread,
+                emoji: a.emoji.clone().unwrap_or_default().into(),
+                has_img: img.is_some(),
+                img: img.unwrap_or_default(),
+            })
+        })
+        .collect()
+}
+
+pub const LABEL_COLORS: [&str; 6] = ["#0dbd8b", "#0467dd", "#7b61ff", "#e8590c", "#d6336c", "#868e96"];
+
+pub fn parse_color(hex: &str) -> slint::Color {
+    let h = hex.trim_start_matches('#');
+    let n = u32::from_str_radix(h, 16).unwrap_or(0x868e96);
+    slint::Color::from_rgb_u8((n >> 16) as u8, (n >> 8) as u8, n as u8)
+}
+
+pub fn label_items(c: &Client, on: &[String]) -> Vec<LabelItem> {
+    c.labels().into_iter().map(|l| LabelItem { on: on.contains(&l.id), id: l.id.into(), name: l.name.into(), tint: parse_color(&l.color) }).collect()
+}
+
+/// Saved messages (newest first) with their label chips; `label` filters to one label id.
+pub fn saved_rows(c: &Client, label: &str, v: &View) -> Vec<SavedRow> {
+    let labels = c.labels();
+    c.saved_items()
+        .into_iter()
+        .filter(|sv| label.is_empty() || sv.item.label_ids.iter().any(|l| l == label))
+        .map(|sv| {
+            let conv_title = c.conversations().into_iter().find(|x| x.conversation.id == sv.item.conv_id).map(|cs| {
+                let t = c.conversation_title(&cs);
+                if cs.conversation.kind == ConversationKind::Channel { format!("#{t}") } else { t }
+            });
+            let (sender, text, deleted, ts) = match &sv.message {
+                Some(m) => (c.display_name(&m.sender_id), preview_of(m), m.deleted, m.ts),
+                None => (String::new(), String::new(), true, sv.item.saved_ms),
+            };
+            let chips: Vec<LabelItem> = sv
+                .item
+                .label_ids
+                .iter()
+                .filter_map(|id| labels.iter().find(|l| &l.id == id))
+                .map(|l| LabelItem { id: l.id.clone().into(), name: l.name.clone().into(), tint: parse_color(&l.color), on: true })
+                .collect();
+            SavedRow {
+                id: sv.item.message_id.clone().into(),
+                conv: sv.item.conv_id.clone().into(),
+                conv_title: conv_title.unwrap_or_else(|| "Conversation".into()).into(),
+                initials: initials::initials(&sender).into(),
+                color: color_of(sv.message.as_ref().map(|m| m.sender_id.as_str()).unwrap_or("")),
+                sender: sender.into(),
+                time: datefmt::list_stamp(ts, v.now, v.off, v.hour24).into(),
+                text: text.into(),
+                deleted,
+                labels: model(chips),
+            }
+        })
+        .collect()
 }

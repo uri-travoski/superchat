@@ -1,7 +1,10 @@
 import { LineEdit, ListView, ScrollView, Palette, TextEdit } from "std-widgets.slint";
-import { Theme, ConvItem, MsgItem, PersonItem, RowItem, BookmarkItem, BlockItem, FileItem, ReactItem, EmojiItem, FormFieldItem, FormOptionItem, FormButtonItem } from "theme.slint";
-import { Avatar, Icon, IconButton, Fab, AppBar, BottomSheet, ModalCard, AlertDialog, SheetRow, SettingRow, Card, TextButton, Toggle, Link, Pill, PrimaryButton, GhostButton, SectionHeader, ConvRow, MessageRow } from "components.slint";
-export { Theme, ConvItem, MsgItem, PersonItem, RowItem, BookmarkItem, BlockItem, FileItem, ReactItem, EmojiItem, FormFieldItem, FormOptionItem, FormButtonItem }
+import { Theme, ConvItem, MsgItem, PersonItem, RowItem, BookmarkItem, BlockItem, FileItem, ReactItem, EmojiItem, FormFieldItem, FormOptionItem, FormButtonItem, SideRow, LabelItem, SavedRow, ActivityRow } from "theme.slint";
+import { Avatar, Icon, IconButton, Fab, AppBar, BottomSheet, ModalCard, AlertDialog, SheetRow, SettingRow, Card, TextButton, Toggle, Link, Pill, PrimaryButton, GhostButton, SectionHeader, ToolButton, LabelChip, EmptyState, TabBar, CountBadge, MenuRow, MenuDivider } from "components.slint";
+import { MessageRow, Composer, PeoplePicker } from "chat.slint";
+import { Rail, TopBar, SideItem, DmRow, ActivityItem, SavedCard, BottomNav } from "shell.slint";
+import { DetailsView } from "details.slint";
+export { Theme, ConvItem, MsgItem, PersonItem, RowItem, BookmarkItem, BlockItem, FileItem, ReactItem, EmojiItem, FormFieldItem, FormOptionItem, FormButtonItem, SideRow, LabelItem, SavedRow, ActivityRow }
 
 export component AppWindow inherits Window {
     title: "SuperChat";
@@ -139,7 +142,7 @@ export component AppWindow inherits Window {
     in-out property <bool> start-min: false;
     in-out property <string> settings-page;
     in-out property <bool> info-open: false;
-    in-out property <int> info-tab: 0; // 0 members, 1 files, 2 pins, 3 bookmarks, 4 home
+    in-out property <string> info-page; // "" = the details list (phone) / About (desktop), about, members, settings, files, pins, bookmarks, home
     in-out property <[PersonItem]> members;
     in-out property <string> confirm; // alert dialog kind: signout, signout-all, revoke-others, delete-msg, remove-pin
     in-out property <MsgItem> sel-msg;
@@ -259,31 +262,160 @@ export component AppWindow inherits Window {
     callback record-toggle();
     callback paste-image();
 
+    // ---- 1.2: shell and navigation ----
+    // Desktop rail tab / phone bottom tab: home, dms, activity, later, you.
+    in-out property <string> main-tab: "home";
+    in-out property <[SideRow]> side-rows;
+    in-out property <[SideRow]> dm-rows;
+    in-out property <string> server-name: "SuperChat";
+    in-out property <string> server-initials: "S";
+    in-out property <int> activity-unread: 0;
+    in-out property <int> dm-unread: 0;
+    in-out property <int> presence-i: 1;
+    in-out property <length> thread-w: 380px;
+    in-out property <length> menu-x: -1px;
+    in-out property <length> menu-y: -1px;
+    out property <length> rail-w: self.wide ? 68px * max(1.0, Theme.scale * 0.9) : 0px;
+    out property <length> top-h: self.wide ? max(44px, 36px * Theme.scale) : 0px;
+
+    // ---- 1.2: messages ----
+    in-out property <string> edit-text;
+    in-out property <[EmojiItem]> emoji-sugg;
+    in-out property <bool> thread-also: false;
+    in-out property <string> thread-conv-title;
+
+    // ---- 1.2: details, members, people picker ----
+    in-out property <[PersonItem]> pp-list;
+    in-out property <string> pp-mode; // new-message, add-people
+    in-out property <string> pp-text;
+    in-out property <int> pp-count: 0;
+    in-out property <bool> pp-open: false;
+    in-out property <bool> can-manage: false;
+    in-out property <string> current-topic;
+    in-out property <string> current-kind;
+    in-out property <string> current-created;
+    in-out property <string> topic-edit;
+    in-out property <bool> current-muted: false;
+    in-out property <string> current-notify: "All messages";
+    in-out property <int> member-count: 0;
+    in-out property <[PersonItem]> head-people;
+    in-out property <string> remove-person;
+    in-out property <string> remove-person-name;
+
+    // ---- 1.2: Later, labels, Activity, search ----
+    in-out property <[SavedRow]> saved-rows;
+    in-out property <[LabelItem]> labels;
+    in-out property <string> label-filter;
+    in-out property <string> label-msg;
+    in-out property <bool> label-open: false;
+    in-out property <string> label-new-name;
+    in-out property <int> label-new-color: 0;
+    in-out property <[ActivityRow]> activity-rows;
+    in-out property <int> activity-filter: 0;
+    in-out property <int> search-tab: 0;
+    in-out property <[PersonItem]> filter-people;
+    in-out property <[RowItem]> filter-chans;
+
+    // ---- 1.2: App Lock management ----
+    in-out property <[RowItem]> locked-convs;
+    in-out property <[RowItem]> lockable-convs;
+
+    callback side-clicked(string, string);
+    callback side-toggle(string);
+    callback side-plus(string);
+    callback set-main-tab(string);
+    callback activity-clicked(string, string, string, string);
+    callback activity-filter-changed(int);
+    callback mark-activity-read();
+    callback later-clicked(string, string);
+    callback save-msg(string);
+    callback label-picker(string);
+    callback label-toggle(string, string);
+    callback label-create(string, int);
+    callback label-rename(string, string);
+    callback label-recolor(string);
+    callback label-delete(string);
+    callback label-filter-changed(string);
+    callback unsave(string);
+    callback pp-open-for(string);
+    callback select-conv-step(int);
+    callback pp-filter(string);
+    callback pp-toggle(string);
+    callback pp-confirm();
+    callback remove-member(string);
+    callback save-topic(string);
+    callback copy-text(string);
+    callback emoji-pick-sugg(string);
+    callback search-filter(string, string);
+    callback lock-add(string);
+    callback lock-remove-conv(string);
+    callback open-lock-setup();
+    callback up-edit();
+    callback open-admin-panel();
+    callback open-later();
+    callback open-conv-in-context(string, string);
+    callback thread-send-also(string, bool);
+    callback mark-read(string);
+    callback mention-open();
+    callback open-details-data();
+    callback prepare-menu(string);
+
     public function scroll-bottom() {
         root.list-y = min(0px, root.list-vh - root.list-h);
     }
     public function scroll-to-fraction(f: float) {
         root.list-y = min(0px, -(root.list-h - root.list-vh) * f);
     }
-    // Opens the options sheet for a conversation of the list.
-    function open-conv-menu(id: string, title: string, fav: bool) {
+    // Opens the context menu of a conversation of the list, at the pointer on desktop.
+    public function open-conv-menu(id: string, title: string, fav: bool) {
         root.menu-conv = id;
         root.menu-title = title;
         root.menu-fav = fav;
         root.menu-kind = "conv";
+        root.prepare-menu(id);
     }
-    function open-info(tab: int) {
-        root.info-tab = tab;
-        root.info-open = true;
+    // Details of the current conversation: a modal with tabs on desktop, a page list on the phone.
+    public function open-details(page: string) {
         root.menu-kind = "";
-        if tab == 1 { root.tab = 1; root.tab-changed(1); }
-        if tab == 2 { root.tab = 2; root.tab-changed(2); }
-        if tab == 4 { root.tab = 3; root.tab-changed(3); }
-        if tab == 0 || tab == 3 { root.tab = 0; }
+        root.info-page = page;
+        root.info-open = true;
+        root.open-details-data();
+        if page == "files" { root.tab-changed(1); }
+        if page == "home" { root.tab-changed(3); }
     }
-    function send-composer() {
-        if root.editing-id != "" { root.save-edit(root.editing-id, root.composer); root.editing-id = ""; } else { root.send(root.composer); }
+    // Conversation tab of the desktop main pane: 0 Messages, 1 Files, 2 Pins, 3 Home, 4 Bookmarks.
+    public function set-tab(t: int) {
+        root.tab = t;
+        root.info-open = false;
+        root.tab-changed(t);
+    }
+    public function send-composer() {
+        root.send(root.composer);
         root.composer = "";
+    }
+    public function start-edit(id: string) {
+        root.edit-text = root.begin-edit(id);
+        root.editing-id = id;
+    }
+    public function new-message() {
+        root.pp-mode = "new-message";
+        root.pp-text = "";
+        root.pp-open-for("new-message");
+        root.pp-open = true;
+    }
+    public function add-people() {
+        root.pp-mode = "add-people";
+        root.pp-text = "";
+        root.pp-open-for("add-people");
+        root.pp-open = true;
+    }
+    public function go-home-tab(t: string) {
+        root.screen = "";
+        root.settings-page = "";
+        root.info-open = false;
+        root.main-tab = t;
+        root.set-main-tab(t);
+        if !root.wide { root.show-chat = false; }
     }
 
     changed theme-mode => {
@@ -292,13 +424,21 @@ export component AppWindow inherits Window {
     changed list-y => {
         if root.list-y > -30px && root.has-more-older && root.tab == 0 { root.load-older(); }
     }
+    changed menu-kind => {
+        if root.menu-kind == "" { root.menu-x = -1px; root.menu-y = -1px; }
+    }
 
     FocusScope {
         key-pressed(e) => {
             if e.modifiers.control && e.text == "k" { root.open-switcher(); return accept; }
+            if e.modifiers.control && e.text == "f" { root.open-search(); return accept; }
+            if e.modifiers.control && e.modifiers.shift && e.text == "A" { root.go-home-tab("activity"); return accept; }
+            if e.modifiers.control && e.text == "," { root.open-settings(); return accept; }
             if e.modifiers.control && (e.text == "+" || e.text == "=") { root.zoom-step(10); return accept; }
             if e.modifiers.control && e.text == "-" { root.zoom-step(-10); return accept; }
             if e.modifiers.control && e.text == "0" { root.zoom-step(0); return accept; }
+            if e.modifiers.alt && e.text == Key.UpArrow { root.select-conv-step(-1); return accept; }
+            if e.modifiers.alt && e.text == Key.DownArrow { root.select-conv-step(1); return accept; }
             if e.modifiers.alt && e.text == Key.LeftArrow { if !root.back-pressed() { root.nav-back(); } return accept; }
             if e.modifiers.alt && e.text == Key.RightArrow { root.nav-forward(); return accept; }
             if e.text == Key.Escape { root.back-pressed(); return accept; }
@@ -378,425 +518,560 @@ export component AppWindow inherits Window {
                 }
 
                 // ======================= main =======================
-                if root.signed-in: HorizontalLayout {
-                    // ---- chat list ----
-                    if root.wide || !root.show-chat: Rectangle {
-                        width: root.wide ? 340px * max(1.0, Theme.scale * 0.95) : root.width;
-                        background: Theme.sidebar;
-                        VerticalLayout {
-                            AppBar {
-                                title: "SuperChat";
-                                show-back: false;
-                                IconButton { icon: "search"; label: "Search"; clicked => { root.open-search(); } y: (parent.height - self.height) / 2; }
-                                if root.lock-set: IconButton {
-                                    icon: root.lock-engaged ? "lock" : "unlock";
-                                    tint: Theme.icon-soft;
-                                    label: root.lock-engaged ? "App Lock, locked. Tap to unlock" : "App Lock, unlocked. Tap to lock";
-                                    clicked => { root.lock-tapped(); }
-                                    y: (parent.height - self.height) / 2;
-                                }
-                                IconButton { icon: "more"; label: "More options"; clicked => { root.menu-kind = "overflow"; } y: (parent.height - self.height) / 2; }
-                            }
-                            if root.status != "" && root.status != "Connected" && root.status != "\u{0}done": Rectangle {
-                                height: stt.preferred-height + 10px;
-                                background: Theme.surface;
-                                stt := Text { x: 16px; width: parent.width - 32px; text: root.status; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; vertical-alignment: center; }
-                            }
-                            if root.conversations.length == 0: Rectangle {
-                                vertical-stretch: 1;
-                                Text { text: "No conversations yet. Tap the button below to start one."; color: Theme.muted; font-size: Theme.fs; wrap: word-wrap; horizontal-alignment: center; vertical-alignment: center; x: 24px; width: parent.width - 48px; }
-                            }
-                            if root.conversations.length > 0: ListView {
-                                vertical-stretch: 1;
-                                for c[i] in root.conversations: ConvRow {
-                                    item: c;
-                                    selected: root.wide && c.id == root.current-conv;
-                                    clicked => { root.select-conv(c.id); root.show-chat = true; }
-                                    long-pressed => { root.open-conv-menu(c.id, c.title, c.favourite); }
-                                }
-                            }
-                        }
-                        Fab {
-                            icon: "chat-plus";
-                            label: "New chat";
-                            x: parent.width - self.width - 16px;
-                            y: parent.height - self.height - 16px;
-                            clicked => { root.open-people(); }
-                        }
+                if root.signed-in: VerticalLayout {
+                    if root.wide: TopBar {
+                        server-name: root.server-name;
+                        can-back: root.can-back;
+                        can-forward: root.can-forward;
+                        back => { root.nav-back(); }
+                        forward => { root.nav-forward(); }
+                        search => { root.open-search(); }
+                        help => { root.menu-kind = "help"; }
                     }
-                    if root.wide: Rectangle { width: 1px; background: Theme.line; }
-
-                    // ---- conversation ----
-                    if (root.wide || root.show-chat) && !(root.thread-id != "" && !root.wide): VerticalLayout {
-                        horizontal-stretch: 1;
-                        min-width: 280px;
-                        // top bar
-                        Rectangle {
-                            height: max(56px, 42px * Theme.scale);
-                            HorizontalLayout {
-                                padding-left: root.wide ? 12px : 4px;
-                                padding-right: 4px;
-                                spacing: 4px;
-                                if !root.wide: IconButton { icon: "back"; label: "Back to the chat list"; clicked => { root.back-pressed(); } y: (parent.height - self.height) / 2; }
-                                Rectangle {
-                                    horizontal-stretch: 1;
-                                    HorizontalLayout {
-                                        spacing: 10px;
-                                        if root.current-conv != "": Avatar { initials: root.current-initials; tint: root.current-color; size: 38px * Theme.scale; y: (parent.height - self.height) / 2; }
-                                        VerticalLayout {
-                                            horizontal-stretch: 1;
-                                            alignment: center;
-                                            Text { text: root.current-title == "" ? "Choose a conversation" : root.current-title; font-size: Theme.fs * 1.1; font-weight: 700; color: Theme.text; overflow: elide; }
-                                            if root.typing-text != "" || root.current-sub != "": Text { text: root.typing-text != "" ? root.typing-text : root.current-sub; font-size: Theme.fs-small; color: root.typing-text != "" ? Theme.accent-text : Theme.muted; overflow: elide; }
-                                        }
-                                    }
-                                    if root.current-conv != "": TouchArea { clicked => { root.open-info(root.tab == 2 ? 2 : (root.tab == 1 ? 1 : 0)); } accessible-role: button; accessible-label: "Chat info"; }
-                                }
-                                if root.current-conv != "": IconButton { icon: "search"; label: "Search"; clicked => { root.open-search(); } y: (parent.height - self.height) / 2; }
-                                if root.current-conv != "": IconButton { icon: "more"; label: "More options"; clicked => { root.menu-kind = "chat-menu"; } y: (parent.height - self.height) / 2; }
-                            }
-                            Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
+                    HorizontalLayout {
+                        vertical-stretch: 1;
+                        if root.wide: Rail {
+                            tab: root.main-tab;
+                            server-initials: root.server-initials;
+                            activity-unread: root.activity-unread;
+                            dm-unread: root.dm-unread;
+                            me-initials: root.me-initials;
+                            me-color: root.me-color;
+                            presence: root.presence-i;
+                            picked(t) => { root.go-home-tab(t); }
+                            server-clicked => { root.menu-x = root.rail-w + 4px; root.menu-y = root.top-h + 6px; root.menu-kind = "server"; }
+                            profile-clicked => { root.menu-x = 8px; root.menu-y = root.height - 330px; root.menu-kind = "profile"; }
                         }
 
-                        if root.info-open && root.current-conv != "": VerticalLayout {
-                            vertical-stretch: 1;
-                            HorizontalLayout {
-                                height: max(48px, 38px * Theme.scale);
-                                for t[i] in root.is-bot-dm ? ["Members", "Files", "Pins", "Bookmarks", "Home"] : ["Members", "Files", "Pins", "Bookmarks"]: Rectangle {
-                                    horizontal-stretch: 1;
-                                    accessible-role: AccessibleRole.tab;
-                                    accessible-label: t;
-                                    accessible-checked: root.info-tab == i;
-                                    Text { text: t; font-size: Theme.fs-small * 1.08; font-weight: root.info-tab == i ? 700 : 500; color: root.info-tab == i ? Theme.accent-text : Theme.muted; overflow: elide; }
-                                    if root.info-tab == i: Rectangle { y: parent.height - 3px; height: 3px; border-radius: 1.5px; background: Theme.accent; x: 12px; width: parent.width - 24px; }
-                                    TouchArea { clicked => { root.open-info(i); } }
-                                }
-                            }
-                            Rectangle { height: 1px; background: Theme.line; }
-                            if root.info-tab == 0: ListView {
-                                vertical-stretch: 1;
-                                for p[i] in root.members: Rectangle {
-                                    height: max(60px, 48px * Theme.scale);
-                                    HorizontalLayout {
-                                        padding-left: 16px; padding-right: 16px; spacing: 14px;
-                                        Avatar { initials: p.initials; tint: p.color; size: 40px * Theme.scale; y: (parent.height - self.height) / 2; }
-                                        VerticalLayout { alignment: center; horizontal-stretch: 1;
-                                            Text { text: p.name; font-size: Theme.fs; color: Theme.text; overflow: elide; }
-                                            if p.sub != "": Text { text: p.sub; font-size: Theme.fs-small; color: Theme.muted; overflow: elide; }
-                                        }
-                                    }
-                                }
-                            }
-                            if root.info-tab == 1 && root.files.length == 0: Text { text: "No files in this conversation yet."; color: Theme.muted; horizontal-alignment: center; vertical-stretch: 1; vertical-alignment: center; }
-                            if root.info-tab == 1 && root.files.length > 0: ListView {
-                                vertical-stretch: 1;
-                                for f[i] in root.files: Rectangle {
-                                    height: max(64px, 52px * Theme.scale);
-                                    background: ft.pressed ? Theme.bubble-other : transparent;
-                                    HorizontalLayout {
-                                        padding-left: 16px; padding-right: 16px; spacing: 14px;
-                                        Rectangle { width: 40px; height: 40px; y: (parent.height - self.height) / 2; border-radius: 10px; background: Theme.surface;
-                                            Icon { name: "file"; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; } }
-                                        VerticalLayout { alignment: center; horizontal-stretch: 1;
-                                            Text { text: f.title; font-size: Theme.fs; color: Theme.text; overflow: elide; }
-                                            Text { text: f.sub; font-size: Theme.fs-small; color: Theme.muted; overflow: elide; }
-                                        }
-                                    }
-                                    ft := TouchArea { clicked => { root.open-file(f.id); } }
-                                }
-                            }
-                            if root.info-tab == 2 && root.pins.length == 0: Text { text: "No pinned messages. Long-press a message and choose Pin."; color: Theme.muted; wrap: word-wrap; horizontal-alignment: center; vertical-stretch: 1; vertical-alignment: center; }
-                            if root.info-tab == 2 && root.pins.length > 0: ListView {
-                                vertical-stretch: 1;
-                                for p[i] in root.pins: Rectangle {
-                                    height: max(68px, 56px * Theme.scale);
-                                    background: pn.pressed ? Theme.bubble-other : transparent;
-                                    HorizontalLayout {
-                                        padding-left: 16px; padding-right: 16px; spacing: 14px;
-                                        Icon { name: "pin"; y: (parent.height - self.height) / 2; }
-                                        VerticalLayout { alignment: center; horizontal-stretch: 1;
-                                            Text { text: p.title; font-size: Theme.fs-small; color: Theme.muted; overflow: elide; }
-                                            Text { text: p.text; font-size: Theme.fs; color: Theme.text; overflow: elide; }
-                                        }
-                                    }
-                                    pn := TouchArea { clicked => { root.info-open = false; root.row-clicked("pin", p.id, p.conv); root.tab = 0; } }
-                                }
-                            }
-                            if root.info-tab == 3: ScrollView {
-                                vertical-stretch: 1;
-                                VerticalLayout {
-                                    alignment: start;
-                                    if root.can-curate: SheetRow { icon: "plus"; text: "Add a bookmark"; clicked => { root.bm-title = ""; root.bm-url = ""; root.bookmark-open = true; } }
-                                    if root.bookmarks.length == 0: Text { text: "No bookmarks yet."; color: Theme.muted; horizontal-alignment: center; height: 80px; vertical-alignment: center; }
-                                    for b in root.bookmarks: SheetRow { icon: "bookmark"; text: b.title; clicked => { root.open-link(b.url); } }
-                                }
-                            }
-                            if root.info-tab == 4 && root.home.length == 0: Text { text: "This app has no Home page."; color: Theme.muted; horizontal-alignment: center; vertical-stretch: 1; vertical-alignment: center; }
-                            if root.info-tab == 4: ScrollView {
-                                vertical-stretch: 1;
-                                VerticalLayout {
-                                    padding: 16px;
-                                    spacing: 8px;
-                                    alignment: start;
-                                    for h in root.home: VerticalLayout {
-                                        spacing: 4px;
-                                        if h.kind == 0: Text { text: h.text; font-size: Theme.fs-title; font-weight: 700; wrap: word-wrap; color: Theme.text; }
-                                        if h.kind == 1: Text { text: h.text; font-size: Theme.fs; wrap: word-wrap; color: Theme.text; }
-                                        if h.kind == 2: Rectangle { height: 1px; background: Theme.line; }
-                                        if h.kind == 3: HorizontalLayout { alignment: start; if h.sub == "primary": PrimaryButton { text: h.text; clicked => { root.home-action("button", h.id); } } if h.sub != "primary": GhostButton { text: h.text; danger: h.sub == "danger"; clicked => { root.home-action("button", h.id); } } }
-                                        if h.kind == 4: Rectangle {
-                                            border-radius: Theme.r-md; background: Theme.surface;
-                                            height: hf.preferred-height;
-                                            hf := VerticalLayout {
-                                                padding: 14px; spacing: 6px;
-                                                if h.title != "": Text { text: h.title; font-weight: 700; font-size: Theme.fs; wrap: word-wrap; color: Theme.text; }
-                                                if h.text != "": Text { text: h.text; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
-                                                HorizontalLayout { alignment: start; PrimaryButton { text: "Open form"; clicked => { root.home-action("form", h.id); } } }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Pinned message / bookmark banner (Telegram style): one slim row, tap to jump, the list icon opens the full list.
-                        if !root.info-open && root.current-conv != "" && root.pins.length + root.bookmarks.length > 0: bn := Rectangle {
-                            height: max(44px, 34px * Theme.scale);
-                            background: Theme.surface;
-                            property <int> n: root.pins.length + root.bookmarks.length;
-                            property <int> k: mod(root.banner-i, self.n);
-                            HorizontalLayout {
-                                padding-left: 14px; padding-right: 4px; spacing: 10px;
-                                Rectangle { width: 3px; height: parent.height - 16px; y: 8px; border-radius: 1.5px; background: Theme.accent; }
-                                Icon { name: bn.k < root.pins.length ? "pin" : "bookmark"; size: 18px; tint: Theme.accent-text; y: (parent.height - self.height) / 2; }
-                                VerticalLayout {
-                                    horizontal-stretch: 1; alignment: center;
-                                    Text { text: bn.k < root.pins.length ? "Pinned message" + (root.pins.length > 1 ? " " + (bn.k + 1) + "/" + root.pins.length : "") : "Bookmark"; font-size: Theme.fs-small; font-weight: 700; color: Theme.accent-text; overflow: elide; }
-                                    Text { text: bn.k < root.pins.length ? root.pins[bn.k].text : root.bookmarks[bn.k - root.pins.length].title; font-size: Theme.fs-small * 1.05; color: Theme.text; overflow: elide; }
-                                }
-                                IconButton { icon: "sort"; label: "Show all pinned messages and bookmarks"; glyph: 20px; clicked => { root.open-info(root.pins.length > 0 ? 2 : 3); } y: (parent.height - self.height) / 2; }
-                            }
-                            TouchArea {
-                                width: parent.width - 52px;
-                                accessible-role: button;
-                                accessible-label: "Jump to the pinned message";
-                                clicked => {
-                                    if bn.k < root.pins.length { root.row-clicked("pin", root.pins[bn.k].id, root.pins[bn.k].conv); } else { root.open-link(root.bookmarks[bn.k - root.pins.length].url); }
-                                    root.banner-i = root.banner-i + 1;
-                                }
-                            }
-                            Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
-                        }
-                        if root.jump-open && !root.info-open: HorizontalLayout {
-                            padding: 8px;
-                            spacing: 8px;
-                            LineEdit { text <=> root.jump-text; placeholder-text: "dd/mm/yyyy"; font-size: Theme.fs; accepted => { root.jump-date(root.jump-text); root.jump-open = false; } }
-                            PrimaryButton { text: "Go"; clicked => { root.jump-date(root.jump-text); root.jump-open = false; } }
-                        }
-
-                        if !root.info-open && root.current-conv == "": Rectangle {
-                            vertical-stretch: 1;
-                            Text { text: "Pick a conversation from the list, or start a new one."; color: Theme.muted; font-size: Theme.fs; horizontal-alignment: center; vertical-alignment: center; wrap: word-wrap; x: 24px; width: parent.width - 48px; }
-                        }
-                        if !root.info-open && root.current-conv != "": Rectangle {
-                            vertical-stretch: 1;
-                            ListView {
-                                content-y <=> root.list-y;
-                                changed visible-height => { root.list-vh = self.visible-height; }
-                                changed content-height => { root.list-h = self.content-height; }
-                                for m[i] in root.messages: MessageRow {
-                                    playing-id: root.playing-id;
-                                    play-audio(f) => { root.play-audio(f); }
-                                    m: m;
-                                    tap-opens: root.wide;
-                                    selected: root.menu-kind == "msg" && m.id == root.menu-msg;
-                                    actions => { root.sel-msg = m; root.sel-in-thread = false; root.menu-msg = m.id; root.menu-kind = "msg"; }
-                                    react(e) => { root.react(m.id, e); }
-                                    retry => { root.retry(m.id); }
-                                    open-thread => { root.open-thread(m.id); }
-                                    open-file(f) => { root.open-file(f); }
-                                    open-link(l) => { root.open-link(l); }
-                                    form-action(b) => { root.form-action(m.id, b); }
-                                }
-                            }
-                            if root.first-unread: Rectangle {
-                                x: parent.width - self.width - 12px; y: 10px; width: fu.preferred-width + 28px; height: 32px; border-radius: 16px; background: Theme.accent;
-                                fu := Text { text: "First unread"; color: Theme.on-accent; font-size: Theme.fs-small; font-weight: 700; }
-                                TouchArea { clicked => { root.jump-unread(); } }
-                            }
-                        }
-                        if !root.info-open && root.attach-open: HorizontalLayout {
-                            padding: 8px;
-                            spacing: 8px;
-                            LineEdit { placeholder-text: "Full path of the file (or drop / paste it here)"; font-size: Theme.fs; text <=> root.attach-path; accepted => { root.attach(root.attach-path); root.attach-path = ""; root.attach-open = false; } }
-                            GhostButton { text: "Browse"; clicked => { root.browse-file(); } }
-                            GhostButton { text: "Paste image"; clicked => { root.paste-image(); } }
-                            PrimaryButton { text: "Send file"; clicked => { root.attach(root.attach-path); root.attach-path = ""; root.attach-open = false; } }
-                        }
-                        if root.mentions.length > 0 && !root.info-open: Rectangle {
-                            height: min(root.mentions.length, 4) * 44px * Theme.scale;
-                            background: Theme.surface;
+                        // ---- list column: sidebar, DMs, Activity, Later, You ----
+                        if root.wide || !root.show-chat: Rectangle {
+                            width: root.wide ? 300px * max(1.0, Theme.scale * 0.92) : root.width;
+                            background: root.wide ? Theme.side-bg : Theme.sidebar;
                             VerticalLayout {
-                                for p in root.mentions: Rectangle {
-                                    height: 44px * Theme.scale;
-                                    background: mt.has-hover ? Theme.bubble-other : transparent;
+                                // Header of the column.
+                                if root.main-tab == "home": Rectangle {
+                                    height: max(root.wide ? 52px : 60px, 44px * Theme.scale);
                                     HorizontalLayout {
-                                        padding-left: 14px;
+                                        padding-left: root.wide ? 14px : 12px;
+                                        padding-right: 6px;
                                         spacing: 10px;
-                                        Avatar { initials: p.initials; tint: p.color; size: 28px * Theme.scale; y: (parent.height - self.height) / 2; }
-                                        Text { text: p.name + "  " + p.sub; font-size: Theme.fs; vertical-alignment: center; color: Theme.text; }
-                                    }
-                                    mt := TouchArea { clicked => { root.pick-mention(p.id); } }
-                                }
-                            }
-                        }
-                        if !root.info-open && root.current-conv != "": VerticalLayout {
-                            if !root.can-write: Text { text: "You cannot write in this conversation."; color: Theme.muted; font-size: Theme.fs-small; horizontal-alignment: center; height: 40px; vertical-alignment: center; }
-                            if root.can-write && root.formatting-open: HorizontalLayout {
-                                padding-left: 10px;
-                                spacing: 2px;
-                                height: 40px;
-                                Link { text: "B"; strong: true; clicked => { root.format("*"); } }
-                                Link { text: "I"; clicked => { root.format("_"); } }
-                                Link { text: "S"; clicked => { root.format("~"); } }
-                                Link { text: "</>"; clicked => { root.format("`"); } }
-                                Link { text: "Quote"; clicked => { root.format("> "); } }
-                                Link { text: "List"; clicked => { root.format("- "); } }
-                            }
-                            if root.can-write: HorizontalLayout {
-                                padding-left: 4px;
-                                padding-right: 8px;
-                                padding-top: 4px;
-                                padding-bottom: 6px;
-                                spacing: 2px;
-                                IconButton { icon: "attach"; label: "Attach"; clicked => { root.menu-kind = "attach"; } y: (parent.height - self.height) / 2; }
-                                Rectangle {
-                                    horizontal-stretch: 1;
-                                    min-height: 44px;
-                                    background: Theme.surface;
-                                    border-radius: 22px;
-                                    HorizontalLayout {
-                                        padding-left: 16px;
-                                        padding-right: 4px;
-                                        spacing: 0px;
+                                        if !root.wide: Rectangle {
+                                            width: 38px * Theme.scale; height: self.width; y: (parent.height - self.height) / 2; border-radius: 10px; background: Theme.accent;
+                                            Text { text: root.server-initials; color: Theme.on-accent; font-weight: 800; font-size: Theme.fs; horizontal-alignment: center; vertical-alignment: center; }
+                                        }
                                         Rectangle {
                                             horizontal-stretch: 1;
-                                            if root.composer == "": Text { text: root.editing-id != "" ? "Editing message" : "Message"; color: Theme.muted; font-size: Theme.fs; vertical-alignment: center; }
-                                            ti := TextInput {
-                                                text <=> root.composer;
-                                                font-size: Theme.fs;
-                                                color: Theme.text;
-                                                single-line: true;
-                                                vertical-alignment: center;
-                                                accessible-label: "Message";
-                                                edited => { root.typing(); root.composer-edited(self.text); }
-                                                accepted => { root.send-composer(); }
+                                            accessible-role: button;
+                                            accessible-label: root.server-name + " menu";
+                                            HorizontalLayout {
+                                                spacing: 4px;
+                                                Text { text: root.server-name; font-size: Theme.fs-title; font-weight: 800; color: Theme.text; vertical-alignment: center; overflow: elide; }
+                                                if root.wide: Icon { name: "chevron-down"; size: 18px; tint: Theme.icon; y: (parent.height - self.height) / 2; }
+                                                Rectangle { horizontal-stretch: 1; }
                                             }
-                                            TouchArea { z: -1; clicked => { ti.focus(); } }
+                                            TouchArea { clicked => { if root.wide { root.menu-x = root.rail-w + 8px; root.menu-y = root.top-h + 48px * Theme.scale; } root.menu-kind = "server"; } }
                                         }
-                                        IconButton { icon: "aa"; label: "Formatting"; glyph: 22px; tint: root.formatting-open ? Theme.accent-text : Theme.icon; clicked => { root.formatting-open = !root.formatting-open; } y: (parent.height - self.height) / 2; width: 40px; }
-                                        IconButton { icon: "emoji"; label: "Emoji"; glyph: 22px; clicked => { root.picker-target = ""; root.menu-kind = "emoji"; } y: (parent.height - self.height) / 2; width: 40px; }
+                                        if root.lock-set: IconButton {
+                                            icon: root.lock-engaged ? "lock" : "unlock";
+                                            tint: Theme.icon-soft;
+                                            label: root.lock-engaged ? "App Lock, locked. Tap to unlock" : "App Lock, unlocked. Tap to lock";
+                                            clicked => { root.lock-tapped(); }
+                                            y: (parent.height - self.height) / 2;
+                                        }
+                                        if root.wide: ToolButton { icon: "edit"; label: "New message"; size: 34px * Theme.scale; y: (parent.height - self.height) / 2; clicked => { root.new-message(); } }
+                                        if !root.wide: IconButton { icon: "filter"; label: "Sort and filter the list"; clicked => { root.menu-kind = "overflow"; } y: (parent.height - self.height) / 2; }
                                     }
+                                    Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
                                 }
-                                if root.editing-id != "": IconButton { icon: "close"; label: "Cancel editing"; clicked => { root.editing-id = ""; root.composer = ""; } y: (parent.height - self.height) / 2; }
-                                Rectangle {
-                                    width: 48px;
-                                    height: 48px;
-                                    y: (parent.height - self.height) / 2;
-                                    accessible-role: button;
-                                    accessible-label: (root.composer != "" || !root.can-record) ? (root.editing-id != "" ? "Save" : "Send") : (root.recording ? "Stop recording" : "Record a voice message");
+                                if root.main-tab == "home" && !root.wide: Rectangle {
+                                    height: 56px;
                                     Rectangle {
-                                        width: 44px; height: 44px; border-radius: 22px;
-                                        background: root.recording ? Theme.danger : Theme.accent;
-                                        Icon { name: (root.composer != "" || !root.can-record) ? (root.editing-id != "" ? "check" : "send") : "mic"; size: 22px; tint: root.recording ? Theme.on-danger : Theme.on-accent; weight: 2px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+                                        x: 12px; y: 6px; width: parent.width - 24px; height: 44px;
+                                        border-radius: 22px;
+                                        background: Theme.surface;
+                                        accessible-role: button;
+                                        accessible-label: "Jump to or search";
+                                        HorizontalLayout {
+                                            padding-left: 16px; spacing: 10px;
+                                            Icon { name: "search"; size: 20px; tint: Theme.icon; y: (parent.height - self.height) / 2; }
+                                            Text { text: "Jump to or search..."; font-size: Theme.fs; color: Theme.muted; vertical-alignment: center; }
+                                        }
+                                        TouchArea { clicked => { root.open-search(); } }
                                     }
-                                    TouchArea { clicked => { if root.composer != "" || !root.can-record { root.send-composer(); } else { root.record-toggle(); } } }
+                                }
+                                if root.main-tab == "dms": Rectangle {
+                                    height: max(root.wide ? 52px : 60px, 44px * Theme.scale);
+                                    HorizontalLayout {
+                                        padding-left: 16px; padding-right: 6px; spacing: 6px;
+                                        Text { text: "Direct messages"; font-size: Theme.fs-title; font-weight: 800; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                                        if !root.wide && root.lock-set: IconButton { icon: root.lock-engaged ? "lock" : "unlock"; tint: Theme.icon-soft; label: root.lock-engaged ? "App Lock, locked. Tap to unlock" : "App Lock, unlocked. Tap to lock"; clicked => { root.lock-tapped(); } y: (parent.height - self.height) / 2; }
+                                        ToolButton { icon: "edit"; label: "New message"; size: 40px; y: (parent.height - self.height) / 2; clicked => { root.new-message(); } }
+                                    }
+                                    Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
+                                }
+                                if root.main-tab == "activity": VerticalLayout {
+                                    Rectangle {
+                                        height: max(root.wide ? 52px : 60px, 44px * Theme.scale);
+                                        HorizontalLayout {
+                                            padding-left: 16px; padding-right: 6px; spacing: 6px;
+                                            Text { text: "Activity"; font-size: Theme.fs-title; font-weight: 800; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
+                                            if root.activity-unread > 0: TextButton { text: "Mark all read"; clicked => { root.mark-activity-read(); } y: (parent.height - self.height) / 2; }
+                                        }
+                                    }
+                                    Flickable {
+                                        height: 46px;
+                                        content-width: achips.preferred-width;
+                                        achips := HorizontalLayout {
+                                            padding-left: 10px; padding-right: 10px; spacing: 6px; alignment: start;
+                                            for t[i] in ["All", "Mentions", "Threads", "Reactions"]: Pill { y: (parent.height - self.height) / 2; text: t; on: root.activity-filter == i; clicked => { root.activity-filter = i; root.activity-filter-changed(i); } }
+                                        }
+                                    }
+                                    Rectangle { height: 1px; background: Theme.line; }
+                                }
+                                if root.main-tab == "later": VerticalLayout {
+                                    Rectangle {
+                                        height: max(root.wide ? 52px : 60px, 44px * Theme.scale);
+                                        HorizontalLayout {
+                                            padding-left: 16px; padding-right: 6px; spacing: 6px;
+                                            Text { text: "Later"; font-size: Theme.fs-title; font-weight: 800; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
+                                            TextButton { text: "Labels"; clicked => { root.label-msg = ""; root.label-open = true; } y: (parent.height - self.height) / 2; }
+                                        }
+                                    }
+                                    Flickable {
+                                        height: 46px;
+                                        content-width: lchips.preferred-width;
+                                        lchips := HorizontalLayout {
+                                            padding-left: 12px; padding-right: 12px; spacing: 8px; alignment: start;
+                                            Pill { y: (parent.height - self.height) / 2; text: "All"; on: root.label-filter == ""; clicked => { root.label-filter = ""; root.label-filter-changed(""); } }
+                                            for l in root.labels: LabelChip { y: (parent.height - self.height) / 2; text: l.name; tint: l.tint; on: root.label-filter == l.id; clicked => { root.label-filter = l.id; root.label-filter-changed(l.id); } }
+                                        }
+                                    }
+                                    Rectangle { height: 1px; background: Theme.line; }
+                                }
+                                if root.main-tab == "you": AppBar { title: "You"; show-back: false; }
+                                if root.status != "" && root.status != "Connected" && root.status != "\u{0}done": Rectangle {
+                                    height: stt.preferred-height + 10px;
+                                    background: Theme.surface;
+                                    stt := Text { x: 16px; width: parent.width - 32px; text: root.status; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; vertical-alignment: center; }
+                                }
+
+                                // Home: the sidebar.
+                                if root.main-tab == "home" && root.side-rows.length == 0: EmptyState { vertical-stretch: 1; icon: "chat"; title: "No conversations yet"; hint: "Start a conversation with someone on your server."; action: "New message"; act => { root.new-message(); } }
+                                if root.main-tab == "home" && root.side-rows.length > 0: ListView {
+                                    vertical-stretch: 1;
+                                    for r[i] in root.side-rows: SideItem {
+                                        r: r;
+                                        wide: root.wide;
+                                        selected: r.kind == 1 && r.id == root.current-conv && (root.wide || root.show-chat);
+                                        clicked => { root.side-clicked(r.id, r.kind == 2 ? "link" : "conv"); if r.kind == 1 { root.show-chat = true; } }
+                                        toggle => { root.side-toggle(r.id); }
+                                        plus => { root.side-plus(r.plus); }
+                                        menu(x, y) => { root.menu-x = x; root.menu-y = y; root.open-conv-menu(r.id, r.title, r.favourite); }
+                                    }
+                                }
+                                // DMs.
+                                if root.main-tab == "dms" && root.dm-rows.length == 0: EmptyState { vertical-stretch: 1; icon: "chat"; title: "No direct messages yet"; hint: "Message a teammate privately."; action: "New message"; act => { root.new-message(); } }
+                                if root.main-tab == "dms" && root.dm-rows.length > 0: ListView {
+                                    vertical-stretch: 1;
+                                    for r[i] in root.dm-rows: DmRow {
+                                        r: r;
+                                        selected: r.id == root.current-conv && (root.wide || root.show-chat);
+                                        clicked => { root.side-clicked(r.id, "conv"); root.show-chat = true; }
+                                        menu(x, y) => { root.menu-x = x; root.menu-y = y; root.open-conv-menu(r.id, r.title, r.favourite); }
+                                    }
+                                }
+                                // Activity.
+                                if root.main-tab == "activity" && root.activity-rows.length == 0: EmptyState {
+                                    vertical-stretch: 1;
+                                    icon: "bell";
+                                    title: root.activity-filter == 0 ? "You're all caught up" : "Nothing here";
+                                    hint: "Mentions of you, reactions to your messages and replies in threads you follow show up here.";
+                                }
+                                if root.main-tab == "activity" && root.activity-rows.length > 0: ListView {
+                                    vertical-stretch: 1;
+                                    for a[i] in root.activity-rows: ActivityItem { a: a; clicked => { root.activity-clicked(a.conv, a.msg, a.root, a.id); if !root.wide { root.show-chat = true; } } }
+                                }
+                                // Later.
+                                if root.main-tab == "later" && root.saved-rows.length == 0: EmptyState {
+                                    vertical-stretch: 1;
+                                    icon: "bookmark";
+                                    title: root.label-filter == "" ? "Nothing saved for later" : "Nothing with this label";
+                                    hint: "Hover a message and choose the bookmark icon, or press and hold it on the phone and choose Save for later. Add labels to sort what you save.";
+                                }
+                                if root.main-tab == "later" && root.saved-rows.length > 0: ListView {
+                                    vertical-stretch: 1;
+                                    for s[i] in root.saved-rows: SavedCard {
+                                        s: s;
+                                        clicked => { root.later-clicked(s.conv, s.id); if !root.wide { root.show-chat = true; } }
+                                        label => { root.label-picker(s.id); }
+                                        remove => { root.unsave(s.id); }
+                                    }
+                                }
+                                // You / More.
+                                if root.main-tab == "you": ScrollView {
+                                    vertical-stretch: 1;
+                                    VerticalLayout {
+                                        padding: 16px;
+                                        padding-bottom: 32px;
+                                        spacing: 14px;
+                                        alignment: start;
+                                        Card {
+                                            VerticalLayout {
+                                                padding: 18px;
+                                                spacing: 4px;
+                                                HorizontalLayout { alignment: center; Avatar { initials: root.me-initials; tint: root.me-color; size: 72px * min(Theme.scale, 1.2); presence: root.presence-i; } }
+                                                Text { text: root.me-name; font-size: Theme.fs-large; font-weight: 700; color: Theme.text; horizontal-alignment: center; overflow: elide; }
+                                                if root.me-username != "": Text { text: "@" + root.me-username; font-size: Theme.fs; color: Theme.muted; horizontal-alignment: center; }
+                                                HorizontalLayout {
+                                                    alignment: center;
+                                                    padding-top: 6px;
+                                                    Rectangle {
+                                                        height: 36px * Theme.scale;
+                                                        width: ystl.preferred-width + 50px;
+                                                        border-radius: self.height / 2;
+                                                        background: Theme.surface-high;
+                                                        accessible-role: button;
+                                                        accessible-label: "Set status. Now " + ystl.text;
+                                                        Rectangle { x: 14px; y: (parent.height - self.height) / 2; width: 10px; height: 10px; border-radius: 5px; background: root.presence-pref == "dnd" ? Theme.danger : (root.presence-pref == "away" ? Theme.warn : Theme.ok); }
+                                                        ystl := Text { x: 32px; text: root.presence-pref == "dnd" ? "Do not disturb" : (root.presence-pref == "away" ? "Away" : "Active"); font-size: Theme.fs-small * 1.1; color: Theme.text; vertical-alignment: center; }
+                                                        TouchArea { clicked => { root.menu-kind = "pick-status"; } }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Card {
+                                            SettingRow { icon: "bell-off"; badge: #dc2626; title: "Pause notifications"; has-switch: true; on: root.presence-pref == "dnd"; toggled => { root.set-presence(self.on ? "dnd" : "auto"); } }
+                                            SettingRow { icon: "bookmark"; badge: #f59e0b; title: "Saved items (Later)"; summary: root.saved-rows.length > 0 ? "" + root.saved-rows.length : ""; clicked => { root.go-home-tab("later"); } }
+                                            SettingRow { icon: "thread"; badge: #0d9488; title: "Threads"; clicked => { root.open-threads(); } }
+                                            SettingRow { icon: "clock"; badge: #3b82f6; title: "Drafts & sent"; summary: root.scheduled-count > 0 ? root.scheduled-count + " scheduled" : ""; clicked => { root.open-drafts(); } divider: false; }
+                                        }
+                                        Card {
+                                            SettingRow { icon: "settings"; badge: #64748b; title: "Preferences"; clicked => { root.open-settings(); } }
+                                            SettingRow { icon: "lock"; badge: #16a34a; title: "App Lock"; summary: root.lock-set ? "On" : "Off"; clicked => { root.open-settings(); root.settings-page = "lock"; } divider: root.is-admin || root.sign-out-allowed; }
+                                            if root.is-admin: SettingRow { icon: "shield"; badge: #8b5cf6; title: "Admin panel"; summary: "Opens in your browser"; clicked => { root.open-admin-panel(); } divider: root.sign-out-allowed; }
+                                            if root.sign-out-allowed: SettingRow { icon: "devices"; badge: #3b82f6; title: "Devices"; clicked => { root.open-settings(); root.settings-page = "devices"; } divider: true; }
+                                            if root.sign-out-allowed: SettingRow { icon: "logout"; badge: Theme.danger; title: "Sign out"; danger: true; chevron: false; clicked => { root.confirm = "signout"; } divider: false; }
+                                        }
+                                        Text { text: "SuperChat " + root.version; font-size: Theme.fs-small; color: Theme.muted; horizontal-alignment: center; }
+                                    }
+                                }
+                                if !root.wide: BottomNav {
+                                    tab: root.main-tab;
+                                    activity-unread: root.activity-unread;
+                                    dm-unread: root.dm-unread;
+                                    picked(t) => { root.go-home-tab(t); }
+                                }
+                            }
+                            if !root.wide && root.main-tab == "home": Fab {
+                                icon: "edit";
+                                label: "New message";
+                                x: parent.width - self.width - 16px;
+                                y: parent.height - self.height - max(60px, 52px * Theme.scale) - 16px;
+                                clicked => { root.new-message(); }
+                            }
+                        }
+                        if root.wide: Rectangle { width: 1px; background: Theme.line; }
+
+                        // ---- conversation ----
+                        if (root.wide || root.show-chat) && !(root.thread-id != "" && !root.wide): VerticalLayout {
+                            horizontal-stretch: 1;
+                            min-width: 280px;
+                            // header
+                            Rectangle {
+                                height: max(root.wide ? 52px : 60px, 44px * Theme.scale);
+                                HorizontalLayout {
+                                    padding-left: root.wide ? 16px : 4px;
+                                    padding-right: 6px;
+                                    spacing: 6px;
+                                    if !root.wide: IconButton { icon: "back"; label: "Back to the conversation list"; clicked => { root.back-pressed(); } y: (parent.height - self.height) / 2; }
+                                    Rectangle {
+                                        horizontal-stretch: 1;
+                                        accessible-role: button;
+                                        accessible-label: root.current-title + ", conversation details";
+                                        HorizontalLayout {
+                                            spacing: 8px;
+                                            if root.current-conv != "" && root.current-kind == "channel": Icon { name: root.is-conv-locked(root.current-conv) ? "lock" : "hash"; size: 20px * Theme.scale; tint: Theme.icon; y: (parent.height - self.height) / 2; }
+                                            if root.current-conv != "" && root.current-kind == "group": Icon { name: "users"; size: 20px * Theme.scale; tint: Theme.icon; y: (parent.height - self.height) / 2; }
+                                            if root.current-conv != "" && (root.current-kind == "dm" || root.current-kind == "self"): Avatar { initials: root.current-initials; tint: root.current-color; size: 30px * Theme.scale; y: (parent.height - self.height) / 2; }
+                                            VerticalLayout {
+                                                alignment: center;
+                                                Text { text: root.current-title == "" ? "Choose a conversation" : root.current-title; font-size: Theme.fs * 1.12; font-weight: 800; color: Theme.text; overflow: elide; }
+                                                if root.typing-text != "" || (!root.wide && root.current-sub != ""): Text { text: root.typing-text != "" ? root.typing-text : root.current-sub; font-size: Theme.fs-small; color: root.typing-text != "" ? Theme.accent-text : Theme.muted; overflow: elide; }
+                                            }
+                                            if root.wide && root.current-conv != "": Icon { name: "chevron-down"; size: 16px; tint: Theme.icon-soft; y: (parent.height - self.height) / 2; }
+                                            Rectangle { horizontal-stretch: 1; }
+                                        }
+                                        if root.current-conv != "": TouchArea { clicked => { root.open-details(root.wide ? "about" : ""); } }
+                                    }
+                                    if root.wide && root.current-conv != "" && root.current-kind != "self": Rectangle {
+                                        width: hp.preferred-width + 16px;
+                                        height: 34px * Theme.scale;
+                                        y: (parent.height - self.height) / 2;
+                                        border-radius: Theme.r-sm;
+                                        border-width: 1px;
+                                        border-color: Theme.line;
+                                        background: hpa.has-hover ? Theme.row-hover : transparent;
+                                        accessible-role: button;
+                                        accessible-label: root.member-count + " members";
+                                        hp := HorizontalLayout {
+                                            padding-left: 8px; padding-right: 8px; spacing: 6px;
+                                            for p[i] in root.head-people: Avatar { initials: p.initials; tint: p.color; size: 22px * Theme.scale; y: (parent.height - self.height) / 2; }
+                                            Text { text: root.member-count; font-size: Theme.fs-small * 1.1; font-weight: 700; color: Theme.text; vertical-alignment: center; }
+                                        }
+                                        hpa := TouchArea { clicked => { root.open-details("members"); } }
+                                    }
+                                    if !root.wide && root.current-conv != "": IconButton { icon: "info"; label: "Conversation details"; clicked => { root.open-details(""); } y: (parent.height - self.height) / 2; }
+                                    if root.wide && root.current-conv != "": ToolButton { icon: "info"; label: "Conversation details"; size: 34px * Theme.scale; y: (parent.height - self.height) / 2; clicked => { root.open-details("about"); } }
+                                }
+                                Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
+                            }
+                            if root.wide && root.current-conv != "": HorizontalLayout {
+                                height: max(40px, 34px * Theme.scale);
+                                TabBar {
+                                    horizontal-stretch: 1;
+                                    tabs: root.is-bot-dm ? ["Messages", "Files", "Pins", "Bookmarks", "Home"] : ["Messages", "Files", "Pins", "Bookmarks"];
+                                    current: root.tab == 0 ? 0 : (root.tab == 1 ? 1 : (root.tab == 2 ? 2 : (root.tab == 4 ? 3 : 4)));
+                                    picked(i) => { root.set-tab(i == 0 ? 0 : (i == 1 ? 1 : (i == 2 ? 2 : (i == 3 ? 4 : 3)))); }
+                                }
+                            }
+                            if root.jump-open: HorizontalLayout {
+                                padding: 8px;
+                                spacing: 8px;
+                                LineEdit { text <=> root.jump-text; placeholder-text: "dd/mm/yyyy"; font-size: Theme.fs; accepted => { root.jump-date(root.jump-text); root.jump-open = false; } }
+                                PrimaryButton { text: "Go"; clicked => { root.jump-date(root.jump-text); root.jump-open = false; } }
+                            }
+
+                            if root.current-conv == "": EmptyState { vertical-stretch: 1; icon: "chat"; title: "Pick a conversation"; hint: "Choose a channel or direct message from the sidebar, or start a new message."; action: "New message"; act => { root.new-message(); } }
+                            // Files / Pins / Bookmarks / Home tabs (desktop).
+                            if root.wide && root.current-conv != "" && root.tab != 0: DetailsView {
+                                vertical-stretch: 1;
+                                page: root.tab == 1 ? "files" : (root.tab == 2 ? "pins" : (root.tab == 4 ? "bookmarks" : "home"));
+                                files: root.files; pins: root.pins; bookmarks: root.bookmarks; home: root.home;
+                                can-curate: root.can-curate;
+                                open-file(f) => { root.open-file(f); }
+                                open-pin(id, conv) => { root.row-clicked("pin", id, conv); root.tab = 0; }
+                                open-link(u) => { root.open-link(u); }
+                                add-bookmark => { root.bm-title = ""; root.bm-url = ""; root.bookmark-open = true; }
+                                home-action(k, id) => { root.home-action(k, id); }
+                            }
+                            if root.current-conv != "" && (root.tab == 0 || !root.wide): Rectangle {
+                                vertical-stretch: 1;
+                                if root.messages.length == 0: EmptyState { icon: "chat"; title: "This is the start of " + root.current-title; hint: "Say hello. Messages you send appear here for everyone in the conversation."; }
+                                ListView {
+                                    content-y <=> root.list-y;
+                                    changed visible-height => { root.list-vh = self.visible-height; }
+                                    changed content-height => { root.list-h = self.content-height; }
+                                    for m[i] in root.messages: MessageRow {
+                                        wide: root.wide;
+                                        quick: root.quick-emoji;
+                                        playing-id: root.playing-id;
+                                        m: m;
+                                        editing-id: root.editing-id;
+                                        edit-text <=> root.edit-text;
+                                        selected: root.menu-kind == "msg" && m.id == root.menu-msg;
+                                        actions(x, y) => { root.sel-msg = m; root.sel-in-thread = false; root.menu-msg = m.id; root.menu-x = x; root.menu-y = y; root.menu-kind = "msg"; }
+                                        react(e) => { root.react(m.id, e); }
+                                        more-reactions(x, y) => { root.menu-x = x; root.menu-y = y; root.picker-target = m.id; root.menu-kind = "emoji"; }
+                                        retry => { root.retry(m.id); }
+                                        open-thread => { root.open-thread(m.id); }
+                                        forward => { root.menu-msg = m.id; root.menu-kind = "forward"; }
+                                        save => { root.save-msg(m.id); }
+                                        play-audio(f) => { root.play-audio(f); }
+                                        open-file(f) => { root.open-file(f); }
+                                        open-link(l) => { root.open-link(l); }
+                                        form-action(b) => { root.form-action(m.id, b); }
+                                        edit-save(t) => { root.save-edit(m.id, t); root.editing-id = ""; }
+                                        edit-cancel => { root.editing-id = ""; }
+                                    }
+                                }
+                                if root.first-unread: Rectangle {
+                                    x: parent.width - self.width - 12px; y: 10px; width: fu.preferred-width + 28px; height: 32px; border-radius: 16px; background: Theme.accent;
+                                    fu := Text { text: "Jump to first unread"; color: Theme.on-accent; font-size: Theme.fs-small; font-weight: 700; }
+                                    TouchArea { clicked => { root.jump-unread(); } }
+                                }
+                            }
+                            if root.attach-open && (root.tab == 0 || !root.wide): HorizontalLayout {
+                                padding: 8px;
+                                spacing: 8px;
+                                LineEdit { placeholder-text: "Full path of the file (or drop / paste it here)"; font-size: Theme.fs; text <=> root.attach-path; accepted => { root.attach(root.attach-path); root.attach-path = ""; root.attach-open = false; } }
+                                GhostButton { text: "Browse"; clicked => { root.browse-file(); } }
+                                GhostButton { text: "Paste image"; clicked => { root.paste-image(); } }
+                                PrimaryButton { text: "Send file"; clicked => { root.attach(root.attach-path); root.attach-path = ""; root.attach-open = false; } }
+                            }
+                            if root.mentions.length > 0 && (root.tab == 0 || !root.wide): Rectangle {
+                                height: min(root.mentions.length, 4) * 44px * Theme.scale;
+                                background: Theme.surface;
+                                VerticalLayout {
+                                    for p in root.mentions: Rectangle {
+                                        height: 44px * Theme.scale;
+                                        background: mt.has-hover ? Theme.bubble-other : transparent;
+                                        HorizontalLayout {
+                                            padding-left: 14px;
+                                            spacing: 10px;
+                                            Avatar { initials: p.initials; tint: p.color; size: 28px * Theme.scale; y: (parent.height - self.height) / 2; }
+                                            Text { text: p.name + "  " + p.sub; font-size: Theme.fs; vertical-alignment: center; color: Theme.text; }
+                                        }
+                                        mt := TouchArea { clicked => { root.pick-mention(p.id); } }
+                                    }
+                                }
+                            }
+                            if root.emoji-sugg.length > 0 && (root.tab == 0 || !root.wide): Rectangle {
+                                height: 48px * Theme.scale;
+                                background: Theme.surface;
+                                HorizontalLayout {
+                                    padding-left: 12px; spacing: 4px; alignment: start;
+                                    for e in root.emoji-sugg: Rectangle {
+                                        width: 44px * Theme.scale;
+                                        background: es.has-hover ? Theme.bubble-other : transparent;
+                                        border-radius: Theme.r-sm;
+                                        accessible-role: button;
+                                        accessible-label: e.ch;
+                                        if e.has-img: Image { source: e.img; width: 26px * Theme.scale; height: 26px * Theme.scale; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+                                        if !e.has-img: Text { text: e.ch; font-size: 22px * Theme.scale; horizontal-alignment: center; vertical-alignment: center; }
+                                        es := TouchArea { clicked => { root.emoji-pick-sugg(e.ch); } }
+                                    }
+                                }
+                            }
+                            if root.current-conv != "" && (root.tab == 0 || !root.wide): VerticalLayout {
+                                padding-left: root.wide ? 16px : 6px;
+                                padding-right: root.wide ? 16px : 6px;
+                                padding-bottom: root.wide ? 12px : 4px;
+                                padding-top: 4px;
+                                if !root.can-write: Text { text: "You cannot write in this conversation."; color: Theme.muted; font-size: Theme.fs-small; horizontal-alignment: center; height: 40px; vertical-alignment: center; }
+                                if root.can-write: composer := Composer {
+                                    wide: root.wide;
+                                    text <=> root.composer;
+                                    placeholder: root.current-kind == "channel" ? "Message #" + root.current-title : "Message " + root.current-title;
+                                    recording: root.recording;
+                                    can-record: root.can-record;
+                                    formatting: root.formatting-open;
+                                    send => { root.send-composer(); }
+                                    edited(t) => { root.typing(); root.composer-edited(t); }
+                                    format(f) => { root.format(f); }
+                                    attach => { root.menu-kind = "attach"; }
+                                    emoji => { root.picker-target = ""; root.menu-kind = "emoji"; }
+                                    mention => { root.composer = root.composer + "@"; root.composer-edited(root.composer); self.focus-input(); }
+                                    schedule => { root.schedule-error = ""; root.schedule-when = ""; root.schedule-open = true; }
+                                    toggle-format => { root.formatting-open = !root.formatting-open; }
+                                    cancel-edit => { root.composer = ""; }
+                                    record-toggle => { root.record-toggle(); }
+                                    up-edit => { root.up-edit(); }
                                 }
                             }
                         }
-                    }
 
-                    // ---- thread panel ----
-                    if root.thread-id != "": Rectangle {
-                        width: root.wide ? 340px : root.width;
-                        background: Theme.bg;
-                        VerticalLayout {
-                            AppBar {
-                                title: "Thread";
-                                show-back: !root.thread-side;
-                                back => { root.back-pressed(); }
-                                if root.thread-side: IconButton { icon: "close"; label: "Close thread"; clicked => { root.close-thread(); } y: (parent.height - self.height) / 2; }
-                            }
-                            ScrollView {
-                                vertical-stretch: 1;
-                                VerticalLayout {
-                                    MessageRow {
-                                        playing-id: root.playing-id;
-                                        play-audio(f) => { root.play-audio(f); }
-                                        m: root.thread-root;
-                                        in-thread: true;
-                                        open-file(f) => { root.open-file(f); }
-                                        open-link(l) => { root.open-link(l); }
-                                    }
-                                    for m[i] in root.thread-messages: MessageRow {
-                                        playing-id: root.playing-id;
-                                        play-audio(f) => { root.play-audio(f); }
-                                        m: m;
-                                        in-thread: true;
-                                        tap-opens: root.wide;
-                                        selected: root.menu-kind == "msg" && m.id == root.menu-msg;
-                                        actions => { root.sel-msg = m; root.sel-in-thread = true; root.menu-msg = m.id; root.menu-kind = "msg"; }
-                                        react(e) => { root.react(m.id, e); }
-                                        retry => { root.retry(m.id); }
-                                        open-file(f) => { root.open-file(f); }
-                                        open-link(l) => { root.open-link(l); }
-                                    }
-                                }
-                            }
-                            if root.can-write: HorizontalLayout {
-                                padding-left: 12px;
-                                padding-right: 8px;
-                                padding-top: 4px;
-                                padding-bottom: 6px;
-                                spacing: 6px;
+                        // ---- thread panel (a side panel on desktop, a full screen on the phone) ----
+                        if root.thread-id != "": Rectangle {
+                            width: root.wide ? root.thread-w : root.width;
+                            background: Theme.bg;
+                            if root.wide: Rectangle { x: 0px; width: 1px; background: Theme.line; }
+                            VerticalLayout {
                                 Rectangle {
-                                    horizontal-stretch: 1;
-                                    min-height: 44px;
-                                    background: Theme.surface;
-                                    border-radius: 22px;
+                                    height: max(root.wide ? 52px : 56px, 42px * Theme.scale);
                                     HorizontalLayout {
-                                        padding-left: 16px;
-                                        padding-right: 8px;
-                                        Rectangle {
+                                        padding-left: root.wide ? 16px : 4px;
+                                        padding-right: 4px;
+                                        spacing: 6px;
+                                        if !root.wide: IconButton { icon: "back"; label: "Back"; clicked => { root.back-pressed(); } y: (parent.height - self.height) / 2; }
+                                        VerticalLayout {
+                                            alignment: center;
                                             horizontal-stretch: 1;
-                                            if root.thread-composer == "": Text { text: "Reply in thread"; color: Theme.muted; font-size: Theme.fs; vertical-alignment: center; }
-                                            tti := TextInput {
-                                                text <=> root.thread-composer;
-                                                font-size: Theme.fs;
-                                                color: Theme.text;
-                                                single-line: true;
-                                                vertical-alignment: center;
-                                                accessible-label: "Thread reply";
-                                                edited => { root.typing(); }
-                                                accepted => { root.thread-send(root.thread-composer); root.thread-composer = ""; }
-                                            }
-                                            TouchArea { z: -1; clicked => { tti.focus(); } }
+                                            Text { text: "Thread"; font-size: Theme.fs * 1.12; font-weight: 800; color: Theme.text; }
+                                            Text { text: root.thread-conv-title; font-size: Theme.fs-small; color: Theme.muted; overflow: elide; }
+                                        }
+                                        if root.wide: ToolButton { icon: "close"; label: "Close thread"; size: 34px * Theme.scale; y: (parent.height - self.height) / 2; clicked => { root.close-thread(); } }
+                                    }
+                                    Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
+                                }
+                                ScrollView {
+                                    vertical-stretch: 1;
+                                    VerticalLayout {
+                                        alignment: start;
+                                        MessageRow {
+                                            wide: root.wide;
+                                            quick: root.quick-emoji;
+                                            playing-id: root.playing-id;
+                                            m: root.thread-root;
+                                            in-thread: true;
+                                            play-audio(f) => { root.play-audio(f); }
+                                            open-file(f) => { root.open-file(f); }
+                                            open-link(l) => { root.open-link(l); }
+                                            react(e) => { root.react(root.thread-root.id, e); }
+                                            actions(x, y) => { root.sel-msg = root.thread-root; root.sel-in-thread = true; root.menu-msg = root.thread-root.id; root.menu-x = x; root.menu-y = y; root.menu-kind = "msg"; }
+                                            more-reactions(x, y) => { root.menu-x = x; root.menu-y = y; root.picker-target = root.thread-root.id; root.menu-kind = "emoji"; }
+                                            save => { root.save-msg(root.thread-root.id); }
+                                            forward => { root.menu-msg = root.thread-root.id; root.menu-kind = "forward"; }
+                                        }
+                                        if root.thread-messages.length > 0: HorizontalLayout {
+                                            padding-left: 14px; padding-right: 14px; spacing: 10px; height: 28px;
+                                            Text { text: root.thread-messages.length == 1 ? "1 reply" : root.thread-messages.length + " replies"; font-size: Theme.fs-small; color: Theme.muted; font-weight: 700; vertical-alignment: center; }
+                                            Rectangle { height: 1px; y: 14px; background: Theme.line; horizontal-stretch: 1; }
+                                        }
+                                        if root.thread-messages.length == 0: Text { text: "No replies yet. Be the first to reply."; font-size: Theme.fs; color: Theme.muted; padding: 16px; horizontal-alignment: center; }
+                                        for m[i] in root.thread-messages: MessageRow {
+                                            wide: root.wide;
+                                            quick: root.quick-emoji;
+                                            playing-id: root.playing-id;
+                                            m: m;
+                                            in-thread: true;
+                                            editing-id: root.editing-id;
+                                            edit-text <=> root.edit-text;
+                                            selected: root.menu-kind == "msg" && m.id == root.menu-msg;
+                                            actions(x, y) => { root.sel-msg = m; root.sel-in-thread = true; root.menu-msg = m.id; root.menu-x = x; root.menu-y = y; root.menu-kind = "msg"; }
+                                            react(e) => { root.react(m.id, e); }
+                                            more-reactions(x, y) => { root.menu-x = x; root.menu-y = y; root.picker-target = m.id; root.menu-kind = "emoji"; }
+                                            retry => { root.retry(m.id); }
+                                            save => { root.save-msg(m.id); }
+                                            forward => { root.menu-msg = m.id; root.menu-kind = "forward"; }
+                                            play-audio(f) => { root.play-audio(f); }
+                                            open-file(f) => { root.open-file(f); }
+                                            open-link(l) => { root.open-link(l); }
+                                            edit-save(t) => { root.save-edit(m.id, t); root.editing-id = ""; }
+                                            edit-cancel => { root.editing-id = ""; }
                                         }
                                     }
                                 }
-                                Rectangle {
-                                    width: 48px; height: 48px; y: (parent.height - self.height) / 2;
-                                    accessible-role: button; accessible-label: "Send reply";
-                                    Rectangle { width: 44px; height: 44px; border-radius: 22px; background: Theme.accent;
-                                        Icon { name: "send"; size: 22px; tint: Theme.on-accent; weight: 2px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; } }
-                                    TouchArea { clicked => { root.thread-send(root.thread-composer); root.thread-composer = ""; } }
+                                if root.can-write: VerticalLayout {
+                                    padding-left: root.wide ? 12px : 6px;
+                                    padding-right: root.wide ? 12px : 6px;
+                                    padding-bottom: root.wide ? 12px : 4px;
+                                    Composer {
+                                        wide: root.wide;
+                                        text <=> root.thread-composer;
+                                        placeholder: "Reply...";
+                                        allow-schedule: false;
+                                        also-label: root.current-kind == "channel" ? "Also send to #" + root.thread-conv-title : "Also send to " + root.thread-conv-title;
+                                        also-on <=> root.thread-also;
+                                        formatting: root.formatting-open;
+                                        send => { root.thread-send(root.thread-composer); root.thread-composer = ""; }
+                                        edited(t) => { root.typing(); }
+                                        format(f) => { root.format(f); }
+                                        attach => { root.menu-kind = "attach"; }
+                                        emoji => { root.picker-target = ""; root.menu-kind = "emoji"; }
+                                        mention => { root.thread-composer = root.thread-composer + "@"; }
+                                        toggle-format => { root.formatting-open = !root.formatting-open; }
+                                    }
+                                }
+                            }
+                            // Drag the left edge to resize the panel.
+                            if root.wide: Rectangle {
+                                x: 0px; width: 8px;
+                                TouchArea {
+                                    mouse-cursor: MouseCursor.col-resize;
+                                    moved => { root.thread-w = max(320px, min(640px, root.thread-w - (self.mouse-x - self.pressed-x))); }
                                 }
                             }
                         }
                     }
                 }
 
-                // ======================= full-screen pages =======================
+                // ======================= full-screen pages (below the top bar and beside the rail on desktop) =======================
+                pages := Rectangle {
+                    x: root.rail-w;
+                    y: root.top-h;
+                    width: parent.width - root.rail-w;
+                    height: parent.height - root.top-h;
+
                 // ---- search ----
                 if root.signed-in && root.screen == "search": Rectangle {
                     background: Theme.bg;
@@ -807,7 +1082,7 @@ export component AppWindow inherits Window {
                             padding-left: 4px; padding-right: 12px; spacing: 4px;
                             IconButton { icon: "back"; label: "Back"; clicked => { root.back-pressed(); } y: (parent.height - self.height) / 2; }
                             sfield := LineEdit {
-                                placeholder-text: "Search messages, files, people";
+                                placeholder-text: "Search " + root.server-name;
                                 font-size: Theme.fs;
                                 text <=> root.search-text;
                                 accessible-label: "Search text";
@@ -819,24 +1094,19 @@ export component AppWindow inherits Window {
                             if root.ai-on: PrimaryButton { text: "Ask"; clicked => { root.search(root.search-text); } y: (parent.height - self.height) / 2; }
                         }
                         Rectangle { height: 1px; background: Theme.line; }
-                        Flickable {
-                            height: 48px;
-                            content-width: chips.preferred-width;
-                            chips := HorizontalLayout {
-                                padding-left: 12px;
-                                padding-right: 12px;
-                                spacing: 8px;
-                                alignment: start;
-                                for chip in [{t: "from:", q: ""}, {t: "in:", q: ""}, {t: "before:", q: "dd/mm/yyyy"}, {t: "after:", q: "dd/mm/yyyy"}, {t: "has:file", q: "go"}, {t: "has:link", q: "go"}, {t: "has:reaction", q: "go"}]: Pill {
-                                    y: (parent.height - self.height) / 2;
-                                    text: chip.t;
-                                    clicked => {
-                                        root.search-text = root.search-text + (root.search-text == "" ? "" : " ") + chip.t + (chip.q == "go" ? "" : chip.q);
-                                        if chip.q == "go" { root.search(root.search-text); }
-                                        sfield.focus();
-                                    }
-                                }
+                        HorizontalLayout {
+                            height: 46px;
+                            padding-left: 12px; padding-right: 12px; spacing: 8px; alignment: start;
+                            for f in [{t: "From", k: "f-from"}, {t: "In", k: "f-in"}, {t: "Date", k: "f-date"}, {t: "Has", k: "f-has"}]: Pill {
+                                y: (parent.height - self.height) / 2;
+                                text: f.t + " v";
+                                clicked => { root.menu-x = self.absolute-position.x; root.menu-y = self.absolute-position.y + self.height + 4px; root.menu-kind = f.k; }
                             }
+                        }
+                        if root.search-text != "": TabBar {
+                            tabs: ["Messages", "Files", "People", "Channels"];
+                            current: root.search-tab;
+                            picked(i) => { root.search-tab = i; root.search(root.search-text); }
                         }
                         if root.ai-enabled: VerticalLayout {
                             padding-left: 16px;
@@ -864,6 +1134,7 @@ export component AppWindow inherits Window {
                                     height: 40px;
                                     HorizontalLayout { padding-left: 16px; padding-right: 16px; alignment: end; Link { text: "Save this search"; clicked => { root.save-search(root.search-text); } } }
                                 }
+                                if root.search-text != "" && root.results.length == 0: EmptyState { height: 220px; icon: "search"; title: "No results"; hint: "Try different words, or switch the tab above (Messages, Files, People, Channels)."; }
                                 for r[i] in root.results: Rectangle {
                                     height: (r.header != "" ? Theme.fs-small * 2.4 : 0px) + max(68px, 54px * Theme.scale);
                                     VerticalLayout {
@@ -880,7 +1151,12 @@ export component AppWindow inherits Window {
                                                     alignment: center;
                                                     horizontal-stretch: 1;
                                                     Text { text: r.title; font-size: Theme.fs-small; color: Theme.muted; overflow: elide; }
-                                                    Text { text: r.text; font-size: Theme.fs; color: Theme.text; overflow: elide; }
+                                                    HorizontalLayout {
+                                                        spacing: 0px;
+                                                        Text { text: r.pre; font-size: Theme.fs; color: Theme.text; overflow: elide; horizontal-stretch: r.hit == "" ? 1 : 0; }
+                                                        if r.hit != "": Rectangle { background: Theme.mention-bg; width: ht.preferred-width; ht := Text { text: r.hit; font-size: Theme.fs; font-weight: 800; color: Theme.text; } }
+                                                        if r.hit != "": Text { text: r.post; font-size: Theme.fs; color: Theme.text; overflow: elide; horizontal-stretch: 1; }
+                                                    }
                                                 }
                                             }
                                             rt := TouchArea { clicked => { root.result-clicked(r.kind, r.id, r.conv); } }
@@ -956,40 +1232,6 @@ export component AppWindow inherits Window {
                                         dr := TouchArea { clicked => { if r.kind != 0 { root.row-clicked("conv", r.conv, r.conv); } } }
                                     }
                                 }
-                            }
-                        }
-                    }
-                }
-
-                // ---- new chat ----
-                if root.signed-in && root.screen == "people": Rectangle {
-                    background: Theme.bg;
-                    TouchArea { }
-                    VerticalLayout {
-                        AppBar { title: "New chat"; back => { root.back-pressed(); } }
-                        HorizontalLayout {
-                            padding: 12px;
-                            LineEdit { text <=> root.people-text; placeholder-text: "Search people"; font-size: Theme.fs; accessible-label: "Search people"; edited(t) => { root.people-filter(t); } }
-                        }
-                        ScrollView {
-                            vertical-stretch: 1;
-                            VerticalLayout {
-                            alignment: start;
-                            if root.is-admin: SheetRow { icon: "hash"; text: "New channel"; clicked => { root.new-channel-name = ""; root.new-channel-open = true; } }
-                            for p[i] in root.people: Rectangle {
-                                height: max(64px, 52px * Theme.scale);
-                                background: pt.pressed ? Theme.bubble-other : transparent;
-                                HorizontalLayout {
-                                    padding-left: 16px; padding-right: 16px; spacing: 14px;
-                                    Avatar { initials: p.initials; tint: p.color; size: 42px * Theme.scale; y: (parent.height - self.height) / 2; }
-                                    VerticalLayout {
-                                        alignment: center;
-                                        Text { text: p.name; font-size: Theme.fs; color: Theme.text; }
-                                        if p.sub != "": Text { text: p.sub; font-size: Theme.fs-small; color: Theme.muted; }
-                                    }
-                                }
-                                pt := TouchArea { clicked => { root.start-dm(p.id); root.screen = ""; root.show-chat = true; } }
-                            }
                             }
                         }
                     }
@@ -1186,7 +1428,8 @@ export component AppWindow inherits Window {
                                         if root.settings-page == "lock": Card {
                                             VerticalLayout {
                                                 padding: 16px; spacing: 10px;
-                                                Text { text: root.lock-set ? "Conversations you lock are hidden until you enter your PIN. The PIN stays on this device." : "Set a 6-digit PIN to hide chosen conversations. The PIN stays on this device and cannot be recovered; if you forget it, ask your admin to reset your account."; font-size: Theme.fs-small * 1.05; color: Theme.muted; wrap: word-wrap; }
+                                                Text { text: "Locked conversations are hidden until you unlock with your PIN."; font-size: Theme.fs; font-weight: 700; color: Theme.text; wrap: word-wrap; }
+                                                Text { text: root.lock-set ? "Choose which conversations to lock below. The PIN stays on this device." : "Set a 6-digit PIN, then choose which conversations to lock. The PIN stays on this device and cannot be recovered; if you forget it, ask your admin to reset your account."; font-size: Theme.fs-small * 1.05; color: Theme.muted; wrap: word-wrap; }
                                                 if root.lock-set: LineEdit { text <=> root.lock-cur; input-type: password; placeholder-text: "Current PIN"; font-size: Theme.fs; accessible-label: "Current PIN"; edited(t) => { root.pin-edited("cur", t); } }
                                                 LineEdit { text <=> root.lock-new; input-type: password; placeholder-text: root.lock-set ? "New PIN (6 digits)" : "PIN (6 digits)"; font-size: Theme.fs; accessible-label: "New PIN"; edited(t) => { root.pin-edited("new", t); } }
                                                 LineEdit { text <=> root.lock-new2; input-type: password; placeholder-text: "Repeat the PIN"; font-size: Theme.fs; accessible-label: "Repeat the PIN"; edited(t) => { root.pin-edited("new2", t); } }
@@ -1196,6 +1439,23 @@ export component AppWindow inherits Window {
                                                     if !root.lock-set: PrimaryButton { text: "Turn on App Lock"; clicked => { root.lock-enable(); } }
                                                     if root.lock-set: PrimaryButton { text: "Change PIN"; clicked => { root.lock-change(); } }
                                                 }
+                                            }
+                                        }
+                                        if root.settings-page == "lock" && root.lock-set: Card {
+                                            VerticalLayout {
+                                                padding: 16px; spacing: 6px;
+                                                Text { text: "Locked conversations"; font-size: Theme.fs; font-weight: 700; color: Theme.text; }
+                                                if root.locked-convs.length == 0: Text { text: "None yet. Add a conversation to hide it until you unlock with your PIN."; font-size: Theme.fs-small * 1.05; color: Theme.muted; wrap: word-wrap; }
+                                                for c in root.locked-convs: Rectangle {
+                                                    height: max(48px, 40px * Theme.scale);
+                                                    HorizontalLayout {
+                                                        spacing: 10px;
+                                                        Icon { name: "lock"; size: 18px; tint: Theme.icon; y: (parent.height - self.height) / 2; }
+                                                        Text { text: c.title; font-size: Theme.fs; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                                                        ToolButton { icon: "close"; label: "Remove the lock from " + c.title; size: 44px; y: (parent.height - self.height) / 2; clicked => { root.lock-remove-conv(c.id); } }
+                                                    }
+                                                }
+                                                HorizontalLayout { alignment: start; PrimaryButton { text: "Lock a conversation"; clicked => { root.menu-kind = "lock-pick"; } } }
                                             }
                                         }
                                         if root.settings-page == "lock" && root.lock-set: Card {
@@ -1288,54 +1548,272 @@ export component AppWindow inherits Window {
                     }
                 }
 
-                // ======================= sheets (bottom sheets on phones) =======================
-                // ---- list menu (3 dots) ----
-                if root.menu-kind == "overflow": BottomSheet {
-                    wide: root.wide; menu: true;
+                    // ---- conversation details: a full page on the phone (the list, then one page per row) ----
+                    if root.info-open && root.current-conv != "" && !root.wide: Rectangle {
+                        background: Theme.bg;
+                        TouchArea { }
+                        VerticalLayout {
+                            AppBar {
+                                title: root.info-page == "" ? "Details" : (root.info-page == "about" ? "About" : (root.info-page == "members" ? "Members" : (root.info-page == "files" ? "Files" : (root.info-page == "pins" ? "Pins" : (root.info-page == "bookmarks" ? "Bookmarks" : "Home")))));
+                                subtitle: root.current-title;
+                                back => { root.back-pressed(); }
+                            }
+                            if root.info-page == "": ScrollView {
+                                vertical-stretch: 1;
+                                VerticalLayout {
+                                    padding: 16px;
+                                    padding-bottom: 32px;
+                                    spacing: 14px;
+                                    alignment: start;
+                                    Card {
+                                        VerticalLayout {
+                                            padding: 18px; spacing: 4px;
+                                            HorizontalLayout { alignment: center; Avatar { initials: root.current-initials; tint: root.current-color; size: 64px * min(Theme.scale, 1.2); } }
+                                            Text { text: (root.current-kind == "channel" ? "# " : "") + root.current-title; font-size: Theme.fs-large; font-weight: 800; color: Theme.text; horizontal-alignment: center; wrap: word-wrap; }
+                                            Text { text: root.current-sub; font-size: Theme.fs; color: Theme.muted; horizontal-alignment: center; wrap: word-wrap; }
+                                        }
+                                    }
+                                    Card {
+                                        SettingRow { icon: "info"; badge: #64748b; title: "About"; clicked => { root.open-details("about"); } }
+                                        SettingRow { icon: "users"; badge: #3b82f6; title: "Members"; summary: root.member-count + ""; clicked => { root.open-details("members"); } }
+                                        if root.can-manage: SettingRow { icon: "user-plus"; badge: #0dbd8b; title: "Add people"; clicked => { root.add-people(); } }
+                                        SettingRow { icon: "file"; badge: #0d9488; title: "Files"; clicked => { root.open-details("files"); } }
+                                        SettingRow { icon: "pin"; badge: #e8590c; title: "Pins"; clicked => { root.open-details("pins"); } }
+                                        SettingRow { icon: "bookmark"; badge: #8b5cf6; title: "Bookmarks"; clicked => { root.open-details("bookmarks"); } divider: root.is-bot-dm; }
+                                        if root.is-bot-dm: SettingRow { icon: "home"; badge: #f59e0b; title: "Home"; clicked => { root.open-details("home"); } divider: false; }
+                                    }
+                                    Card {
+                                        SettingRow { icon: "bell"; badge: #e8590c; title: "Notifications"; summary: root.current-notify; clicked => { root.menu-conv = root.current-conv; root.menu-kind = "notify"; } }
+                                        SettingRow { icon: "bell-off"; badge: #dc2626; title: "Mute"; summary: root.current-muted ? "Muted" : "Off"; clicked => { root.menu-conv = root.current-conv; root.menu-kind = "mute"; } }
+                                        SettingRow { icon: "star"; badge: #f59e0b; title: "Favourite"; has-switch: true; on: root.current-fav; toggled => { root.toggle-fav(root.current-conv); } }
+                                        SettingRow { icon: "lock"; badge: #16a34a; title: root.lock-set ? (root.is-conv-locked(root.current-conv) ? "Unlock this conversation" : "Lock conversation") : "Set up App Lock to lock conversations"; chevron: !root.lock-set; clicked => { if root.lock-set { root.toggle-conv-lock(root.current-conv); } else { root.open-lock-setup(); } } divider: false; }
+                                    }
+                                    Text { text: "Locked conversations are hidden until you unlock with your PIN."; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
+                                }
+                            }
+                            if root.info-page != "": DetailsView {
+                                vertical-stretch: 1;
+                                phone: true;
+                                page: root.info-page;
+                                title: root.current-title; kind: root.current-kind; topic: root.current-topic; created: root.current-created;
+                                member-count: root.member-count; members: root.members; files: root.files; pins: root.pins; bookmarks: root.bookmarks; home: root.home;
+                                can-manage: root.can-manage; can-curate: root.can-curate; is-admin: root.is-admin;
+                                is-channel: root.current-kind == "channel" || root.current-kind == "group";
+                                topic-edit <=> root.topic-edit;
+                                add-people => { root.add-people(); }
+                                remove-member(id, name) => { root.remove-person = id; root.remove-person-name = name; root.confirm = "remove-member"; }
+                                save-topic(t) => { root.save-topic(t); }
+                                open-file(f) => { root.open-file(f); }
+                                open-pin(id, conv) => { root.info-open = false; root.row-clicked("pin", id, conv); }
+                                open-link(u) => { root.open-link(u); }
+                                add-bookmark => { root.bm-title = ""; root.bm-url = ""; root.bookmark-open = true; }
+                                home-action(k, id) => { root.home-action(k, id); }
+                                open-members-of(x) => { root.open-details("members"); }
+                            }
+                        }
+                    }
+
+
+                }
+                    // ---- people picker (New message, Add people) ----
+                    if root.pp-open: ModalCard {
+                        title: root.pp-mode == "add-people" ? "Add people to " + root.current-title : "New message";
+                        wide: root.wide;
+                        ok-text: root.pp-mode == "add-people" ? (root.pp-count > 0 ? "Add " + root.pp-count : "Add") : "";
+                        ok-enabled: root.pp-count > 0;
+                        ok => { root.pp-confirm(); }
+                        dismiss => { root.pp-open = false; }
+                        if root.pp-mode == "new-message" && root.is-admin: SheetRow { icon: "hash"; text: "New channel"; clicked => { root.pp-open = false; root.new-channel-name = ""; root.new-channel-open = true; } }
+                        PeoplePicker {
+                            people: root.pp-list;
+                            query <=> root.pp-text;
+                            single: root.pp-mode == "new-message";
+                            hint: root.pp-mode == "add-people" ? "Search people to add" : "Search people";
+                            empty-text: root.pp-mode == "add-people" ? "Everyone is already here." : "No people found.";
+                            filter(t) => { root.pp-filter(t); }
+                            toggle(id) => { root.pp-toggle(id); }
+                        }
+                    }
+
+                    // ---- labels: choose labels for a saved message, or manage them all ----
+                    if root.label-open: ModalCard {
+                        title: root.label-msg == "" ? "Labels" : "Add label";
+                        wide: root.wide;
+                        dismiss => { root.label-open = false; }
+                        Text { text: root.label-msg == "" ? "Labels are private to you. Rename, recolour or delete them here." : "Pick the labels for this saved message."; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
+                        if root.labels.length == 0: Text { text: "No labels yet. Create one below."; font-size: Theme.fs; color: Theme.muted; }
+                        for l[i] in root.labels: Rectangle {
+                            height: max(48px, 40px * Theme.scale);
+                            border-radius: Theme.r-sm;
+                            background: lp.has-hover && root.label-msg != "" ? Theme.row-hover : transparent;
+                            accessible-role: checkbox;
+                            accessible-label: l.name;
+                            accessible-checked: l.on;
+                            HorizontalLayout {
+                                spacing: 10px;
+                                Rectangle { width: 18px; height: 18px; y: (parent.height - self.height) / 2; border-radius: 9px; background: l.tint; }
+                                if root.label-msg != "": Text { text: l.name; font-size: Theme.fs; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                                if root.label-msg == "": LineEdit { text: l.name; font-size: Theme.fs; accessible-label: "Label name"; accepted(t) => { root.label-rename(l.id, t); } horizontal-stretch: 1; y: (parent.height - self.height) / 2; }
+                                if root.label-msg != "" && l.on: Icon { name: "check"; tint: Theme.accent-text; y: (parent.height - self.height) / 2; }
+                                if root.label-msg == "": ToolButton { icon: "palette"; label: "Change colour"; size: 40px; y: (parent.height - self.height) / 2; clicked => { root.label-recolor(l.id); } }
+                                if root.label-msg == "": ToolButton { icon: "trash"; label: "Delete label " + l.name; tint: Theme.danger; size: 40px; y: (parent.height - self.height) / 2; clicked => { root.label-delete(l.id); } }
+                            }
+                            lp := TouchArea { enabled: root.label-msg != ""; clicked => { root.label-toggle(root.label-msg, l.id); } }
+                        }
+                        Text { text: "New label"; font-size: Theme.fs-small; color: Theme.muted; font-weight: 700; }
+                        HorizontalLayout {
+                            spacing: 6px;
+                            for c[i] in [#0dbd8b, #0467dd, #7b61ff, #e8590c, #d6336c, #868e96]: Rectangle {
+                                width: 30px; height: 30px; border-radius: 15px; background: c; y: (parent.height - self.height) / 2;
+                                border-width: root.label-new-color == i ? 3px : 0px; border-color: Theme.text;
+                                accessible-role: button; accessible-label: "Colour " + (i + 1);
+                                TouchArea { clicked => { root.label-new-color = i; } }
+                            }
+                        }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            LineEdit { text <=> root.label-new-name; placeholder-text: "Label name (up to 30 characters)"; font-size: Theme.fs; accessible-label: "New label name"; accepted(t) => { root.label-create(t, root.label-new-color); } }
+                            PrimaryButton { text: "Create"; enabled: root.label-new-name != ""; clicked => { root.label-create(root.label-new-name, root.label-new-color); } }
+                        }
+                    }
+
+                    // ---- keyboard shortcuts / help ----
+                    if root.menu-kind == "help": ModalCard {
+                        title: "Help and shortcuts";
+                        wide: root.wide;
+                        dismiss => { root.menu-kind = ""; }
+                        for s in [{k: "Ctrl+K", d: "Jump to a conversation"}, {k: "Ctrl+F", d: "Search"}, {k: "Alt+Up / Alt+Down", d: "Previous or next conversation"}, {k: "Alt+Left / Alt+Right", d: "Back and forward"}, {k: "Esc", d: "Close the top panel, or return to Messages"}, {k: "Enter", d: "Send; Shift+Enter adds a new line"}, {k: "Up (empty box)", d: "Edit your last message"}, {k: "Ctrl+Shift+A", d: "Open Activity"}, {k: "Ctrl+,", d: "Preferences"}, {k: "Ctrl and + / - / 0", d: "Zoom"}]: HorizontalLayout {
+                            spacing: 12px;
+                            Text { text: s.k; font-size: Theme.fs; font-weight: 700; color: Theme.text; min-width: 150px; }
+                            Text { text: s.d; font-size: Theme.fs; color: Theme.muted; wrap: word-wrap; horizontal-stretch: 1; }
+                        }
+                    }
+                    if root.menu-kind == "invite": ModalCard {
+                        title: "Invite people";
+                        wide: root.wide;
+                        dismiss => { root.menu-kind = ""; }
+                        Text { text: "SuperChat has no open sign-up. An admin creates each account in the admin panel and shares the one-time login link or QR code with the person."; font-size: Theme.fs; color: Theme.text; wrap: word-wrap; }
+                        if root.is-admin: PrimaryButton { text: "Open the admin panel"; clicked => { root.menu-kind = ""; root.open-admin-panel(); } }
+                        if !root.is-admin: Text { text: "Ask your admin to add the person."; font-size: Theme.fs; color: Theme.muted; }
+                    }
+
+                    // ---- conversation details modal (desktop): About, Members, Settings, Files, Pins ----
+                    if root.info-open && root.current-conv != "" && root.wide: Rectangle {
+                        background: Theme.scrim.with-alpha(0.5);
+                        TouchArea { clicked => { root.info-open = false; } }
+                        Rectangle {
+                            width: min(700px * max(1.0, Theme.scale * 0.9), parent.width - 48px);
+                            height: min(580px * max(1.0, Theme.scale * 0.9), parent.height - 48px);
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            background: Theme.sheet-bg;
+                            border-radius: Theme.r-lg;
+                            drop-shadow-blur: 24px;
+                            drop-shadow-color: #00000066;
+                            TouchArea { }
+                            VerticalLayout {
+                                HorizontalLayout {
+                                    height: max(60px, 48px * Theme.scale);
+                                    padding-left: 20px;
+                                    padding-right: 6px;
+                                    spacing: 8px;
+                                    if root.current-kind == "channel": Icon { name: root.is-conv-locked(root.current-conv) ? "lock" : "hash"; size: 22px; tint: Theme.icon; y: (parent.height - self.height) / 2; }
+                                    Text { text: root.current-title; font-size: Theme.fs-title; font-weight: 800; color: Theme.text; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                                    ToolButton { icon: "close"; label: "Close details"; size: 36px * Theme.scale; y: (parent.height - self.height) / 2; clicked => { root.info-open = false; } }
+                                }
+                                TabBar {
+                                    tabs: root.is-bot-dm ? ["About", "Members " + root.member-count, "Settings", "Files", "Pins", "Home"] : ["About", "Members " + root.member-count, "Settings", "Files", "Pins"];
+                                    current: root.info-page == "members" ? 1 : (root.info-page == "settings" ? 2 : (root.info-page == "files" ? 3 : (root.info-page == "pins" ? 4 : (root.info-page == "home" ? 5 : 0))));
+                                    picked(i) => { root.open-details(i == 0 ? "about" : (i == 1 ? "members" : (i == 2 ? "settings" : (i == 3 ? "files" : (i == 4 ? "pins" : "home"))))); }
+                                }
+                                DetailsView {
+                                    vertical-stretch: 1;
+                                    page: root.info-page == "" ? "about" : root.info-page;
+                                    title: root.current-title; kind: root.current-kind; topic: root.current-topic; created: root.current-created;
+                                    member-count: root.member-count; members: root.members; files: root.files; pins: root.pins; bookmarks: root.bookmarks; home: root.home;
+                                    can-manage: root.can-manage; can-curate: root.can-curate; is-admin: root.is-admin;
+                                    is-channel: root.current-kind == "channel" || root.current-kind == "group";
+                                    muted: root.current-muted; notify-text: root.current-notify; lock-set: root.lock-set; locked: root.is-conv-locked(root.current-conv); favourite: root.current-fav;
+                                    topic-edit <=> root.topic-edit;
+                                    add-people => { root.add-people(); }
+                                    remove-member(id, name) => { root.remove-person = id; root.remove-person-name = name; root.confirm = "remove-member"; }
+                                    save-topic(t) => { root.save-topic(t); }
+                                    open-file(f) => { root.open-file(f); }
+                                    open-pin(id, conv) => { root.info-open = false; root.row-clicked("pin", id, conv); }
+                                    open-link(u) => { root.open-link(u); }
+                                    add-bookmark => { root.bm-title = ""; root.bm-url = ""; root.bookmark-open = true; }
+                                    mute => { root.menu-conv = root.current-conv; root.menu-kind = "mute"; }
+                                    notify => { root.menu-conv = root.current-conv; root.menu-kind = "notify"; }
+                                    lock-toggle => { if root.lock-set { root.toggle-conv-lock(root.current-conv); } else { root.info-open = false; root.open-lock-setup(); } }
+                                    favourite-toggle => { root.toggle-fav(root.current-conv); }
+                                    section => { root.menu-conv = root.current-conv; root.menu-kind = "section"; }
+                                    mark-unread => { root.mark-unread(root.current-conv); root.info-open = false; }
+                                    home-action(k, id) => { root.home-action(k, id); }
+                                    open-members-of(x) => { root.open-details("members"); }
+                                }
+                            }
+                        }
+                    }
+
+                // ======================= menus and sheets (popovers on desktop, bottom sheets on phones) =======================
+                // ---- server menu (the server name in the sidebar) ----
+                if root.menu-kind == "server": BottomSheet {
+                    title: root.server-name; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y; menu-width: 300px;
                     dismiss => { root.menu-kind = ""; }
-                    SheetRow { icon: "settings"; text: "Settings"; clicked => { root.menu-kind = ""; root.open-settings(); } }
+                    SheetRow { icon: "settings"; text: "Preferences"; clicked => { root.menu-kind = ""; root.open-settings(); } }
+                    if root.is-admin: SheetRow { icon: "hash"; text: "Create channel"; clicked => { root.menu-kind = ""; root.new-channel-name = ""; root.new-channel-open = true; } }
+                    SheetRow { icon: "user-plus"; text: "Invite people"; clicked => { root.menu-kind = "invite"; } }
+                    if root.is-admin: SheetRow { icon: "shield"; text: "Admin panel"; clicked => { root.menu-kind = ""; root.open-admin-panel(); } }
                     SheetRow { icon: "thread"; text: "Threads"; clicked => { root.menu-kind = ""; root.open-threads(); } }
+                    SheetRow { icon: "clock"; text: root.scheduled-count > 0 ? "Drafts & sent (" + root.scheduled-count + " scheduled)" : "Drafts & sent"; clicked => { root.menu-kind = ""; root.open-drafts(); } }
+                    SheetRow { icon: "sort"; text: "Sort conversations"; detail: root.sort-alpha ? "A-Z" : "Activity"; chevron: true; clicked => { root.menu-kind = "sort"; } }
+                    SheetRow { icon: "mail"; text: "Unread only"; checked: root.unread-only; clicked => { root.unread-only = !root.unread-only; root.setting-changed("sort"); root.menu-kind = ""; } }
+                    SheetRow { icon: "bell-off"; text: "Hide muted"; checked: root.hide-muted; clicked => { root.hide-muted = !root.hide-muted; root.setting-changed("sort"); root.menu-kind = ""; } }
+                }
+                if root.menu-kind == "overflow": BottomSheet {
+                    title: "Sort and filter"; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y;
+                    dismiss => { root.menu-kind = ""; }
                     SheetRow { icon: "sort"; text: "Sort"; detail: root.sort-alpha ? "A-Z" : "Activity"; chevron: true; clicked => { root.menu-kind = "sort"; } }
                     SheetRow { icon: "mail"; text: "Unread only"; checked: root.unread-only; clicked => { root.unread-only = !root.unread-only; root.setting-changed("sort"); root.menu-kind = ""; } }
                     SheetRow { icon: "bell-off"; text: "Hide muted"; checked: root.hide-muted; clicked => { root.hide-muted = !root.hide-muted; root.setting-changed("sort"); root.menu-kind = ""; } }
+                    SheetRow { icon: "thread"; text: "Threads"; clicked => { root.menu-kind = ""; root.open-threads(); } }
                     SheetRow { icon: "clock"; text: root.scheduled-count > 0 ? "Drafts & sent (" + root.scheduled-count + " scheduled)" : "Drafts & sent"; clicked => { root.menu-kind = ""; root.open-drafts(); } }
                 }
                 if root.menu-kind == "sort": BottomSheet {
-                    title: "Sort conversations by"; wide: root.wide;
+                    title: "Sort conversations by"; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y;
                     dismiss => { root.menu-kind = ""; }
                     SheetRow { icon: "clock"; text: "Latest activity"; checked: !root.sort-alpha; clicked => { root.sort-alpha = false; root.setting-changed("sort"); root.menu-kind = ""; } }
                     SheetRow { icon: "sort"; text: "Name (A-Z)"; checked: root.sort-alpha; clicked => { root.sort-alpha = true; root.setting-changed("sort"); root.menu-kind = ""; } }
                 }
 
-                // ---- chat 3-dot menu ----
-                if root.menu-kind == "chat-menu": BottomSheet {
-                    wide: root.wide; menu: true;
+                // ---- profile menu (your avatar at the bottom of the rail) ----
+                if root.menu-kind == "profile": BottomSheet {
+                    title: root.me-name; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y; menu-width: 280px;
                     dismiss => { root.menu-kind = ""; }
-                    SheetRow { icon: "search"; text: "Search"; clicked => { root.menu-kind = ""; root.open-search(); } }
-                    SheetRow { icon: "info"; text: "Chat info and members"; clicked => { root.open-info(0); } }
-                    SheetRow { icon: "file"; text: "Files"; clicked => { root.open-info(1); } }
-                    SheetRow { icon: "pin"; text: "Pins"; clicked => { root.open-info(2); } }
-                    SheetRow { icon: "bookmark"; text: "Bookmarks"; clicked => { root.open-info(3); } }
-                    if root.is-bot-dm: SheetRow { icon: "home"; text: "Home"; clicked => { root.open-info(4); } }
-                    SheetRow { icon: "calendar"; text: "Go to date"; clicked => { root.menu-kind = ""; root.jump-open = true; } }
-                    SheetRow { icon: "bell-off"; text: "Mute"; chevron: true; clicked => { root.menu-conv = root.current-conv; root.menu-kind = "mute"; } }
-                    if root.lock-set: SheetRow { icon: "lock"; text: root.is-conv-locked(root.current-conv) ? "Remove lock from this conversation" : "Lock this conversation"; clicked => { root.toggle-conv-lock(root.current-conv); root.menu-kind = ""; } }
-                    SheetRow { icon: "settings"; text: "Options"; chevron: true; clicked => { root.open-conv-menu(root.current-conv, root.current-title, root.current-fav); } }
+                    SheetRow { icon: "check"; text: "Active"; checked: root.presence-pref == "auto"; clicked => { root.set-presence("auto"); root.menu-kind = ""; } }
+                    SheetRow { icon: "clock"; text: "Set yourself as away"; checked: root.presence-pref == "away"; clicked => { root.set-presence("away"); root.menu-kind = ""; } }
+                    SheetRow { icon: "bell-off"; text: "Pause notifications"; detail: root.presence-pref == "dnd" ? "On" : ""; checked: root.presence-pref == "dnd"; clicked => { root.set-presence(root.presence-pref == "dnd" ? "auto" : "dnd"); root.menu-kind = ""; } }
+                    SheetRow { icon: "person"; text: "Profile"; clicked => { root.menu-kind = ""; root.open-settings(); root.settings-page = "account"; } }
+                    SheetRow { icon: "settings"; text: "Preferences"; clicked => { root.menu-kind = ""; root.open-settings(); } }
+                    SheetRow { icon: "lock"; text: "App Lock"; clicked => { root.menu-kind = ""; root.open-settings(); root.settings-page = "lock"; } }
+                    if root.sign-out-allowed: SheetRow { icon: "logout"; text: "Sign out"; danger: true; clicked => { root.menu-kind = ""; root.confirm = "signout"; } }
                 }
 
-                // ---- conversation options ----
+                // ---- conversation context menu (right click / long press / hover button) ----
                 if root.menu-kind == "conv": BottomSheet {
-                    title: root.menu-title; wide: root.wide;
+                    title: root.menu-title; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y; menu-width: 300px;
                     dismiss => { root.menu-kind = ""; }
-                    SheetRow { icon: "star"; text: root.menu-fav ? "Remove from favourites" : "Add to favourites"; clicked => { root.toggle-fav(root.menu-conv); root.menu-kind = ""; } }
-                    if root.lock-set: SheetRow { icon: "lock"; text: root.is-conv-locked(root.menu-conv) ? "Remove lock from this conversation" : "Lock this conversation"; clicked => { root.toggle-conv-lock(root.menu-conv); root.menu-kind = ""; } }
+                    SheetRow { icon: "mark-read"; text: "Mark as read"; clicked => { root.mark-read(root.menu-conv); root.menu-kind = ""; } }
                     SheetRow { icon: "mail"; text: "Mark as unread"; clicked => { root.mark-unread(root.menu-conv); root.menu-kind = ""; } }
+                    SheetRow { icon: "star"; text: root.menu-fav ? "Remove from favourites" : "Star (add to favourites)"; clicked => { root.toggle-fav(root.menu-conv); root.menu-kind = ""; } }
                     SheetRow { icon: "bell-off"; text: "Mute"; chevron: true; clicked => { root.menu-kind = "mute"; } }
                     SheetRow { icon: "bell"; text: "Notify me about"; chevron: true; clicked => { root.menu-kind = "notify"; } }
                     SheetRow { icon: "hash"; text: "Move to section"; chevron: true; clicked => { root.menu-kind = "section"; } }
+                    SheetRow { icon: "lock"; text: root.lock-set ? (root.is-conv-locked(root.menu-conv) ? "Remove lock from this conversation" : "Lock conversation") : "Set up App Lock to lock conversations"; clicked => { if root.lock-set { root.toggle-conv-lock(root.menu-conv); root.menu-kind = ""; } else { root.menu-kind = ""; root.open-lock-setup(); } } }
+                    SheetRow { icon: "info"; text: "View details"; clicked => { root.menu-kind = ""; root.select-conv(root.menu-conv); root.show-chat = true; root.open-details(root.wide ? "about" : ""); } }
                 }
                 if root.menu-kind == "mute": BottomSheet {
-                    title: "Mute notifications"; wide: root.wide;
+                    title: "Mute notifications"; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y;
                     dismiss => { root.menu-kind = ""; }
                     SheetRow { icon: "clock"; text: "For 1 hour"; clicked => { root.mute(root.menu-conv, "1h"); root.menu-kind = ""; } }
                     SheetRow { icon: "clock"; text: "For 8 hours"; clicked => { root.mute(root.menu-conv, "8h"); root.menu-kind = ""; } }
@@ -1344,17 +1822,23 @@ export component AppWindow inherits Window {
                     SheetRow { icon: "bell"; text: "Unmute"; clicked => { root.mute(root.menu-conv, "off"); root.menu-kind = ""; } }
                 }
                 if root.menu-kind == "notify": BottomSheet {
-                    title: "Notify me about"; wide: root.wide;
+                    title: "Notify me about"; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y;
                     dismiss => { root.menu-kind = ""; }
                     SheetRow { icon: "bell"; text: "All messages"; clicked => { root.notify-level(root.menu-conv, "all"); root.menu-kind = ""; } }
                     SheetRow { icon: "person"; text: "Mentions only"; clicked => { root.notify-level(root.menu-conv, "mentions"); root.menu-kind = ""; } }
                     SheetRow { icon: "bell-off"; text: "Nothing"; clicked => { root.notify-level(root.menu-conv, "nothing"); root.menu-kind = ""; } }
                 }
                 if root.menu-kind == "section": BottomSheet {
-                    title: "Move to section"; wide: root.wide;
+                    title: "Move to section"; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y;
                     dismiss => { root.menu-kind = ""; }
                     SheetRow { icon: "hash"; text: "No section"; clicked => { root.set-section(root.menu-conv, ""); root.menu-kind = ""; } }
                     for s in root.sections: SheetRow { icon: "hash"; text: s.title; clicked => { root.set-section(root.menu-conv, s.id); root.menu-kind = ""; } }
+                    Rectangle { height: 1px; background: Theme.line; }
+                    HorizontalLayout {
+                        padding: 8px; padding-left: 20px; spacing: 8px;
+                        LineEdit { text <=> root.new-section-name; placeholder-text: "New section name"; font-size: Theme.fs; accessible-label: "New section name"; accepted(t) => { root.new-section(t); root.set-section(root.menu-conv, ""); root.new-section-name = ""; root.menu-kind = ""; } }
+                        GhostButton { text: "Create"; clicked => { root.new-section(root.new-section-name); root.new-section-name = ""; root.menu-kind = ""; } }
+                    }
                 }
 
                 // ---- forward / share ----
@@ -1364,7 +1848,7 @@ export component AppWindow inherits Window {
                     if root.menu-kind == "share" && root.share-text != "": Text { x: 20px; text: root.share-text; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; overflow: elide; }
                     for c in root.conversations: Rectangle {
                         height: 56px * Theme.scale;
-                        background: fw.pressed ? Theme.bubble-other : transparent;
+                        background: fw.pressed ? Theme.bubble-other : (fw.has-hover ? Theme.row-hover : transparent);
                         HorizontalLayout {
                             padding-left: 20px; spacing: 14px;
                             Avatar { initials: c.initials; tint: c.color; size: 36px * Theme.scale; y: (parent.height - self.height) / 2; }
@@ -1376,39 +1860,43 @@ export component AppWindow inherits Window {
 
                 // ---- message actions: quick reactions on top ----
                 if root.menu-kind == "msg": BottomSheet {
-                    wide: root.wide;
+                    wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y; menu-width: 300px;
                     dismiss => { root.menu-kind = ""; }
                     Rectangle {
                         height: 60px;
                         HorizontalLayout {
                             padding-left: 12px; padding-right: 12px; spacing: 4px; alignment: center;
                             for e in root.quick-emoji: Rectangle {
-                                width: 46px; height: 46px; y: (parent.height - self.height) / 2; border-radius: 23px;
+                                width: 40px; height: 40px; y: (parent.height - self.height) / 2; border-radius: 20px;
                                 background: qa.pressed ? Theme.bubble-other : Theme.surface;
                                 accessible-role: button; accessible-label: "React " + e.ch;
-                                if e.has-img: Image { source: e.img; width: 28px; height: 28px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
-                                if !e.has-img: Text { text: e.ch; font-size: 22px; }
+                                if e.has-img: Image { source: e.img; width: 24px; height: 24px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+                                if !e.has-img: Text { text: e.ch; font-size: 20px; }
                                 qa := TouchArea { clicked => { root.react(root.menu-msg, e.ch); root.menu-kind = ""; } }
                             }
                             Rectangle {
-                                width: 46px; height: 46px; y: (parent.height - self.height) / 2; border-radius: 23px; background: Theme.surface;
+                                width: 40px; height: 40px; y: (parent.height - self.height) / 2; border-radius: 20px; background: Theme.surface;
                                 accessible-role: button; accessible-label: "More reactions";
-                                Icon { name: "plus"; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+                                Icon { name: "emoji"; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
                                 TouchArea { clicked => { root.picker-target = root.menu-msg; root.menu-kind = "emoji"; } }
                             }
                         }
                     }
                     if !root.sel-in-thread: SheetRow { icon: "thread"; text: "Reply in thread"; clicked => { root.menu-kind = ""; root.open-thread(root.menu-msg); } }
-                    if root.sel-msg.can-edit: SheetRow { icon: "edit"; text: "Edit"; clicked => { root.composer = root.begin-edit(root.menu-msg); root.editing-id = root.menu-msg; root.menu-kind = ""; } }
                     SheetRow { icon: "forward"; text: "Forward"; clicked => { root.menu-kind = "forward"; } }
-                    SheetRow { icon: "copy"; text: "Copy link"; clicked => { root.copy-link(root.menu-msg); root.menu-kind = ""; } }
-                    if root.sel-msg.can-pin && !root.sel-in-thread: SheetRow { icon: "pin"; text: root.sel-msg.pinned ? "Unpin" : "Pin"; clicked => { root.pin(root.menu-msg); root.menu-kind = ""; } }
-                    if root.sel-msg.mine: SheetRow { icon: "trash"; text: "Delete"; danger: true; clicked => { root.menu-kind = ""; root.confirm = "delete-msg"; } }
+                    SheetRow { icon: "bookmark"; text: root.sel-msg.saved ? "Remove from saved items" : "Save for later"; clicked => { root.save-msg(root.menu-msg); root.menu-kind = ""; } }
+                    SheetRow { icon: "tag"; text: "Add label..."; clicked => { root.menu-kind = ""; root.label-picker(root.menu-msg); } }
+                    SheetRow { icon: "copy"; text: "Copy text"; clicked => { root.copy-text(root.menu-msg); root.menu-kind = ""; } }
+                    SheetRow { icon: "link"; text: "Copy link"; clicked => { root.copy-link(root.menu-msg); root.menu-kind = ""; } }
+                    if root.sel-msg.can-pin && !root.sel-in-thread: SheetRow { icon: "pin"; text: root.sel-msg.pinned ? "Unpin" : "Pin to conversation"; clicked => { root.pin(root.menu-msg); root.menu-kind = ""; } }
+                    SheetRow { icon: "mail"; text: "Mark unread"; clicked => { root.mark-unread(root.current-conv); root.menu-kind = ""; } }
+                    if root.sel-msg.can-edit: SheetRow { icon: "edit"; text: "Edit message"; clicked => { root.menu-kind = ""; root.start-edit(root.menu-msg); } }
+                    if root.sel-msg.mine: SheetRow { icon: "trash"; text: "Delete message"; danger: true; clicked => { root.menu-kind = ""; root.confirm = "delete-msg"; } }
                 }
 
                 // ---- attach ----
                 if root.menu-kind == "attach": BottomSheet {
-                    title: "Attach"; wide: root.wide;
+                    title: "Attach"; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y;
                     dismiss => { root.menu-kind = ""; }
                     SheetRow { icon: "file"; text: "File"; clicked => { root.menu-kind = ""; root.attach-open = true; root.browse-file(); } }
                     SheetRow { icon: "image"; text: "Paste image from clipboard"; clicked => { root.menu-kind = ""; root.paste-image(); } }
@@ -1431,7 +1919,7 @@ export component AppWindow inherits Window {
                                 y: floor(i / grid.cols) * grid.cell;
                                 width: grid.cell;
                                 height: grid.cell;
-                                background: ea.pressed ? Theme.bubble-other : transparent;
+                                background: ea.pressed ? Theme.bubble-other : (ea.has-hover ? Theme.row-hover : transparent);
                                 accessible-role: button;
                                 accessible-label: e.ch;
                                 if e.has-img: Image { source: e.img; width: 28px * Theme.scale; height: 28px * Theme.scale; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
@@ -1467,17 +1955,50 @@ export component AppWindow inherits Window {
                 if root.menu-kind == "pick-status": BottomSheet {
                     title: "Status"; wide: root.wide;
                     dismiss => { root.menu-kind = ""; }
-                    SheetRow { icon: "check"; text: "Online"; checked: root.presence-pref == "auto"; clicked => { root.set-presence("auto"); root.menu-kind = ""; } }
+                    SheetRow { icon: "check"; text: "Active"; checked: root.presence-pref == "auto"; clicked => { root.set-presence("auto"); root.menu-kind = ""; } }
                     SheetRow { icon: "clock"; text: "Away"; checked: root.presence-pref == "away"; clicked => { root.set-presence("away"); root.menu-kind = ""; } }
-                    SheetRow { icon: "bell-off"; text: "Do not disturb"; checked: root.presence-pref == "dnd"; clicked => { root.set-presence("dnd"); root.menu-kind = ""; } }
+                    SheetRow { icon: "bell-off"; text: "Do not disturb (pause notifications)"; checked: root.presence-pref == "dnd"; clicked => { root.set-presence("dnd"); root.menu-kind = ""; } }
+                }
+                // ---- App Lock: add a conversation to the locked list ----
+                if root.menu-kind == "lock-pick": BottomSheet {
+                    title: "Lock a conversation"; wide: root.wide;
+                    dismiss => { root.menu-kind = ""; }
+                    if root.lockable-convs.length == 0: Text { x: 20px; text: "Every conversation is already locked."; font-size: Theme.fs; color: Theme.muted; }
+                    for c in root.lockable-convs: SheetRow { icon: "lock"; text: c.title; clicked => { root.lock-add(c.id); root.menu-kind = ""; } }
                 }
 
+                // ---- search filters ----
+                if root.menu-kind == "f-from": BottomSheet {
+                    title: "From"; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y;
+                    dismiss => { root.menu-kind = ""; }
+                    for p in root.filter-people: SheetRow { icon: "person"; text: p.name; detail: p.sub; clicked => { root.search-filter("from", p.id); root.menu-kind = ""; } }
+                }
+                if root.menu-kind == "f-in": BottomSheet {
+                    title: "In"; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y;
+                    dismiss => { root.menu-kind = ""; }
+                    for c in root.filter-chans: SheetRow { icon: "hash"; text: c.title; clicked => { root.search-filter("in", c.id); root.menu-kind = ""; } }
+                }
+                if root.menu-kind == "f-date": BottomSheet {
+                    title: "Date"; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y;
+                    dismiss => { root.menu-kind = ""; }
+                    SheetRow { icon: "calendar"; text: "Today"; clicked => { root.search-filter("date", "today"); root.menu-kind = ""; } }
+                    SheetRow { icon: "calendar"; text: "Yesterday"; clicked => { root.search-filter("date", "yesterday"); root.menu-kind = ""; } }
+                    SheetRow { icon: "calendar"; text: "Last 7 days"; clicked => { root.search-filter("date", "7d"); root.menu-kind = ""; } }
+                    SheetRow { icon: "calendar"; text: "Last 30 days"; clicked => { root.search-filter("date", "30d"); root.menu-kind = ""; } }
+                }
+                if root.menu-kind == "f-has": BottomSheet {
+                    title: "Has"; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y;
+                    dismiss => { root.menu-kind = ""; }
+                    SheetRow { icon: "file"; text: "A file"; clicked => { root.search-filter("has", "file"); root.menu-kind = ""; } }
+                    SheetRow { icon: "link"; text: "A link"; clicked => { root.search-filter("has", "link"); root.menu-kind = ""; } }
+                    SheetRow { icon: "emoji"; text: "A reaction"; clicked => { root.search-filter("has", "reaction"); root.menu-kind = ""; } }
+                }
                 // ======================= dialogs =======================
                 // ---- confirmations ----
                 if root.confirm != "": AlertDialog {
-                    title: root.confirm == "signout" ? "Sign out?" : (root.confirm == "signout-all" ? "Sign out of all devices?" : (root.confirm == "revoke-others" ? "Sign out other devices?" : (root.confirm == "delete-msg" ? "Delete this message?" : "Remove the PIN?")));
-                    message: root.confirm == "signout" ? "You will need to sign in again on this device." : (root.confirm == "signout-all" ? "Every device, including this one, is signed out and its local chats are removed." : (root.confirm == "revoke-others" ? "Every other device is signed out. This one stays signed in." : (root.confirm == "delete-msg" ? "This removes the message for everyone in the conversation." : "App Lock turns off and locked conversations become visible again.")));
-                    ok-text: root.confirm == "delete-msg" ? "Delete" : (root.confirm == "remove-pin" ? "Remove" : "Sign out");
+                    title: root.confirm == "remove-member" ? "Remove " + root.remove-person-name + "?" : root.confirm == "signout" ? "Sign out?" : (root.confirm == "signout-all" ? "Sign out of all devices?" : (root.confirm == "revoke-others" ? "Sign out other devices?" : (root.confirm == "delete-msg" ? "Delete this message?" : "Remove the PIN?")));
+                    message: root.confirm == "remove-member" ? "They lose access to this conversation. You can add them again later." : root.confirm == "signout" ? "You will need to sign in again on this device." : (root.confirm == "signout-all" ? "Every device, including this one, is signed out and its local chats are removed." : (root.confirm == "revoke-others" ? "Every other device is signed out. This one stays signed in." : (root.confirm == "delete-msg" ? "This removes the message for everyone in the conversation." : "App Lock turns off and locked conversations become visible again.")));
+                    ok-text: root.confirm == "remove-member" ? "Remove" : root.confirm == "delete-msg" ? "Delete" : (root.confirm == "remove-pin" ? "Remove" : "Sign out");
                     danger: true;
                     cancel => { root.confirm = ""; }
                     ok => {
@@ -1486,6 +2007,7 @@ export component AppWindow inherits Window {
                         if root.confirm == "revoke-others" { root.revoke-others(); }
                         if root.confirm == "delete-msg" { root.delete-msg(root.menu-msg); }
                         if root.confirm == "remove-pin" { root.lock-remove(); }
+                        if root.confirm == "remove-member" { root.remove-member(root.remove-person); }
                         root.confirm = "";
                     }
                 }

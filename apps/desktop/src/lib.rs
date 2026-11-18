@@ -385,6 +385,8 @@ impl Media for DesktopMedia {
 
 /// Text and files handed to the app by the OS share sheet (E-06).
 pub type Shared = (String, Vec<PathBuf>);
+/// Files chosen in the Android picker or recorded in the app, with the media details the shell computed (M-31).
+pub type Picked = Vec<(PathBuf, Option<proto::AttachmentMeta>)>;
 
 /// Platform hooks (Android supplies its own data dir and system font scale).
 pub struct Hooks {
@@ -408,6 +410,11 @@ pub struct Hooks {
     pub take_login_error: Box<dyn Fn() -> Option<String>>,
     /// A one-time login link that arrived from outside (QR scan result, a tapped superchat:// link), once.
     pub take_login_link: Box<dyn Fn() -> Option<String>>,
+    /// Android: opens the system picker or the camera. `mode` is "files" (any file), "gallery" (photos and videos) or "video"
+    /// (record a clip); the second argument is the server's upload limit in bytes. The result comes back through `take_picked`.
+    pub pick_media: Option<Box<dyn Fn(&str, u64)>>,
+    /// What the picker or the video recorder returned (files copied into the app's cache, with their media details), once.
+    pub take_picked: Box<dyn Fn() -> Option<Picked>>,
     /// Android: the clipboard text (desktop pastes through the text field itself).
     pub clipboard: Option<Box<dyn Fn() -> Option<String>>>,
 }
@@ -427,6 +434,8 @@ impl Hooks {
             take_shared: Box::new(|| None),
             scan_qr: None,
             scan_image: None,
+            pick_media: None,
+            take_picked: Box::new(|| None),
             take_login_error: Box::new(|| None),
             take_login_link: Box::new(|| None),
             clipboard: None,
@@ -1256,6 +1265,19 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
     ui.set_is_android(hooks.is_android);
     ui.set_can_record(hooks.media.can_record());
     ui.set_can_scan(hooks.scan_qr.is_some());
+    ui.set_can_camera(hooks.pick_media.is_some());
+    if !hooks.is_android {
+        let wk = ui.as_weak();
+        // Looking for ffmpeg starts a process: do it off the UI thread.
+        std::thread::spawn(move || {
+            let on = platform::screen_record_available();
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(ui) = wk.upgrade() {
+                    ui.set_can_screen_record(on);
+                }
+            });
+        });
+    }
     nav::register(&ui);
     {
         let wk = ui.as_weak();
@@ -1723,6 +1745,15 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                     ui.set_menu_kind("share".into());
                 }
             }
+            if let Some(items) = (h2.take_picked)() {
+                let cur = sh.lock().unwrap().current.clone();
+                if ui.get_signed_in() && !cur.is_empty() && !items.is_empty() {
+                    match c.send_files_with(&cur, "", &items, SendOptions::default()) {
+                        Ok(_) => toast(&ui, &format!("Sending {} file{}...", items.len(), if items.len() == 1 { "" } else { "s" })),
+                        Err(e) => toast(&ui, &e.to_string()),
+                    }
+                }
+            }
             if let Some(err) = (h2.take_login_error)() {
                 if !ui.get_signed_in() {
                     ui.set_use_link(true);
@@ -2088,6 +2119,84 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                 toast(&ui, "That file was not found.");
             }
         });
+        let (c2, h2) = (client.clone(), hooks.clone());
+        ui.on_pick_media(move |mode| {
+            if let Some(f) = &h2.pick_media {
+                let limit = c2.server_meta().map(|m| m.max_upload_bytes).unwrap_or(100 * 1024 * 1024);
+                f(mode.as_str(), limit);
+            }
+        });
+        let wk = ui.as_weak();
+        ui.on_browse_video(move || {
+            let wk = wk.clone();
+            std::thread::spawn(move || {
+                if let Some(p) = platform::pick_video() {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = wk.upgrade() {
+                            ui.set_attach_path(p.display().to_string().into());
+                        }
+                    });
+                }
+            });
+        });
+        // Recording the screen with ffmpeg (desktop, when it is installed).
+        {
+            let rec: std::rc::Rc<std::cell::RefCell<Option<platform::ScreenRecorder>>> = Default::default();
+            let (wk, c2, sh2, rec2) = (ui.as_weak(), client.clone(), osh.clone(), rec.clone());
+            ui.on_screen_record_toggle(move || {
+                let Some(ui) = wk.upgrade() else { return };
+                let taken = rec2.borrow_mut().take();
+                match taken {
+                    None => {
+                        let (dir, cur) = {
+                            let g = sh2.lock().unwrap();
+                            (g.data_dir.join("recordings"), g.current.clone())
+                        };
+                        if cur.is_empty() {
+                            toast(&ui, "Open a conversation first.");
+                            return;
+                        }
+                        let limit = c2.server_meta().map(|m| m.max_upload_bytes).unwrap_or(100 * 1024 * 1024);
+                        match platform::screen_record_start(&dir, limit) {
+                            Some(r) => {
+                                ui.set_screen_rec_text("Recording screen  0:00".into());
+                                *rec2.borrow_mut() = Some(r);
+                            }
+                            None => toast(&ui, "The screen could not be recorded."),
+                        }
+                    }
+                    Some(r) => {
+                        ui.set_screen_rec_text("".into());
+                        let cur = sh2.lock().unwrap().current.clone();
+                        let (wk2, c3) = (ui.as_weak(), c2.clone());
+                        // Finishing the file takes a moment: not on the UI thread.
+                        std::thread::spawn(move || {
+                            let p = platform::screen_record_stop(r);
+                            let _ = slint::invoke_from_event_loop(move || {
+                                let Some(ui) = wk2.upgrade() else { return };
+                                match p {
+                                    Some(p) if !cur.is_empty() => match c3.send_files(&cur, "", &[p], SendOptions::default()) {
+                                        Ok(_) => toast(&ui, "Screen recording sent"),
+                                        Err(e) => toast(&ui, &e.to_string()),
+                                    },
+                                    _ => toast(&ui, "Nothing was recorded."),
+                                }
+                            });
+                        });
+                    }
+                }
+            });
+            // The clock in the red pill.
+            let (wk, rec3) = (ui.as_weak(), rec);
+            let t = slint::Timer::default();
+            t.start(slint::TimerMode::Repeated, Duration::from_millis(500), move || {
+                let Some(ui) = wk.upgrade() else { return };
+                if let Some(r) = rec3.borrow().as_ref() {
+                    ui.set_screen_rec_text(format!("Recording screen  {}", model::clock_text(r.started.elapsed().as_millis() as u32)).into());
+                }
+            });
+            std::mem::forget(t);
+        }
         let wk = ui.as_weak();
         ui.on_browse_file(move || {
             let wk = wk.clone();

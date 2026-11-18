@@ -425,8 +425,8 @@ export component Composer inherits Rectangle {
     callback send;
     callback edited(string);
     callback format(string);
-    callback attach;
-    callback emoji;
+    callback attach(length, length);
+    callback emoji(length, length);
     callback mention;
     callback schedule;
     callback toggle-format;
@@ -525,7 +525,7 @@ export component Composer inherits Rectangle {
                 }
                 HorizontalLayout {
                     spacing: 2px;
-                    if !root.wide: ToolButton { icon: "plus"; label: "Attach"; size: 44px; glyph: 24px; y: (parent.height - self.height) / 2; clicked => { root.attach(); } }
+                    if !root.wide: ToolButton { icon: "plus"; label: "Attach"; size: 44px; glyph: 24px; y: (parent.height - self.height) / 2; clicked => { root.attach(self.absolute-position.x, self.absolute-position.y); } }
                     Rectangle {
                         horizontal-stretch: 1;
                         height: max(root.wide ? 28px * Theme.scale : 40px, min(ti.preferred-height + 8px, 170px * Theme.scale));
@@ -574,7 +574,7 @@ export component Composer inherits Rectangle {
                         }
                     }
                     if !root.wide: ToolButton { icon: "aa"; label: "Formatting"; size: 40px; glyph: 22px; active: root.formatting; y: (parent.height - self.height) / 2; clicked => { root.toggle-format(); } }
-                    if !root.wide: ToolButton { icon: "emoji"; label: "Emoji"; size: 40px; glyph: 22px; y: (parent.height - self.height) / 2; clicked => { root.emoji(); } }
+                    if !root.wide: ToolButton { icon: "emoji"; label: "Emoji"; size: 40px; glyph: 22px; y: (parent.height - self.height) / 2; clicked => { root.emoji(self.absolute-position.x, self.absolute-position.y); } }
                     if !root.wide && root.editing: ToolButton { icon: "close"; label: "Cancel editing"; size: 40px; glyph: 22px; y: (parent.height - self.height) / 2; clicked => { root.cancel-edit(); } }
                     if !root.wide: Rectangle {
                         width: 48px;
@@ -594,8 +594,8 @@ export component Composer inherits Rectangle {
                 if root.wide: HorizontalLayout {
                     spacing: 0px;
                     height: 32px * Theme.scale;
-                    ToolButton { icon: "plus"; label: "Attach files, record, or schedule"; size: 30px * Theme.scale; glyph: 20px; clicked => { root.attach(); } }
-                    ToolButton { icon: "emoji"; label: "Emoji"; size: 30px * Theme.scale; clicked => { root.emoji(); } }
+                    ToolButton { icon: "plus"; label: "Attach files, record, or schedule"; size: 30px * Theme.scale; glyph: 20px; clicked => { root.attach(self.absolute-position.x, self.absolute-position.y); } }
+                    ToolButton { icon: "emoji"; label: "Emoji"; size: 30px * Theme.scale; clicked => { root.emoji(self.absolute-position.x, self.absolute-position.y); } }
                     ToolButton { icon: "at"; label: "Mention someone"; size: 30px * Theme.scale; clicked => { root.mention(); } }
                     if root.can-record: ToolButton { icon: "mic"; label: root.recording ? "Stop recording" : "Record a voice message"; tint: root.recording ? Theme.danger : Theme.icon; size: 30px * Theme.scale; clicked => { root.record-toggle(); } }
                     Rectangle { horizontal-stretch: 1; }

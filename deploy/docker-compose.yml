@@ -59,10 +59,15 @@ services:
     image: binwiederhier/ntfy:latest
     restart: unless-stopped
     command: serve
+    environment:
+      # Only needed for iOS and for links in the web app; Android wake-ups work without it.
+      NTFY_BASE_URL: ${NTFY_BASE_URL:-}
     volumes:
       - ntfy-data:/var/lib/ntfy
     ports:
-      - "127.0.0.1:2586:80"
+      # Bound to the host's loopback by default: put it behind Caddy/HTTPS (or set NTFY_BIND_ADDR=0.0.0.0 on a trusted
+      # network) before phones outside the server can reach it. Then set ATOMIC_NTFY_URL to the address phones use.
+      - "${NTFY_BIND_ADDR:-127.0.0.1}:${NTFY_PORT:-2586}:80"
 
   minio:
     profiles: ["minio"]

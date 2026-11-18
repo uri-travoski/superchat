@@ -303,3 +303,33 @@ async fn pdf_gets_a_server_drawn_first_page_preview_and_broken_pdfs_fall_back_to
     gone.id = format!("{}x", gone.id);
     assert!(alice.fetch_pdf_thumb(&gone).await.is_err());
 }
+
+/// M-31: a video that is sent from the desktop gets its duration, size and a poster frame before it is uploaded
+/// (needs ffmpeg; skipped where it is not installed), and the recipient sees them without downloading the file.
+#[tokio::test(flavor = "multi_thread")]
+async fn video_clip_carries_duration_size_and_poster_to_the_recipient() {
+    if std::process::Command::new("ffmpeg").arg("-version").output().is_err() {
+        eprintln!("ffmpeg not installed; skipped");
+        return;
+    }
+    let s = TestServer::start().await;
+    let (alice_id, alice) = s.user("alice").await;
+    let (bob_id, bob) = s.user("bob").await;
+    let ch = make_channel(&s, "clips", &[&alice_id, &bob_id]).await;
+    wait_conv(&alice, &ch).await;
+    wait_conv(&bob, &ch).await;
+    let p = s.dir.path().join("clip.mp4");
+    let ok = std::process::Command::new("ffmpeg")
+        .args(["-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=480x270:rate=10:duration=3", "-pix_fmt", "yuv420p"])
+        .arg(&p)
+        .status()
+        .unwrap()
+        .success();
+    assert!(ok);
+    alice.send_files(&ch, "", &[p], SendOptions::default()).unwrap();
+    let m = wait_until_msg(&bob, &ch, |m| !m.attachments.is_empty()).await;
+    let meta = m.attachments[0].meta.clone().expect("details reached the recipient");
+    assert!((meta.duration_ms.unwrap() as i64 - 3000).abs() < 300);
+    assert_eq!((meta.width, meta.height), (Some(480), Some(270)));
+    assert!(meta.poster_b64.as_ref().map(|p| p.len() > 200).unwrap_or(false));
+}

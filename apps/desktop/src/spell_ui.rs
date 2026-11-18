@@ -6,7 +6,7 @@
 
 use super::{AppWindow, Sh};
 use client_core::spell::{self, Speller};
-use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
+use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;

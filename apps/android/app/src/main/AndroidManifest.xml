@@ -65,6 +65,12 @@
             android:exported="false"
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
 
+        <activity
+            android:name=".MediaActivity"
+            android:exported="false"
+            android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|smallestScreenSize|uiMode|fontScale|density"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
+
         <service
             android:name=".SyncService"
             android:exported="false"

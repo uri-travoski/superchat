@@ -409,7 +409,15 @@ impl Client {
                 }
             }
             let ct = guess_content_type(&name);
-            let media_meta = given.clone().or_else(|| if ct.starts_with("audio/") { crate::media::analyze_audio(p) } else { None });
+            let media_meta = given.clone().or_else(|| {
+                if ct.starts_with("audio/") {
+                    crate::media::analyze_audio(p)
+                } else if ct.starts_with("video/") {
+                    crate::media::analyze_video(p)
+                } else {
+                    None
+                }
+            });
             files.push(OutFile { path: p.to_string_lossy().to_string(), content_type: ct, name, size: meta.len(), uploaded_id: None, meta: media_meta });
         }
         self.send(conv_id, body, files, opts)

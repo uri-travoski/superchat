@@ -44,6 +44,8 @@ object Native {
     @JvmStatic external fun nativeBackground(background: Boolean)
     /** System Back: true when the UI closed something (popup, page, chat); false when nothing is left to close. */
     @JvmStatic external fun nativeBack(): Boolean
+    /** Files from the picker or the video recorder: paths and one JSON line of media details per path, both newline separated. */
+    @JvmStatic external fun nativePicked(paths: String, metas: String)
     /** Tells the login screen why a scan could not be done (shown as text, never silent). */
     @JvmStatic external fun nativeLoginError(message: String)
 
@@ -158,6 +160,18 @@ object Native {
             } catch (e: Exception) {
                 android.util.Log.e("atomic", "scanner failed to start", e)
                 nativeLoginError("The scanner could not start: ${e.message}. Paste the link instead.")
+            }
+        }
+    }
+
+    /** M-31: opens the file picker ("files"), the photo picker ("gallery") or the video recorder ("video"); `limit` is the upload limit in bytes. */
+    @JvmStatic fun pickMedia(mode: String, limit: Long) {
+        val a = activity ?: return
+        a.runOnUiThread {
+            try {
+                a.startActivity(Intent(a, MediaActivity::class.java).putExtra("mode", mode).putExtra("limit", limit))
+            } catch (e: Exception) {
+                android.util.Log.e("atomic", "media screen failed to start", e)
             }
         }
     }

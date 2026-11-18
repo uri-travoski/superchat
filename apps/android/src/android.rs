@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 static VM: OnceLock<JavaVM> = OnceLock::new();
 static NATIVE: OnceLock<GlobalRef> = OnceLock::new();
 static SHARED: Mutex<Option<Shared>> = Mutex::new(None);
+static PICKED: Mutex<Option<atomic_ui::Picked>> = Mutex::new(None);
 static LOGIN_LINK: Mutex<Option<String>> = Mutex::new(None);
 static LOGIN_ERROR: Mutex<Option<String>> = Mutex::new(None);
 
@@ -222,6 +223,14 @@ fn android_main(app: slint::android::AndroidApp) {
         take_shared: Box::new(|| SHARED.lock().ok().and_then(|mut g| g.take())),
         scan_qr: Some(Box::new(|| call_scanner("scanQr"))),
         scan_image: Some(Box::new(|| call_scanner("scanImage"))),
+        pick_media: Some(Box::new(|mode, limit| {
+            let _ = with_env(|env, c| {
+                let m = env.new_string(mode).ok()?;
+                env.call_static_method(c, "pickMedia", "(Ljava/lang/String;J)V", &[JValue::Object(&m), JValue::Long(limit as i64)]).ok()?;
+                Some(())
+            });
+        })),
+        take_picked: Box::new(|| PICKED.lock().ok().and_then(|mut g| g.take())),
         take_login_error: Box::new(|| LOGIN_ERROR.lock().ok().and_then(|mut g| g.take())),
         take_login_link: Box::new(|| LOGIN_LINK.lock().ok().and_then(|mut g| g.take())),
         clipboard: Some(Box::new(|| call_string("clipboardText", "").filter(|s| !s.is_empty()))),
@@ -324,6 +333,25 @@ pub extern "system" fn Java_app_superchat_Native_nativeShare(mut env: JNIEnv, _c
     let files: Vec<PathBuf> = jstr(&mut env, &files).lines().filter(|l| !l.is_empty()).map(PathBuf::from).collect();
     if let Ok(mut g) = SHARED.lock() {
         *g = Some((text, files));
+    }
+}
+
+/// Files from the picker or the video recorder (M-31), with one JSON line of media details per file (empty when none).
+#[no_mangle]
+pub extern "system" fn Java_app_superchat_Native_nativePicked(mut env: JNIEnv, _c: JClass, paths: JString, metas: JString) {
+    let paths = jstr(&mut env, &paths);
+    let metas = jstr(&mut env, &metas);
+    let mut metas = metas.split('\n');
+    let items: atomic_ui::Picked = paths
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(|p| {
+            let m = metas.next().unwrap_or("");
+            (PathBuf::from(p), if m.is_empty() { None } else { serde_json::from_str::<proto::AttachmentMeta>(m).ok().filter(|m| m.valid()) })
+        })
+        .collect();
+    if let Ok(mut g) = PICKED.lock() {
+        *g = Some(items);
     }
 }
 

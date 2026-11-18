@@ -14,6 +14,52 @@ use symphonia::core::probe::Hint;
 
 pub const PEAK_COUNT: usize = 64;
 
+/// M-31: duration, size and a poster frame (a small JPEG of the first frame) of a video, read with `ffmpeg` when it is
+/// installed. Without ffmpeg (Windows, most desktops) the video is still sent, as a plain file card. Android computes
+/// the same details in the app (MediaMetadataRetriever) and hands them over, so this is the desktop path.
+pub fn analyze_video(path: &Path) -> Option<AttachmentMeta> {
+    use base64::Engine;
+    use std::process::{Command, Stdio};
+    let ffmpeg = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
+    // Duration and size come from the stream summary that ffmpeg prints on stderr.
+    let info = Command::new(ffmpeg).args(["-hide_banner", "-nostdin", "-i"]).arg(path).stdin(Stdio::null()).stdout(Stdio::null()).output().ok()?;
+    let text = String::from_utf8_lossy(&info.stderr).to_string();
+    let duration_ms = text.split("Duration: ").nth(1).and_then(|r| r.split(',').next()).and_then(|t| {
+        let mut p = t.trim().split(':');
+        let (h, m, s) = (p.next()?.parse::<f64>().ok()?, p.next()?.parse::<f64>().ok()?, p.next()?.parse::<f64>().ok()?);
+        Some(((h * 3600.0 + m * 60.0 + s) * 1000.0) as u32)
+    });
+    let (mut width, mut height) = (None, None);
+    if let Some(line) = text.lines().find(|l| l.contains("Video:")) {
+        // "... Video: h264 (High), yuv420p(...), 1280x720 [SAR 1:1 DAR 16:9], 30 fps ..."
+        for tok in line.split([' ', ',']) {
+            if let Some((w, h)) = tok.split_once('x') {
+                if let (Ok(w), Ok(h)) = (w.parse::<u32>(), h.parse::<u32>()) {
+                    if w >= 16 && h >= 16 {
+                        (width, height) = (Some(w), Some(h));
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    // The poster: the first frame (or one second in for clips that start black), 320 px wide.
+    let at = duration_ms.map(|d| if d > 3000 { "1" } else { "0" }).unwrap_or("0");
+    let jpg = Command::new(ffmpeg)
+        .args(["-hide_banner", "-nostdin", "-loglevel", "error", "-ss", at, "-i"])
+        .arg(path)
+        .args(["-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "6", "-f", "mjpeg", "-"])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    let poster_b64 = (jpg.status.success() && !jpg.stdout.is_empty() && jpg.stdout.len() <= 40 * 1024).then(|| base64::engine::general_purpose::STANDARD.encode(&jpg.stdout));
+    if duration_ms.is_none() && poster_b64.is_none() {
+        return None;
+    }
+    Some(AttachmentMeta { duration_ms, peaks: vec![], width, height, poster_b64 })
+}
+
 /// Duration and waveform of an audio file, `None` when it cannot be decoded.
 pub fn analyze_audio(path: &Path) -> Option<AttachmentMeta> {
     let file = std::fs::File::open(path).ok()?;
@@ -115,6 +161,30 @@ mod tests {
             v.extend_from_slice(&s.to_le_bytes());
         }
         v
+    }
+
+    #[test]
+    fn video_details_come_from_ffmpeg_when_it_is_installed() {
+        if std::process::Command::new("ffmpeg").arg("-version").output().is_err() {
+            eprintln!("ffmpeg not installed; skipped");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("sc-vid-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("clip.mp4");
+        let ok = std::process::Command::new("ffmpeg")
+            .args(["-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=10:duration=2", "-pix_fmt", "yuv420p"])
+            .arg(&f)
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        assert!(ok);
+        let m = analyze_video(&f).expect("details");
+        assert!((m.duration_ms.unwrap() as i64 - 2000).abs() < 200, "{:?}", m.duration_ms);
+        assert_eq!((m.width, m.height), (Some(640), Some(360)));
+        assert!(m.valid());
+        assert!(m.poster_b64.is_some());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

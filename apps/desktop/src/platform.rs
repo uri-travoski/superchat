@@ -8,6 +8,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 /// Tokens in the user's keyring (GNOME Keyring, KWallet via the Secret Service API).
 pub struct KeyringStore;
@@ -176,17 +177,37 @@ pub fn copy_text(t: &str) -> bool {
 
 /// Native file chooser through zenity or kdialog; None when cancelled or neither is installed.
 pub fn pick_file() -> Option<PathBuf> {
+    pick_file_of(false)
+}
+
+/// The same chooser, showing video files first (M-31 "Upload video").
+pub fn pick_video() -> Option<PathBuf> {
+    pick_file_of(true)
+}
+
+fn pick_file_of(video: bool) -> Option<PathBuf> {
     #[cfg(windows)]
     {
-        let script = "Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.OpenFileDialog; if ($d.ShowDialog() -eq 'OK') { $d.FileName }";
-        if let Ok(o) = Command::new("powershell").args(["-NoProfile", "-Command", script]).stderr(Stdio::null()).output() {
+        let filter = if video { "$d.Filter = 'Videos|*.mp4;*.mkv;*.webm;*.mov;*.avi;*.m4v|All files|*.*';" } else { "" };
+        let script = format!("Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.OpenFileDialog; {filter} if ($d.ShowDialog() -eq 'OK') {{ $d.FileName }}");
+        if let Ok(o) = Command::new("powershell").args(["-NoProfile", "-Command", &script]).stderr(Stdio::null()).output() {
             let p = String::from_utf8_lossy(&o.stdout).trim().to_string();
             return if p.is_empty() { None } else { Some(PathBuf::from(p)) };
         }
         return None;
     }
     #[cfg(not(windows))]
-    for (bin, args) in [("zenity", vec!["--file-selection", "--title=Choose a file to send"]), ("kdialog", vec!["--getopenfilename", "."])] {
+    for (bin, args) in [
+        (
+            "zenity",
+            if video {
+                vec!["--file-selection", "--title=Choose a video to send", "--file-filter=Videos | *.mp4 *.mkv *.webm *.mov *.avi *.m4v", "--file-filter=All files | *"]
+            } else {
+                vec!["--file-selection", "--title=Choose a file to send"]
+            },
+        ),
+        ("kdialog", if video { vec!["--getopenfilename", ".", "*.mp4 *.mkv *.webm *.mov *.avi *.m4v|Videos"] } else { vec!["--getopenfilename", "."] }),
+    ] {
         if let Ok(o) = Command::new(bin).args(&args).stderr(Stdio::null()).output() {
             if o.status.success() {
                 let p = String::from_utf8_lossy(&o.stdout).trim().to_string();
@@ -295,4 +316,72 @@ pub fn play_audio(p: &Path) -> Option<std::process::Child> {
     }
     #[allow(unreachable_code)]
     None
+}
+
+/// M-31: recording the screen into an MP4 with `ffmpeg` (X11 and Windows). Needs ffmpeg on the PATH; where it is missing,
+/// or on a Wayland session (the screen cannot be grabbed without the portal), the "Record screen" entry is not shown.
+pub struct ScreenRecorder {
+    child: std::process::Child,
+    pub path: PathBuf,
+    pub started: Instant,
+}
+
+pub fn screen_record_available() -> bool {
+    let ffmpeg = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
+    let has = Command::new(ffmpeg).arg("-version").stdout(Stdio::null()).stderr(Stdio::null()).status().map(|s| s.success()).unwrap_or(false);
+    #[cfg(windows)]
+    {
+        has
+    }
+    #[cfg(not(windows))]
+    {
+        has && std::env::var("DISPLAY").is_ok() && std::env::var("XDG_SESSION_TYPE").map(|t| t != "wayland").unwrap_or(true)
+    }
+}
+
+/// Starts recording. `limit_bytes` stops the recording by itself at the server's upload limit.
+pub fn screen_record_start(dir: &Path, limit_bytes: u64) -> Option<ScreenRecorder> {
+    let _ = std::fs::create_dir_all(dir);
+    let name = format!("screen-recording-{}.mp4", chrono::Local::now().format("%Y%m%d-%H%M%S"));
+    let path = dir.join(name);
+    let mut cmd = Command::new(if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" });
+    cmd.args(["-y", "-hide_banner", "-loglevel", "error"]);
+    #[cfg(windows)]
+    cmd.args(["-f", "gdigrab", "-framerate", "15", "-i", "desktop"]);
+    #[cfg(not(windows))]
+    {
+        let display = std::env::var("DISPLAY").ok()?;
+        cmd.args(["-f", "x11grab", "-framerate", "15", "-i", &display]);
+    }
+    cmd.args(["-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-movflags", "+faststart"]);
+    if limit_bytes > 0 {
+        // Leave a margin for the container's index.
+        cmd.args(["-fs", &(limit_bytes.saturating_sub(limit_bytes / 20)).to_string()]);
+    }
+    // ffmpeg reads "q" on its stdin as "finish the file".
+    let child = cmd.arg(&path).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().ok()?;
+    Some(ScreenRecorder { child, path, started: Instant::now() })
+}
+
+/// Stops and returns the finished file (None when nothing usable was written).
+pub fn screen_record_stop(mut r: ScreenRecorder) -> Option<PathBuf> {
+    use std::io::Write;
+    if let Some(mut stdin) = r.child.stdin.take() {
+        let _ = stdin.write_all(b"q\n");
+    }
+    let end = Instant::now() + Duration::from_secs(8);
+    loop {
+        match r.child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if Instant::now() < end => std::thread::sleep(Duration::from_millis(100)),
+            _ => {
+                // It did not finish in time: the file has no index and cannot be played.
+                let _ = r.child.kill();
+                let _ = r.child.wait();
+                let _ = std::fs::remove_file(&r.path);
+                return None;
+            }
+        }
+    }
+    std::fs::metadata(&r.path).ok().filter(|m| m.len() > 1024).map(|_| r.path)
 }

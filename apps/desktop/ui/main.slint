@@ -263,6 +263,13 @@ export component AppWindow inherits Window {
     callback setting-changed(string);
     callback attach(string);
     callback browse-file();
+    // M-31: video. "Upload video" (desktop picker) and "Photo or video" / "Record video" (Android shell), and recording the screen.
+    callback browse-video();
+    callback pick-media(string);
+    callback screen-record-toggle();
+    in-out property <bool> can-camera: false;
+    in-out property <bool> can-screen-record: false;
+    in-out property <string> screen-rec-text: "";
     callback open-file(string);
     callback open-link(string);
     callback typing();
@@ -1083,8 +1090,8 @@ export component AppWindow inherits Window {
                                     send => { root.send-composer(); }
                                     edited(t) => { root.typing(); root.composer-edited(t); }
                                     format(f) => { root.format(f); }
-                                    attach => { root.menu-kind = "attach"; }
-                                    emoji => { root.picker-target = ""; root.menu-kind = "emoji"; }
+                                    attach(x, y) => { root.menu-up = true; root.menu-x = x; root.menu-y = y - 6px; root.menu-kind = "attach"; }
+                                    emoji(x, y) => { root.menu-up = true; root.menu-x = x; root.menu-y = y - 6px; root.picker-target = ""; root.menu-kind = "emoji"; }
                                     mention => { root.composer = root.composer + "@"; root.composer-edited(root.composer); self.focus-input(); }
                                     schedule => { root.schedule-error = ""; root.schedule-when = ""; root.schedule-open = true; }
                                     toggle-format => { root.formatting-open = !root.formatting-open; }
@@ -1191,8 +1198,8 @@ export component AppWindow inherits Window {
                                         send => { root.thread-send(root.thread-composer); root.thread-composer = ""; }
                                         edited(t) => { root.typing(); }
                                         format(f) => { root.format(f); }
-                                        attach => { root.menu-kind = "attach"; }
-                                        emoji => { root.picker-target = ""; root.menu-kind = "emoji"; }
+                                        attach(x, y) => { root.menu-up = true; root.menu-x = x; root.menu-y = y - 6px; root.menu-kind = "attach"; }
+                                        emoji(x, y) => { root.menu-up = true; root.menu-x = x; root.menu-y = y - 6px; root.picker-target = ""; root.menu-kind = "emoji"; }
                                         mention => { root.thread-composer = root.thread-composer + "@"; }
                                         toggle-format => { root.formatting-open = !root.formatting-open; }
                                         marks: root.thread-spell-marks;
@@ -2116,17 +2123,22 @@ export component AppWindow inherits Window {
 
                 // ---- attach ----
                 if root.menu-kind == "attach": BottomSheet {
-                    title: "Attach"; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y;
+                    title: "Attach"; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y; anchor-up: root.menu-up;
                     dismiss => { root.menu-kind = ""; }
-                    SheetRow { icon: "file"; text: "File"; clicked => { root.menu-kind = ""; root.attach-open = true; root.browse-file(); } }
-                    SheetRow { icon: "image"; text: "Paste image from clipboard"; clicked => { root.menu-kind = ""; root.paste-image(); } }
+                    SheetRow { icon: "file"; text: "File"; clicked => { root.menu-kind = ""; if root.is-android { root.pick-media("files"); } else { root.attach-open = true; root.browse-file(); } } }
+                    if root.is-android: SheetRow { icon: "image"; text: "Photo or video"; clicked => { root.menu-kind = ""; root.pick-media("gallery"); } }
+                    if root.is-android && root.can-camera: SheetRow { icon: "video"; text: "Record video"; clicked => { root.menu-kind = ""; root.pick-media("video"); } }
+                    if !root.is-android: SheetRow { icon: "video"; text: "Upload video"; clicked => { root.menu-kind = ""; root.attach-open = true; root.browse-video(); } }
+                    if !root.is-android && root.can-screen-record: SheetRow { icon: "video"; text: root.screen-rec-text != "" ? "Stop screen recording" : "Record screen"; clicked => { root.menu-kind = ""; root.screen-record-toggle(); } }
+                    if !root.is-android: SheetRow { icon: "image"; text: "Paste image or file from clipboard"; clicked => { root.menu-kind = ""; root.paste-image(); } }
+                    if root.is-android: SheetRow { icon: "image"; text: "Paste image from clipboard"; clicked => { root.menu-kind = ""; root.paste-image(); } }
                     if root.can-record: SheetRow { icon: "mic"; text: root.recording ? "Stop recording" : "Voice message"; clicked => { root.menu-kind = ""; root.record-toggle(); } }
                     SheetRow { icon: "clock"; text: "Schedule send"; clicked => { root.menu-kind = ""; root.schedule-error = ""; root.schedule-when = ""; root.schedule-open = true; } }
                 }
 
                 // ---- emoji ----
                 if root.menu-kind == "emoji": BottomSheet {
-                    title: root.picker-target == "" ? "Insert emoji" : "React"; wide: root.wide;
+                    title: root.picker-target == "" ? "Insert emoji" : "React"; wide: root.wide; menu: root.picker-target == ""; anchor-x: root.menu-x; anchor-y: root.menu-y; anchor-up: root.menu-up; menu-width: 360px;
                     dismiss => { root.menu-kind = ""; }
                     grid := Rectangle {
                         property <length> cell: 46px * Theme.scale;
@@ -2324,6 +2336,24 @@ export component AppWindow inherits Window {
                     LineEdit { text <=> root.new-channel-name; placeholder-text: "Channel name"; font-size: Theme.fs; accessible-label: "Channel name"; accepted => { root.create-channel(root.new-channel-name); } }
                 }
 
+                // M-31: while the screen is being recorded a red pill with the time and a Stop button sits at the top.
+                if root.screen-rec-text != "": Rectangle {
+                    x: root.wide ? root.rail-w + 12px : (root.width - self.width) / 2;
+                    y: root.height - 52px;
+                    width: 260px;
+                    height: 36px;
+                    border-radius: 18px;
+                    background: Theme.danger;
+                    HorizontalLayout {
+                        padding-left: 16px; padding-right: 6px; spacing: 10px;
+                        Text { text: root.screen-rec-text; color: Theme.on-danger; font-size: Theme.fs; vertical-alignment: center; }
+                        Rectangle {
+                            width: 70px;
+                            TouchArea { clicked => { root.screen-record-toggle(); } accessible-role: button; accessible-label: "Stop screen recording"; }
+                            Rectangle { x: 0px; y: 5px; width: parent.width; height: parent.height - 10px; border-radius: 13px; background: #ffffff33; Text { text: "Stop"; color: Theme.on-danger; font-size: Theme.fs-small; horizontal-alignment: center; vertical-alignment: center; } }
+                        }
+                    }
+                }
                 // E-05: a hidden copy of the message box text that is only used to measure where a word is drawn.
                 probe-ti := TextInput {
                     x: 0px;

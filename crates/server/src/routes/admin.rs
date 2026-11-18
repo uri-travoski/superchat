@@ -455,6 +455,12 @@ pub async fn delete_conversation(State(st): State<St>, Admin(_a): Admin, Path(id
             tx.execute("DELETE FROM messages WHERE conv_id=?1", [&id])?;
             tx.execute("DELETE FROM members WHERE conv_id=?1", [&id])?;
             tx.execute("DELETE FROM read_state WHERE conv_id=?1", [&id])?;
+            // Everything else that points at the conversation goes with it (C-06): pins, bookmarks, followed threads,
+            // per-user prefs, drafts, scheduled messages, saved items, webhooks.
+            tx.execute("DELETE FROM saved_labels WHERE message_id IN (SELECT message_id FROM saved_items WHERE conv_id=?1)", [&id])?;
+            for t in ["pins", "bookmarks", "thread_follows", "conv_prefs", "drafts", "scheduled", "saved_items", "webhooks_in", "webhooks_out"] {
+                tx.execute(&format!("DELETE FROM {t} WHERE conv_id=?1"), [&id])?;
+            }
             tx.execute("DELETE FROM conversations WHERE id=?1", [&id])?;
             let mut em = Emitter::new();
             for m in members {

@@ -98,3 +98,42 @@ async fn other_peoples_profile_photos_are_downloaded_and_cached() {
     alice.update_profile(proto::UpdateMeRequest { avatar: Some(String::new()), ..Default::default() }).await.unwrap();
     wait_until("bob drops the photo", || bob.avatar_path(&alice_id).is_none()).await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn admin_deletes_a_channel_with_messages_files_and_saved_items() {
+    let s = TestServer::start().await;
+    let (alice_id, alice) = s.user("alice").await;
+    let (bob_id, bob) = s.user("bob").await;
+    let ch = make_channel(&s, "doomed", &[&alice_id, &bob_id]).await;
+    wait_conv(&alice, &ch).await;
+    wait_conv(&bob, &ch).await;
+    let f = s.dir.path().join("note.txt");
+    std::fs::write(&f, b"remember").unwrap();
+    alice.send_files(&ch, "with a file", &[f], SendOptions::default()).unwrap();
+    let m = wait_msg(&bob, &ch, "with a file").await;
+    bob.save_message(&m.id, None).await.unwrap();
+    let _ = bob.pin_message(&ch, &m.id, true).await;
+    // A member who is not an admin is refused; the owner/admin may delete.
+    assert!(matches!(bob.delete_conversation(&ch).await, Err(client_core::ClientError::Api { code: proto::ErrorCode::Forbidden, .. })));
+    s.admin.set_role(&alice_id, proto::Role::Admin).await.unwrap();
+    wait_until("alice is admin", || alice.me().map(|m| m.user.role.is_admin()).unwrap_or(false)).await;
+    alice.delete_conversation(&ch).await.unwrap();
+    wait_until("bob lost the channel", || bob.conversations().iter().all(|c| c.conversation.id != ch)).await;
+    wait_until("alice lost the channel", || alice.conversations().iter().all(|c| c.conversation.id != ch)).await;
+    // Nothing is left on the server for it: no messages, no attachment rows, no saved items.
+    let st = s.st.clone();
+    let ch2 = ch.clone();
+    let left: (i64, i64, i64) = st
+        .db
+        .call(move |c| {
+            let msgs = c.query_row("SELECT COUNT(*) FROM messages WHERE conv_id=?1", [&ch2], |r| r.get(0))?;
+            let saved = c.query_row("SELECT COUNT(*) FROM saved_items WHERE conv_id=?1", [&ch2], |r| r.get(0))?;
+            let atts = c.query_row("SELECT COUNT(*) FROM attachments WHERE removed=0 AND purpose='file'", [], |r| r.get(0))?;
+            Ok((msgs, saved, atts))
+        })
+        .await
+        .unwrap();
+    assert_eq!(left.0, 0);
+    assert_eq!(left.1, 0);
+    assert_eq!(left.2, 0, "the uploaded file was released");
+}

@@ -472,6 +472,14 @@ impl Client {
         Ok(())
     }
 
+    /// C-06: owner/admin deletes a channel or group chat for everyone (messages, files, pins, saved items). The server
+    /// removes it from every member's list with a `conversation_remove` event.
+    pub async fn delete_conversation(&self, conv_id: &str) -> Result<()> {
+        let _: serde_json::Value = self.api()?.delete(&format!("/admin/conversations/{conv_id}")).await?;
+        self.inner.emit(ClientEvent::Changed { conv_ids: vec![conv_id.to_string()], users: false, me: false });
+        Ok(())
+    }
+
     pub async fn edit_message(&self, id: &str, body: &str) -> Result<Message> {
         let conv = self.inner.store.message(id)?.map(|m| m.conv_id).unwrap_or_default();
         let mentions = self.resolve_mentions(&conv, body);

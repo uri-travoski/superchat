@@ -165,6 +165,10 @@ export component AppWindow inherits Window {
     in-out property <bool> is-admin: false;
     in-out property <bool> menu-fav: false;
     in-out property <string> new-channel-name;
+    // C-06: delete channel with the typed name.
+    in-out property <bool> delete-open: false;
+    in-out property <string> delete-typed;
+    callback delete-channel(string);
     in-out property <bool> new-channel-open: false;
     callback back-pressed() -> bool;
     callback people-filter(string);
@@ -1694,6 +1698,7 @@ export component AppWindow inherits Window {
                                 rename(n) => { root.rename-conv(n); }
                                 archive-toggle => { root.archive-toggle(); }
                                 open-admin => { root.open-admin-panel(); }
+                                delete-conv => { root.delete-typed = ""; root.delete-open = true; }
                                 add-people => { root.add-people(); }
                                 remove-member(id, name) => { root.remove-person = id; root.remove-person-name = name; root.confirm = "remove-member"; }
                                 save-topic(t) => { root.save-topic(t); }
@@ -1837,6 +1842,7 @@ export component AppWindow inherits Window {
                                 rename(n) => { root.rename-conv(n); }
                                 archive-toggle => { root.archive-toggle(); }
                                 open-admin => { root.open-admin-panel(); }
+                                delete-conv => { root.delete-typed = ""; root.delete-open = true; }
                                     add-people => { root.add-people(); }
                                     remove-member(id, name) => { root.remove-person = id; root.remove-person-name = name; root.confirm = "remove-member"; }
                                     save-topic(t) => { root.save-topic(t); }
@@ -2200,6 +2206,17 @@ export component AppWindow inherits Window {
                     dismiss => { root.bookmark-open = false; }
                     LineEdit { text <=> root.bm-title; placeholder-text: "Title"; font-size: Theme.fs; accessible-label: "Bookmark title"; }
                     LineEdit { text <=> root.bm-url; placeholder-text: "https://..."; font-size: Theme.fs; accessible-label: "Bookmark link"; accepted => { root.add-bookmark(root.bm-title, root.bm-url); } }
+                }
+
+                // ---- delete channel (C-06): the name must be typed to confirm ----
+                if root.delete-open: ModalCard {
+                    title: root.current-kind == "channel" ? "Delete channel" : "Delete group chat"; wide: root.wide;
+                    ok-text: "Delete forever"; ok-enabled: root.delete-typed == root.current-title;
+                    ok => { root.delete-open = false; root.delete-channel(root.current-conv); }
+                    dismiss => { root.delete-open = false; }
+                    Text { text: "This permanently deletes " + root.current-title + ": every message, reaction, pin and uploaded file is removed for everyone, and it cannot be undone. Consider archiving it instead (it stays readable)."; font-size: Theme.fs; color: Theme.text; wrap: word-wrap; }
+                    Text { text: "Type the name to confirm: " + root.current-title; font-size: Theme.fs-small; font-weight: 700; color: Theme.muted; wrap: word-wrap; }
+                    LineEdit { text <=> root.delete-typed; placeholder-text: root.current-title; font-size: Theme.fs; accessible-label: "Type the name to confirm"; }
                 }
 
                 // ---- new channel (admins) ----

@@ -2500,6 +2500,36 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
             });
         });
         let (wk, c, sh) = (ui.as_weak(), client.clone(), osh.clone());
+        ui.on_delete_channel(move |id| {
+            let (wk2, c2, sh2, id) = (wk.clone(), c.clone(), sh.clone(), id.to_string());
+            let title = conv_title_of_id(&c, &id);
+            c.handle().spawn(async move {
+                let r = c2.delete_conversation(&id).await;
+                let _ = slint::invoke_from_event_loop(move || {
+                    let Some(ui) = wk2.upgrade() else { return };
+                    match r {
+                        Ok(()) => {
+                            {
+                                let mut g = sh2.lock().unwrap();
+                                if g.current == id {
+                                    g.current.clear();
+                                }
+                                g.hist.retain(|h| *h != id);
+                                g.hist_pos = g.hist_pos.min(g.hist.len().saturating_sub(1));
+                            }
+                            ui.set_current_conv("".into());
+                            ui.set_current_title("".into());
+                            ui.set_messages(model(vec![]));
+                            ui.invoke_go_home_tab("home".into());
+                            toast(&ui, &format!("Deleted {title}"));
+                            refresh(&ui, &c2, &sh2);
+                        }
+                        Err(e) => toast(&ui, &format!("Could not delete it: {e}")),
+                    }
+                });
+            });
+        });
+        let (wk, c, sh) = (ui.as_weak(), client.clone(), osh.clone());
         ui.on_start_dm(move |uid| {
             let (wk, c2, sh2, uid) = (wk.clone(), c.clone(), sh.clone(), uid.to_string());
             c.handle().spawn(async move {

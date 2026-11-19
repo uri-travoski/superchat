@@ -41,7 +41,7 @@ export component UpdateCard inherits Rectangle {
             VerticalLayout {
                 horizontal-stretch: 1;
                 alignment: center;
-                Text { text: root.title; font-size: Theme.fs * 1.05; font-weight: 700; color: root.phase == "failed" ? Theme.danger : Theme.text; wrap: word-wrap; accessible-role: text; }
+                Text { text: root.title; font-size: Theme.fs * 1.05; font-weight: 700; color: root.phase == "failed" ? Theme.danger : Theme.text; wrap: word-wrap; }
                 if root.detail != "": Text { text: root.detail; font-size: Theme.fs-small * 1.05; color: Theme.muted; wrap: word-wrap; }
             }
         }
@@ -60,8 +60,6 @@ export component UpdateCard inherits Rectangle {
             spacing: 6px;
             Rectangle {
                 height: 8px; border-radius: 4px; background: Theme.surface-high;
-                accessible-role: progress-indicator;
-                accessible-label: "Download progress " + root.progress-text;
                 Rectangle { x: 0; width: parent.width * clamp(root.progress, 0.0, 1.0); height: parent.height; border-radius: 4px; background: Theme.accent; }
             }
             Text { text: root.progress-text; font-size: Theme.fs-small; color: Theme.muted; }
@@ -105,16 +103,12 @@ export component UpdateBanner inherits Rectangle {
     callback dismiss;
     height: max(44px, 36px * Theme.scale);
     background: Theme.accent.with-alpha(0.14);
-    accessible-role: button;
-    accessible-label: root.text + ". Open About to update";
     HorizontalLayout {
         padding-left: 14px; padding-right: 4px; spacing: 10px;
         Icon { name: "download"; size: 20px; tint: Theme.accent-text; y: (parent.height - self.height) / 2; }
         Text { text: root.text; font-size: Theme.fs; font-weight: 600; color: Theme.accent-text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
         Rectangle {
             width: 40px;
-            accessible-role: button;
-            accessible-label: "Remind me later";
             Icon { name: "close"; size: 18px; tint: Theme.icon; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
             TouchArea { clicked => { root.dismiss(); } }
         }

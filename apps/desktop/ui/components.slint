@@ -24,7 +24,7 @@ export component Avatar {
         }
         if root.uid != "": Rectangle {
             for a in Avatars.items: Rectangle {
-                if a.id == root.uid: Image { source: a.img; width: parent.width; height: parent.height; image-fit: cover; accessible-role: image; accessible-label: root.initials; }
+                if a.id == root.uid: Image { source: a.img; width: parent.width; height: parent.height; image-fit: cover; }
             }
         }
     }
@@ -47,22 +47,43 @@ export component PressArea inherits TouchArea {
     // NV-04: with `draggable`, pulling the pointer away from where it went down starts a drag (the pointer position is
     // reported in window coordinates); `drag-ended` fires when the button is released.
     in property <bool> draggable: false;
+    // 1.4 phone lists: with `hold-drag` a long press arms the row (`hold-started`: it lifts and shows a handle) instead of
+    // opening the menu at once. Moving then drags it; letting go without moving reports `long-pressed` (the menu).
+    in property <bool> hold-drag: false;
     callback drag-started;
     callback drag-moved(length, length);
     callback drag-ended;
+    callback hold-started;
+    callback hold-ended;
     property <bool> fired: false;
     property <bool> dragging: false;
+    in-out property <bool> holding: false;
+    out property <bool> active: root.holding || root.dragging;
     Timer {
         interval: 450ms;
         running: root.pressed && !root.fired && abs(root.mouse-x - root.pressed-x) < 12px && abs(root.mouse-y - root.pressed-y) < 12px;
-        triggered => { root.fired = true; root.long-pressed(); }
+        triggered => {
+            root.fired = true;
+            if root.hold-drag { root.holding = true; root.hold-started(); } else { root.long-pressed(); }
+        }
     }
     pointer-event(e) => {
-        if e.kind == PointerEventKind.down && e.button == PointerEventButton.left { root.fired = false; root.dragging = false; }
+        if e.kind == PointerEventKind.down && e.button == PointerEventButton.left { root.fired = false; root.dragging = false; root.holding = false; }
         if e.kind == PointerEventKind.up && e.button == PointerEventButton.right { root.long-pressed(); }
-        if e.kind == PointerEventKind.up && e.button == PointerEventButton.left && root.dragging { root.dragging = false; root.drag-ended(); }
+        if e.kind == PointerEventKind.up && e.button == PointerEventButton.left {
+            if root.dragging { root.dragging = false; root.holding = false; root.drag-ended(); }
+            else if root.holding { root.holding = false; root.hold-ended(); root.long-pressed(); }
+        }
+        if e.kind == PointerEventKind.cancel {
+            if root.dragging { root.dragging = false; root.holding = false; root.drag-ended(); }
+            else if root.holding { root.holding = false; root.hold-ended(); }
+        }
     }
     moved => {
+        if root.hold-drag && root.holding && !root.dragging && (abs(root.mouse-y - root.pressed-y) > 8px || abs(root.mouse-x - root.pressed-x) > 8px) {
+            root.dragging = true;
+            root.drag-started();
+        }
         if root.draggable && root.pressed && !root.dragging && !root.fired && (abs(root.mouse-y - root.pressed-y) > 8px || abs(root.mouse-x - root.pressed-x) > 8px) {
             root.dragging = true;
             root.fired = true;
@@ -82,8 +103,6 @@ export component Link {
     callback clicked;
     min-height: 32px;
     min-width: lbl.preferred-width + 16px;
-    accessible-role: button;
-    accessible-label: root.text;
     lbl := Text {
         text: root.text;
         font-size: Theme.fs-small * 1.1;
@@ -104,8 +123,6 @@ export component Pill {
     callback clicked;
     height: 34px * Theme.scale;
     min-width: lbl.preferred-width + 24px;
-    accessible-role: button;
-    accessible-label: root.text;
     Rectangle {
         border-radius: self.height / 2;
         border-width: 1px;
@@ -126,8 +143,6 @@ export component PrimaryButton {
     callback clicked;
     height: max(44px, 34px * Theme.scale);
     min-width: lbl.preferred-width + 32px;
-    accessible-role: button;
-    accessible-label: root.text;
     Rectangle {
         border-radius: Theme.r-sm;
         background: root.enabled ? (ta.has-hover ? Theme.accent.darker(0.1) : Theme.accent) : Theme.surface-high;
@@ -148,8 +163,6 @@ export component GhostButton {
     callback clicked;
     height: max(44px, 34px * Theme.scale);
     min-width: lbl.preferred-width + 28px;
-    accessible-role: button;
-    accessible-label: root.text;
     Rectangle {
         border-radius: Theme.r-sm;
         border-width: 1px;
@@ -173,8 +186,6 @@ export component TextButton {
     callback clicked;
     height: max(48px, 38px * Theme.scale);
     min-width: max(64px, lbl.preferred-width + 24px);
-    accessible-role: button;
-    accessible-label: root.text;
     Rectangle {
         border-radius: Theme.r-sm;
         background: ta.has-hover ? Theme.bubble-other : transparent;
@@ -208,17 +219,16 @@ export component IconButton {
     in property <brush> tint: Theme.icon;
     in property <bool> enabled: true;
     in property <length> glyph: 24px;
+    in property <length> weight: 1.75px;
     callback clicked;
     width: 48px;
     height: 48px;
-    accessible-role: button;
-    accessible-label: root.label;
     Rectangle {
         width: 40px;
         height: 40px;
         border-radius: 20px;
         background: ta.pressed ? Theme.bubble-other : (ta.has-hover ? Theme.bubble-other.with-alpha(0.6) : transparent);
-        Icon { name: root.icon; size: root.glyph; tint: root.enabled ? root.tint : Theme.muted.with-alpha(0.5); x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+        Icon { name: root.icon; size: root.glyph; weight: root.weight; tint: root.enabled ? root.tint : Theme.muted.with-alpha(0.5); x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
     }
     ta := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
 }
@@ -227,18 +237,17 @@ export component IconButton {
 export component Fab {
     in property <string> icon;
     in property <string> label;
+    in property <brush> glyph: Theme.on-accent;
     callback clicked;
     width: 56px;
     height: 56px;
-    accessible-role: button;
-    accessible-label: root.label;
     Rectangle {
         border-radius: 28px;
         background: ta.pressed ? Theme.accent.darker(0.15) : Theme.accent;
         drop-shadow-blur: 8px;
         drop-shadow-offset-y: 3px;
         drop-shadow-color: #00000066;
-        Icon { name: root.icon; size: 26px; tint: Theme.on-accent; weight: 2px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+        Icon { name: root.icon; size: 28px; tint: root.glyph; weight: 2.4px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
         ta := TouchArea { clicked => { root.clicked(); } }
     }
 }
@@ -278,8 +287,6 @@ export component SheetRow {
     in property <bool> enabled: true;
     callback clicked;
     height: Theme.wide ? max(38px, 32px * Theme.scale) : max(48px, 40px * Theme.scale);
-    accessible-role: button;
-    accessible-label: root.text;
     Rectangle {
         background: ta.pressed ? Theme.bubble-other : (ta.has-hover ? Theme.bubble-other.with-alpha(0.5) : transparent);
         HorizontalLayout {
@@ -302,8 +309,6 @@ export component Toggle {
     callback toggled;
     width: 46px;
     height: 28px;
-    accessible-role: switch;
-    accessible-checked: root.checked;
     Rectangle {
         border-radius: 14px;
         background: root.checked ? Theme.accent : Theme.surface-high;
@@ -320,6 +325,40 @@ export component Toggle {
         }
     }
     TouchArea { clicked => { root.checked = !root.checked; root.toggled(); } }
+}
+
+// A row of a menu that picks one option (`radio`, a filled circle) or switches one setting (a pill). The menu stays open.
+export component ChoiceRow {
+    in property <string> text;
+    in property <string> icon;
+    in property <bool> radio: false;
+    in property <bool> on: false;
+    callback clicked;
+    height: max(48px, 40px * Theme.scale);
+    Rectangle {
+        background: ta.pressed ? Theme.bubble-other : (ta.has-hover ? Theme.bubble-other.with-alpha(0.5) : transparent);
+        HorizontalLayout {
+            padding-left: Theme.wide ? 14px : 20px;
+            padding-right: Theme.wide ? 14px : 20px;
+            spacing: Theme.wide ? 12px : 16px;
+            if root.icon != "": Icon { name: root.icon; size: Theme.wide ? 20px : 24px; tint: Theme.icon; y: (parent.height - self.height) / 2; }
+            Text { text: root.text; font-size: Theme.fs; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; min-width: 40px; overflow: elide; }
+            if root.radio: Rectangle {
+                width: 22px; height: 22px; y: (parent.height - self.height) / 2; border-radius: 11px;
+                border-width: 2px; border-color: root.on ? Theme.accent : Theme.icon-soft;
+                if root.on: Rectangle { x: 4px; y: 4px; width: 10px; height: 10px; border-radius: 5px; background: Theme.accent; }
+            }
+            if !root.radio: Toggle { checked: root.on; y: (parent.height - self.height) / 2; }
+        }
+        ta := TouchArea { clicked => { root.clicked(); } }
+    }
+}
+
+// A small muted heading inside a menu or sheet ("Sort", "Filter").
+export component MenuLabel {
+    in property <string> text;
+    height: max(32px, Theme.fs-small * 2.6);
+    Text { x: Theme.wide ? 14px : 20px; width: parent.width - 40px; text: root.text; font-size: Theme.fs-small; font-weight: 700; color: Theme.muted; vertical-alignment: bottom; overflow: elide; }
 }
 
 // Settings: a rounded card that holds rows.
@@ -347,8 +386,6 @@ export component SettingRow {
     callback clicked;
     callback toggled;
     height: max(60px, 46px * Theme.scale);
-    accessible-role: button;
-    accessible-label: root.title + (root.summary != "" ? ", " + root.summary : "");
     Rectangle {
         background: ta.pressed ? Theme.bubble-other : transparent;
         HorizontalLayout {
@@ -564,8 +601,6 @@ export component LabelChip {
     callback removed;
     height: 26px * Theme.scale;
     min-width: row.preferred-width;
-    accessible-role: button;
-    accessible-label: "Label " + root.text;
     Rectangle {
         border-radius: self.height / 2;
         background: root.on ? root.tint : root.tint.with-alpha(0.18);
@@ -614,9 +649,6 @@ export component TabBar {
         for t[i] in root.tabs: Rectangle {
             horizontal-stretch: root.fill ? 1 : 0;
             min-width: lbl.preferred-width + 24px;
-            accessible-role: AccessibleRole.tab;
-            accessible-label: t;
-            accessible-checked: root.current == i;
             background: ta.has-hover && root.current != i ? Theme.row-hover : transparent;
             border-radius: Theme.r-sm;
             lbl := Text { text: t; font-size: Theme.fs * 0.95; font-weight: root.current == i ? 700 : 500; color: root.current == i ? Theme.text : Theme.muted; horizontal-alignment: center; vertical-alignment: center; }
@@ -637,8 +669,6 @@ export component MenuRow {
     in property <bool> enabled: true;
     callback clicked;
     height: max(34px, 30px * Theme.scale);
-    accessible-role: button;
-    accessible-label: root.text;
     Rectangle {
         border-radius: Theme.r-sm;
         background: ta.has-hover && root.enabled ? Theme.accent.with-alpha(0.18) : transparent;
@@ -673,8 +703,6 @@ export component ToolButton {
     callback clicked;
     width: root.size;
     height: root.size;
-    accessible-role: button;
-    accessible-label: root.label;
     Rectangle {
         border-radius: Theme.r-sm;
         background: root.active ? Theme.accent.with-alpha(0.22) : (ta.pressed ? Theme.bubble-other : (ta.has-hover ? Theme.row-hover.with-alpha(0.14) : transparent));

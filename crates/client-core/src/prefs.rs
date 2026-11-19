@@ -56,6 +56,8 @@ pub struct Prefs {
     pub badge_counts: bool,
     /// Sidebar sections the user collapsed (`sec:fav`, `sec:channels`, `sec:dms`).
     pub collapsed_sections: Vec<String>,
+    /// Phone: the bottom tab shown at start ("dms", "channels", "search" or "menu"), the last one the user used.
+    pub last_tab: String,
     /// Check GitHub for a newer release on startup and every 24 hours.
     pub auto_update_check: bool,
     /// Hidden debug preference: replaces the release URL (tests point it at a fake server). `SUPERCHAT_UPDATE_URL` wins.
@@ -97,6 +99,7 @@ impl Default for Prefs {
             sound_default: "default".into(),
             sound_conv: Default::default(),
             badge_counts: true,
+            last_tab: "dms".into(),
             auto_update_check: true,
             update_url: String::new(),
         }

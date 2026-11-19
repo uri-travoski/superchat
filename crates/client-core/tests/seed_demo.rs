@@ -166,6 +166,17 @@ async fn seed_and_serve() {
     let pdf = s.dir.path().join("brief.pdf");
     std::fs::write(&pdf, demo_pdf()).unwrap();
     bob.send_files(&design, "Brief for review", &[pdf], SendOptions::default()).unwrap();
+    // 1.4: one file of each family, so every colour of the file icon shows up.
+    let docs: Vec<std::path::PathBuf> = ["Launch plan.docx", "budget.xlsx", "keynote.pptx", "assets.zip", "notes.txt", "export.csv", "readme.md"]
+        .iter()
+        .map(|n| {
+            let p = s.dir.path().join(n);
+            std::fs::write(&p, format!("demo content of {n}").repeat(40)).unwrap();
+            p
+        })
+        .collect();
+    carol.send_files(&design, "Files for the launch", &docs, SendOptions::default()).unwrap();
+    wait_msg(&alice, &design, "Files for the launch").await;
     let wav = s.dir.path().join("voice-message-1.wav");
     std::fs::write(&wav, voice_wav()).unwrap();
     carol.send_files(&design, "", &[wav], SendOptions::default()).unwrap();

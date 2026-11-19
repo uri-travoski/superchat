@@ -9,7 +9,6 @@ export component Icon {
     in property <bool> filled: false;
     width: root.size;
     height: root.size;
-    accessible-role: none;
     Path {
         width: parent.width;
         height: parent.height;
@@ -101,6 +100,7 @@ export component Icon {
             root.name == "arrow-up" ? "M12 19V5 M5 12l7-7 7 7" : 
             root.name == "arrow-down" ? "M12 5v14 M19 12l-7 7-7-7" : 
             root.name == "grip" ? "M8.25 6a.75 .75 0 1 0 1.5 0a.75 .75 0 1 0 -1.5 0 M14.25 6a.75 .75 0 1 0 1.5 0a.75 .75 0 1 0 -1.5 0 M8.25 12a.75 .75 0 1 0 1.5 0a.75 .75 0 1 0 -1.5 0 M14.25 12a.75 .75 0 1 0 1.5 0a.75 .75 0 1 0 -1.5 0 M8.25 18a.75 .75 0 1 0 1.5 0a.75 .75 0 1 0 -1.5 0 M14.25 18a.75 .75 0 1 0 1.5 0a.75 .75 0 1 0 -1.5 0" : 
+            root.name == "menu" ? "M4 6h16 M4 12h16 M4 18h16" : 
             root.name == "camera" ? "M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z M8 13a4 4 0 1 0 8 0a4 4 0 1 0 -8 0" : 
             "";
     }

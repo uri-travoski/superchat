@@ -19,8 +19,6 @@ export component AudioCard {
     preferred-width: 360px * max(1.0, Theme.scale * 0.9);
     min-width: 220px;
     horizontal-stretch: 0;
-    accessible-role: groupbox;
-    accessible-label: "Voice message " + root.f.dur-text;
     Rectangle {
         border-radius: 14px;
         background: Theme.surface;
@@ -35,8 +33,6 @@ export component AudioCard {
                 y: (parent.height - self.height) / 2;
                 border-radius: self.width / 2;
                 background: Theme.accent;
-                accessible-role: button;
-                accessible-label: root.playing ? "Pause voice message" : "Play voice message";
                 Icon { name: root.playing ? "pause" : "play"; size: 18px * Theme.scale; filled: true; weight: 1px; tint: Theme.on-accent; x: (parent.width - self.width) / 2 + (root.playing ? 0px : 1px); y: (parent.height - self.height) / 2; }
                 TouchArea { clicked => { root.toggle(); } }
             }
@@ -46,9 +42,6 @@ export component AudioCard {
                 spacing: 3px;
                 wave := Rectangle {
                     height: 28px * Theme.scale;
-                    accessible-role: slider;
-                    accessible-label: "Position in the voice message";
-                    accessible-value: "" + round(root.frac * 100) + " percent";
                     property <int> n: max(1, root.f.peaks.length);
                     // Without stored peaks (older messages) a plain progress track is drawn.
                     if root.f.peaks.length == 0: Rectangle { y: (parent.height - 4px) / 2; height: 4px; border-radius: 2px; background: Theme.line; Rectangle { width: parent.width * root.frac; border-radius: 2px; background: Theme.accent; } }
@@ -72,8 +65,6 @@ export component AudioCard {
                 background: sp.has-hover ? Theme.row-hover : transparent;
                 border-width: 1px;
                 border-color: Theme.line;
-                accessible-role: button;
-                accessible-label: "Playback speed " + root.speed-text;
                 Text { text: root.speed-text; font-size: Theme.fs-small; font-weight: 700; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; }
                 sp := TouchArea { clicked => { root.speed(); } }
             }
@@ -89,8 +80,6 @@ export component VideoCard {
     preferred-width: root.f.has-poster ? 320px * max(1.0, Theme.scale * 0.9) : 340px;
     min-width: 200px;
     horizontal-stretch: 0;
-    accessible-role: button;
-    accessible-label: "Play video " + root.f.name;
     Rectangle {
         border-radius: 12px;
         background: #11151a;
@@ -125,8 +114,6 @@ export component FileCard {
     min-width: 200px;
     horizontal-stretch: 0;
     vertical-stretch: 0;
-    accessible-role: button;
-    accessible-label: root.f.removed ? "File removed" : root.f.name + ", " + root.f.size;
     Rectangle {
         border-radius: 10px;
         border-width: 1px;

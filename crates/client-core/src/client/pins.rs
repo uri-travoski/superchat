@@ -106,6 +106,17 @@ impl Client {
         self.reorder_conversations(&order).await
     }
 
+    /// Drag and drop: moves the pinned conversation `src` before or after the pinned conversation `target` (same tab).
+    pub async fn move_pinned_to(&self, src: &str, target: &str, after: bool) -> Result<bool> {
+        let Some(kind) = self.conversations().into_iter().find(|c| c.conversation.id == src).map(|c| if c.conversation.kind == ConversationKind::Channel { ListKind::Channels } else { ListKind::Dms }) else { return Ok(false) };
+        let mut mine: Vec<String> = self.phone_list(kind, false, false, false).pinned.into_iter().map(|c| c.conversation.id).collect();
+        if !place_next_to(&mut mine, src, target, after) {
+            return Ok(false);
+        }
+        self.reorder_pinned(&mine).await?;
+        Ok(true)
+    }
+
     /// Moves a pinned conversation up (`delta` -1) or down (+1) among the pinned ones of its own tab. False when it
     /// is not pinned or already at that end.
     pub async fn move_pinned(&self, conv_id: &str, delta: i32) -> Result<bool> {
@@ -122,6 +133,17 @@ impl Client {
     }
 }
 
+/// Puts `src` next to `target` (before it, or after it with `after`) in `order`. False when either is missing or equal.
+pub fn place_next_to(order: &mut Vec<String>, src: &str, target: &str, after: bool) -> bool {
+    if src == target || !order.iter().any(|i| i == src) {
+        return false;
+    }
+    order.retain(|i| i != src);
+    let Some(t) = order.iter().position(|i| i == target) else { return false };
+    order.insert(if after { t + 1 } else { t }, src.to_string());
+    true
+}
+
 /// `full` is the whole pinned order, `subset` a re-ordered selection of it. The selection's members are put back into
 /// the slots they occupied, in the new order; everything else stays where it was.
 pub fn merge_pinned_order(full: &[String], subset: &[String]) -> Vec<String> {
@@ -132,7 +154,7 @@ pub fn merge_pinned_order(full: &[String], subset: &[String]) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::merge_pinned_order;
+    use super::{merge_pinned_order, place_next_to};
 
     fn v(a: &[&str]) -> Vec<String> {
         a.iter().map(|s| s.to_string()).collect()
@@ -144,6 +166,18 @@ mod tests {
         let full = v(&["d1", "c1", "d2", "c2", "d3"]);
         assert_eq!(merge_pinned_order(&full, &v(&["d3", "d1", "d2"])), v(&["d3", "c1", "d1", "c2", "d2"]));
         assert_eq!(merge_pinned_order(&full, &v(&["d1", "d2", "d3"])), full);
+    }
+
+    #[test]
+    fn dropping_next_to_a_target() {
+        let mut o = v(&["a", "b", "c", "d"]);
+        assert!(place_next_to(&mut o, "d", "a", false));
+        assert_eq!(o, v(&["d", "a", "b", "c"]));
+        assert!(place_next_to(&mut o, "d", "b", true));
+        assert_eq!(o, v(&["a", "b", "d", "c"]));
+        assert!(!place_next_to(&mut o, "a", "a", true));
+        assert!(!place_next_to(&mut o, "x", "a", true));
+        assert!(!place_next_to(&mut o, "a", "zzz", true));
     }
 
     #[test]

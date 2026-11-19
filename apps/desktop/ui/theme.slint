@@ -285,6 +285,8 @@ export global Theme {
 // marks itself as the target (and whether the drop lands before or after it).
 export global Drag {
     in-out property <bool> active: false;
+    // 1.4: a long press armed a phone list row for dragging (the list stops scrolling until it is let go).
+    in-out property <bool> holding: false;
     in-out property <string> src;
     in-out property <string> label;
     in-out property <string> target;
@@ -293,6 +295,7 @@ export global Drag {
     in-out property <length> y;
     public function reset() {
         self.active = false;
+        self.holding = false;
         self.src = "";
         self.target = "";
         self.zone = 0;

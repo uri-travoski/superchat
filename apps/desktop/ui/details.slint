@@ -70,7 +70,7 @@ export component DetailsView {
                     spacing: 8px;
                     Text { text: "Topic"; font-size: Theme.fs-small; color: Theme.muted; font-weight: 700; }
                     if !root.can-manage: Text { text: root.topic == "" ? "No topic set." : root.topic; font-size: Theme.fs; color: Theme.text; wrap: word-wrap; }
-                    if root.can-manage: LineEdit { text <=> root.topic-edit; placeholder-text: "Add a topic"; font-size: Theme.fs; accessible-label: "Topic"; accepted(t) => { root.save-topic(t); } }
+                    if root.can-manage: LineEdit { text <=> root.topic-edit; placeholder-text: "Add a topic"; font-size: Theme.fs; accepted(t) => { root.save-topic(t); } }
                     if root.can-manage: HorizontalLayout { alignment: end; GhostButton { text: "Save topic"; clicked => { root.save-topic(root.topic-edit); } } }
                 }
             }
@@ -84,8 +84,6 @@ export component DetailsView {
         if root.can-manage: Rectangle {
             height: max(60px, 50px * Theme.scale);
             background: ap.has-hover ? Theme.row-hover : transparent;
-            accessible-role: button;
-            accessible-label: "Add people";
             HorizontalLayout {
                 padding-left: 16px;
                 spacing: 14px;
@@ -121,7 +119,7 @@ export component DetailsView {
             Card {
                 SettingRow { icon: "bell"; badge: #e8590c; title: "Notify me about"; summary: root.notify-text; clicked => { root.notify(); } }
                 SettingRow { icon: "bell-off"; badge: #dc2626; title: "Mute"; summary: root.muted ? "Muted" : "Off"; clicked => { root.mute(); } }
-                SettingRow { icon: "star"; badge: #f59e0b; title: "Favourite"; has-switch: true; on: root.favourite; toggled => { root.favourite-toggle(); } }
+                SettingRow { icon: root.phone ? "pin" : "star"; badge: #f59e0b; title: root.phone ? "Pin to top" : "Favourite"; has-switch: true; on: root.favourite; toggled => { root.favourite-toggle(); } }
                 SettingRow { icon: "hash"; badge: #0d9488; title: "Move to section"; clicked => { root.section(); } }
                 SettingRow { icon: "mail"; badge: #64748b; title: "Mark as unread"; chevron: false; clicked => { root.mark-unread(); } divider: false; }
             }
@@ -133,7 +131,7 @@ export component DetailsView {
             if root.can-manage && root.kind != "dm" && root.kind != "self": VerticalLayout {
                 spacing: 8px;
                 Text { text: "Admin tools"; font-size: Theme.fs-small; font-weight: 700; color: Theme.muted; }
-                LineEdit { text <=> root.name-edit; placeholder-text: "Name"; font-size: Theme.fs; accessible-label: "Conversation name"; accepted(t) => { root.rename(t); } }
+                LineEdit { text <=> root.name-edit; placeholder-text: "Name"; font-size: Theme.fs; accepted(t) => { root.rename(t); } }
                 HorizontalLayout { alignment: end; GhostButton { text: "Rename"; clicked => { root.rename(root.name-edit); } } }
                 Card {
                     SettingRow { icon: "download"; badge: #64748b; title: root.archived ? "Unarchive conversation" : "Archive conversation"; summary: root.phone ? "" : (root.archived ? "Make it writable again" : "Read-only, moves to Archived"); chevron: false; clicked => { root.archive-toggle(); } }

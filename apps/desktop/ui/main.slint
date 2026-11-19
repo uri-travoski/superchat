@@ -6,9 +6,9 @@ import "fonts/Inter-Bold.ttf";
 import "fonts/Inter-Italic.ttf";
 import { LineEdit, ListView, ScrollView, Palette, TextEdit } from "std-widgets.slint";
 import { Theme, Avatars, AvatarImg, ConvItem, MsgItem, PersonItem, RowItem, BookmarkItem, BlockItem, FileItem, ReactItem, EmojiItem, FormFieldItem, FormOptionItem, FormButtonItem, SideRow, LabelItem, SavedRow, ActivityRow, Drag, SpellMark } from "theme.slint";
-import { Avatar, Icon, IconButton, Fab, AppBar, BottomSheet, ModalCard, AlertDialog, SheetRow, SettingRow, Card, TextButton, Toggle, Link, Pill, PrimaryButton, GhostButton, SectionHeader, ToolButton, LabelChip, EmptyState, TabBar, CountBadge, MenuRow, MenuDivider } from "components.slint";
+import { Avatar, Icon, IconButton, Fab, AppBar, BottomSheet, ModalCard, AlertDialog, SheetRow, SettingRow, Card, TextButton, Toggle, Link, Pill, PrimaryButton, GhostButton, SectionHeader, ToolButton, LabelChip, EmptyState, TabBar, CountBadge, MenuRow, MenuDivider, ChoiceRow, MenuLabel } from "components.slint";
 import { MessageRow, Composer, PeoplePicker } from "chat.slint";
-import { Rail, TopBar, SideItem, DmRow, ActivityItem, SavedCard, BottomNav } from "shell.slint";
+import { Rail, TopBar, SideItem, DmRow, ActivityItem, SavedCard, BottomNav, PhoneTopBar, PhoneList } from "shell.slint";
 import { DetailsView } from "details.slint";
 import { FileGlyph } from "filetype.slint";
 import { UpdateCard, UpdateBanner } from "update.slint";
@@ -41,7 +41,7 @@ export component AppWindow inherits Window {
     in-out property <string> status;
     in-out property <bool> is-android: false;
     in-out property <string> version;
-    // The long form for About ("Version 1.3.2 (build abc1234)", on Android "(code 9)").
+    // The long form for About ("Version 1.4.0 (build abc1234)", on Android "(code 9)").
     in-out property <string> version-long;
 
     // ---- updates (Settings > About, rail and Home banner) ----
@@ -216,20 +216,6 @@ export component AppWindow inherits Window {
     in-out property <bool> unread-only: false;
     in-out property <bool> hide-muted: false;
     in-out property <length> list-y;
-    // Phone Home list scroll tracking: the New message button hides while scrolling down and returns on scroll up or at the end.
-    in-out property <length> home-y;
-    in-out property <length> home-h;
-    in-out property <length> home-vh;
-    property <length> home-prev-y;
-    property <bool> fab-up: false;
-    // At rest the button is only shown when it covers no row (the list fits); scrolling up brings it back, the end of the list always shows it.
-    property <bool> fab-shown: (root.home-y >= 0px && root.home-h <= root.home-vh + 2px) || (root.home-h > root.home-vh && root.home-y <= root.home-vh - root.home-h + 4px) || (root.fab-up && root.home-y < 0px);
-    changed home-y => {
-        if root.home-y >= 0px { root.fab-up = false; }
-        else if root.home-y > root.home-prev-y + 1px { root.fab-up = true; }
-        else if root.home-y < root.home-prev-y - 1px { root.fab-up = false; }
-        root.home-prev-y = root.home-y;
-    }
     // Position of the first unread message as a fraction of the list, and how many messages follow it.
     in-out property <float> first-unread-frac: 0;
     in-out property <int> unread-new: 0;
@@ -290,11 +276,10 @@ export component AppWindow inherits Window {
     callback setting-changed(string);
     callback attach(string);
     callback browse-file();
-    // M-31: video. "Upload video" (desktop picker) and "Photo or video" / "Record video" (Android shell), and recording the screen.
+    // M-31: video. "Upload video" (desktop picker) and "Photo or video" (Android shell), and recording the screen (desktop). 1.4: no in-app camera recording on Android.
     callback browse-video();
     callback pick-media(string);
     callback screen-record-toggle();
-    in-out property <bool> can-camera: false;
     in-out property <bool> can-screen-record: false;
     in-out property <string> screen-rec-text: "";
     callback open-file(string);
@@ -372,6 +357,15 @@ export component AppWindow inherits Window {
     // ---- 1.2: shell and navigation ----
     // Desktop rail tab / phone bottom tab: home, dms, activity, later, you.
     in-out property <string> main-tab: "home";
+    // 1.4 phone: the selected bottom tab (dms, channels, search, menu) and the lists of the DMs and Channels tabs (pinned first).
+    in-out property <string> phone-tab: "dms";
+    in-out property <[SideRow]> phone-dms;
+    in-out property <[SideRow]> phone-chans;
+    in-out property <int> chan-unread: 0;
+    callback pin-toggle(string);
+    callback pin-drop(string, string, int);
+    callback move-pinned(string, int);
+    callback phone-nav(string);
     in-out property <[SideRow]> side-rows;
     in-out property <[SideRow]> dm-rows;
     in-out property <string> server-name: "SuperChat";
@@ -535,17 +529,31 @@ export component AppWindow inherits Window {
         root.search("");
     }
 
+    // Desktop: a rail tab. Phone: a bottom tab, or a page that belongs to one (Activity, You, Later); the phone's own tab stack
+    // (apps/desktop/src/nav.rs) decides what is shown and calls `set-main-tab`.
     public function go-home-tab(t: string) {
         root.screen = "";
         root.settings-page = "";
         root.info-open = false;
-        root.main-tab = t;
-        root.set-main-tab(t);
-        if !root.wide { root.show-chat = false; }
+        if root.wide {
+            root.main-tab = (t == "channels" || t == "search" || t == "menu" || t == "you") ? "home" : t;
+            root.set-main-tab(root.main-tab);
+        } else {
+            root.show-chat = false;
+            root.phone-nav(t);
+        }
     }
+    // The same window can be a phone or a desktop (it was resized): keep the page that belongs to the layout.
+    public function fix-layout() {
+        if root.wide && (root.main-tab == "channels" || root.main-tab == "search" || root.main-tab == "menu" || root.main-tab == "you") { root.main-tab = "home"; }
+        if !root.wide && root.signed-in { root.phone-nav(root.main-tab == "home" ? root.phone-tab : root.main-tab); }
+    }
+    // Search is a bottom tab on the phone, a page above everything on the desktop.
+    property <bool> phone-search: !root.wide && root.main-tab == "search" && !root.show-chat && root.screen == "";
 
-    init => { Theme.wide = root.wide; }
-    changed wide => { Theme.wide = root.wide; }
+    init => { Theme.wide = root.wide; root.fix-layout(); }
+    changed signed-in => { root.fix-layout(); }
+    changed wide => { Theme.wide = root.wide; root.fix-layout(); }
     changed theme-mode => {
         Palette.color-scheme = root.theme-mode == 1 ? ColorScheme.light : (root.theme-mode == 2 ? ColorScheme.dark : ColorScheme.unknown);
     }
@@ -599,40 +607,37 @@ export component AppWindow inherits Window {
                                 }
                                 Text { text: "SuperChat"; font-size: Theme.fs-large * 1.2; font-weight: 700; horizontal-alignment: center; color: Theme.text; }
                                 Text { text: "Sign in to your team's server"; color: Theme.muted; font-size: Theme.fs; horizontal-alignment: center; }
-                                server-edit := LineEdit { text <=> root.f-server; placeholder-text: "Server address (https://chat.example.com)"; font-size: Theme.fs; accessible-label: "Server address"; edited(t) => { root.server-edited(t); } }
+                                server-edit := LineEdit { text <=> root.f-server; placeholder-text: "Server address (https://chat.example.com)"; font-size: Theme.fs; edited(t) => { root.server-edited(t); } }
                                 HorizontalLayout {
                                     spacing: 8px;
                                     GhostButton { text: "Username & password"; on: !root.use-link; horizontal-stretch: 1; clicked => { root.use-link = false; root.login-error = ""; } }
                                     GhostButton { text: "Login link"; on: root.use-link; horizontal-stretch: 1; clicked => { root.use-link = true; root.login-error = ""; } }
                                 }
-                                if !root.use-link: LineEdit { text <=> root.f-user; placeholder-text: "Username"; font-size: Theme.fs; accessible-label: "Username"; }
-                                if !root.use-link: LineEdit { text <=> root.f-pass; placeholder-text: "Password"; input-type: password; font-size: Theme.fs; accessible-label: "Password"; accepted => { root.login(root.f-server, root.f-user, root.f-pass, ""); } }
+                                if !root.use-link: LineEdit { text <=> root.f-user; placeholder-text: "Username"; font-size: Theme.fs; }
+                                if !root.use-link: LineEdit { text <=> root.f-pass; placeholder-text: "Password"; input-type: password; font-size: Theme.fs; accepted => { root.login(root.f-server, root.f-user, root.f-pass, ""); } }
                                 if root.use-link: VerticalLayout {
                                     spacing: 10px;
                                     Text { text: "Paste the one-time login link your administrator sent you (it looks like https://chat.example.com/l/...), or scan its QR code. Tapping the link on this phone opens the app by itself."; color: Theme.muted; font-size: Theme.fs-small; wrap: word-wrap; }
-                                    link-edit := LineEdit { text <=> root.f-link; placeholder-text: "Login link"; font-size: Theme.fs; accessible-label: "Login link"; edited(t) => { root.server-edited(t); } accepted => { root.login(root.f-server, "", "", root.f-link); } }
+                                    link-edit := LineEdit { text <=> root.f-link; placeholder-text: "Login link"; font-size: Theme.fs; edited(t) => { root.server-edited(t); } accepted => { root.login(root.f-server, "", "", root.f-link); } }
                                     HorizontalLayout {
                                         spacing: 8px;
                                         GhostButton {
                                             text: "Paste";
-                                            accessible-label: "Paste the login link from the clipboard";
                                             horizontal-stretch: 1;
                                             clicked => { if root.is-android { root.paste-clip(); } else { link-edit.focus(); link-edit.paste(); root.server-edited(root.f-link); } }
                                         }
                                         if root.can-scan: GhostButton {
                                             text: "Scan QR code";
-                                            accessible-label: "Scan the QR code of a one-time login link";
                                             horizontal-stretch: 1;
                                             clicked => { root.scan-qr(); }
                                         }
                                     }
                                     if root.can-scan: GhostButton {
                                         text: "Choose image with QR";
-                                        accessible-label: "Choose a picture that contains the QR code";
                                         clicked => { root.scan-image(); }
                                     }
                                 }
-                                if root.login-error != "": Text { text: root.login-error; color: Theme.danger; wrap: word-wrap; font-size: Theme.fs; accessible-role: text; }
+                                if root.login-error != "": Text { text: root.login-error; color: Theme.danger; wrap: word-wrap; font-size: Theme.fs; }
                                 PrimaryButton {
                                     text: root.busy ? "Signing in..." : "Sign in";
                                     enabled: !root.busy;
@@ -640,7 +645,7 @@ export component AppWindow inherits Window {
                                         if root.use-link { root.login(root.f-server, "", "", root.f-link); } else { root.login(root.f-server, root.f-user, root.f-pass, ""); }
                                     }
                                 }
-                                Text { text: root.version; font-size: Theme.fs-small; color: Theme.muted; horizontal-alignment: center; accessible-role: text; }
+                                Text { text: root.version; font-size: Theme.fs-small; color: Theme.muted; horizontal-alignment: center; }
                             }
                         }
                     }
@@ -683,27 +688,22 @@ export component AppWindow inherits Window {
                             background: root.wide ? Theme.side-bg : Theme.sidebar;
                             VerticalLayout {
                                 // Header of the column.
-                                if root.main-tab == "home": Rectangle {
-                                    height: max(root.wide ? 52px : 60px, 44px * Theme.scale);
+                                // ---- desktop: the sidebar header ----
+                                if root.wide && root.main-tab == "home": Rectangle {
+                                    height: max(52px, 44px * Theme.scale);
                                     HorizontalLayout {
-                                        padding-left: root.wide ? 14px : 12px;
+                                        padding-left: 14px;
                                         padding-right: 6px;
                                         spacing: 10px;
-                                        if !root.wide: Rectangle {
-                                            width: min(30px * Theme.scale, 40px); height: self.width; y: (parent.height - self.height) / 2; border-radius: 7px; background: Theme.accent;
-                                            Text { text: root.server-initials; color: Theme.on-accent; font-weight: 700; font-size: Theme.fs * 0.9; horizontal-alignment: center; vertical-alignment: center; }
-                                        }
                                         Rectangle {
                                             horizontal-stretch: 1;
-                                            accessible-role: button;
-                                            accessible-label: root.server-name + " menu";
                                             HorizontalLayout {
                                                 spacing: 4px;
-                                                Text { text: root.server-name; font-size: Theme.fs-title * (root.wide ? 1.0 : 0.85); font-weight: 700; color: Theme.text; vertical-alignment: center; overflow: elide; }
-                                                if root.wide: Icon { name: "chevron-down"; size: 18px; tint: Theme.icon; y: (parent.height - self.height) / 2; }
+                                                Text { text: root.server-name; font-size: Theme.fs-title; font-weight: 700; color: Theme.text; vertical-alignment: center; overflow: elide; }
+                                                Icon { name: "chevron-down"; size: 18px; tint: Theme.icon; y: (parent.height - self.height) / 2; }
                                                 Rectangle { horizontal-stretch: 1; }
                                             }
-                                            TouchArea { clicked => { if root.wide { root.menu-up = false; root.menu-x = root.rail-w + 8px; root.menu-y = root.top-h + 48px * Theme.scale; } root.menu-kind = "server"; } }
+                                            TouchArea { clicked => { root.menu-up = false; root.menu-x = root.rail-w + 8px; root.menu-y = root.top-h + 48px * Theme.scale; root.menu-kind = "server"; } }
                                         }
                                         if root.lock-set: IconButton {
                                             icon: root.lock-engaged ? "lock" : "unlock";
@@ -712,48 +712,42 @@ export component AppWindow inherits Window {
                                             clicked => { root.lock-tapped(); }
                                             y: (parent.height - self.height) / 2;
                                         }
-                                        if root.wide: ToolButton { icon: "edit"; label: "New message"; size: 34px * Theme.scale; y: (parent.height - self.height) / 2; clicked => { root.new-message(); } }
-                                        if !root.wide: IconButton { icon: "edit"; label: "New message"; clicked => { root.new-message(); } y: (parent.height - self.height) / 2; }
-                                        if !root.wide: IconButton { icon: "filter"; label: "Sort and filter the list"; clicked => { root.menu-kind = "overflow"; } y: (parent.height - self.height) / 2; }
+                                        ToolButton { icon: "edit"; label: "New message"; size: 34px * Theme.scale; y: (parent.height - self.height) / 2; clicked => { root.new-message(); } }
                                     }
                                     Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
                                 }
-                                if root.main-tab == "home" && !root.wide: Rectangle {
-                                    height: 56px;
-                                    Rectangle {
-                                        x: 12px; y: 6px; width: parent.width - 24px; height: 44px;
-                                        border-radius: 22px;
-                                        background: Theme.surface;
-                                        accessible-role: button;
-                                        accessible-label: "Jump to or search";
-                                        HorizontalLayout {
-                                            padding-left: 16px; spacing: 10px;
-                                            Icon { name: "search"; size: 20px; tint: Theme.icon; y: (parent.height - self.height) / 2; }
-                                            Text { text: "Jump to or search..."; font-size: Theme.fs; color: Theme.muted; vertical-alignment: center; }
-                                        }
-                                        TouchArea { clicked => { root.open-search(); } }
-                                    }
-                                }
-                                if root.main-tab == "home" && !root.wide && root.upd-banner: UpdateBanner {
-                                    text: root.upd-banner-text;
-                                    open => { root.open-about(); }
-                                    dismiss => { root.upd-remind(); }
-                                }
-                                if root.main-tab == "dms": Rectangle {
-                                    height: max(root.wide ? 52px : 60px, 44px * Theme.scale);
+                                if root.wide && root.main-tab == "dms": Rectangle {
+                                    height: max(52px, 44px * Theme.scale);
                                     HorizontalLayout {
                                         padding-left: 16px; padding-right: 6px; spacing: 6px;
                                         Text { text: "Direct messages"; font-size: Theme.fs-title; font-weight: 700; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
-                                        if !root.wide && root.lock-set: IconButton { icon: root.lock-engaged ? "lock" : "unlock"; tint: Theme.icon-soft; label: root.lock-engaged ? "App Lock, locked. Tap to unlock" : "App Lock, unlocked. Tap to lock"; clicked => { root.lock-tapped(); } y: (parent.height - self.height) / 2; }
                                         ToolButton { icon: "edit"; label: "New message"; size: 40px; y: (parent.height - self.height) / 2; clicked => { root.new-message(); } }
                                     }
                                     Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
+                                }
+                                // ---- phone: top bar (app name, App Lock, 3-dot menu) and the page title of the DMs and Channels tabs ----
+                                if !root.wide && (root.main-tab == "dms" || root.main-tab == "channels"): PhoneTopBar {
+                                    app-name: root.server-name;
+                                    lock-set: root.lock-set;
+                                    lock-engaged: root.lock-engaged;
+                                    lock => { root.lock-tapped(); }
+                                    more => { root.menu-kind = "overflow"; }
+                                }
+                                if !root.wide && (root.main-tab == "dms" || root.main-tab == "channels"): Rectangle {
+                                    height: max(44px, 36px * Theme.scale);
+                                    Text { x: 16px; width: parent.width - 32px; text: root.main-tab == "dms" ? "Direct Messages" : "Channels"; font-size: Theme.fs-title; font-weight: 700; color: Theme.text; vertical-alignment: center; overflow: elide; }
+                                }
+                                if !root.wide && (root.main-tab == "dms" || root.main-tab == "channels") && root.upd-banner: UpdateBanner {
+                                    text: root.upd-banner-text;
+                                    open => { root.open-about(); }
+                                    dismiss => { root.upd-remind(); }
                                 }
                                 if root.main-tab == "activity": VerticalLayout {
                                     Rectangle {
                                         height: max(root.wide ? 52px : 60px, 44px * Theme.scale);
                                         HorizontalLayout {
-                                            padding-left: 16px; padding-right: 6px; spacing: 6px;
+                                            padding-left: root.wide ? 16px : 4px; padding-right: 6px; spacing: 6px;
+                                            if !root.wide: IconButton { icon: "back"; label: "Back"; clicked => { root.back-pressed(); } y: (parent.height - self.height) / 2; }
                                             Text { text: "Activity"; font-size: Theme.fs-title; font-weight: 700; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
                                             if root.activity-unread > 0: TextButton { text: "Mark all read"; clicked => { root.mark-activity-read(); } y: (parent.height - self.height) / 2; }
                                         }
@@ -773,7 +767,7 @@ export component AppWindow inherits Window {
                                         height: max(root.wide ? 60px : 66px, 50px * Theme.scale);
                                         HorizontalLayout {
                                             padding-left: root.wide ? 16px : 4px; padding-right: 6px; spacing: 6px;
-                                            if !root.wide: IconButton { icon: "back"; label: "Back to Home"; clicked => { root.go-home-tab("home"); } y: (parent.height - self.height) / 2; }
+                                            if !root.wide: IconButton { icon: "back"; label: "Back"; clicked => { root.back-pressed(); } y: (parent.height - self.height) / 2; }
                                             VerticalLayout {
                                                 alignment: center;
                                                 horizontal-stretch: 1;
@@ -794,20 +788,18 @@ export component AppWindow inherits Window {
                                     }
                                     Rectangle { height: 1px; background: Theme.line; }
                                 }
-                                if root.main-tab == "you": AppBar { title: "You"; show-back: false; }
+                                if !root.wide && root.main-tab == "menu": AppBar { title: "Menu"; show-back: false; }
+                                if !root.wide && root.main-tab == "you": AppBar { title: "You"; back => { root.back-pressed(); } }
                                 if root.status != "" && root.status != "Connected" && root.status != "\u{0}done": Rectangle {
                                     height: stt.preferred-height + 10px;
                                     background: Theme.surface;
                                     stt := Text { x: 16px; width: parent.width - 32px; text: root.status; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; vertical-alignment: center; }
                                 }
 
-                                // Home: the sidebar.
-                                if root.main-tab == "home" && root.side-rows.length == 0: EmptyState { vertical-stretch: 1; icon: "chat"; title: "No conversations yet"; hint: "Start a conversation with someone on your server."; action: "New message"; act => { root.new-message(); } }
-                                if root.main-tab == "home" && root.side-rows.length > 0: ListView {
+                                // Desktop Home: the sidebar.
+                                if root.wide && root.main-tab == "home" && root.side-rows.length == 0: EmptyState { vertical-stretch: 1; icon: "chat"; title: "No conversations yet"; hint: "Start a conversation with someone on your server."; action: "New message"; act => { root.new-message(); } }
+                                if root.wide && root.main-tab == "home" && root.side-rows.length > 0: ListView {
                                     vertical-stretch: 1;
-                                    content-y <=> root.home-y;
-                                    changed visible-height => { root.home-vh = self.visible-height; }
-                                    changed content-height => { root.home-h = self.content-height; }
                                     for r[i] in root.side-rows: SideItem {
                                         r: r;
                                         wide: root.wide;
@@ -822,15 +814,44 @@ export component AppWindow inherits Window {
                                         }
                                     }
                                 }
-                                // DMs.
-                                if root.main-tab == "dms" && root.dm-rows.length == 0: EmptyState { vertical-stretch: 1; icon: "chat"; title: "No direct messages yet"; hint: "Message a teammate privately."; action: "New message"; act => { root.new-message(); } }
-                                if root.main-tab == "dms" && root.dm-rows.length > 0: ListView {
+                                // Desktop DMs.
+                                if root.wide && root.main-tab == "dms" && root.dm-rows.length == 0: EmptyState { vertical-stretch: 1; icon: "chat"; title: "No direct messages yet"; hint: "Message a teammate privately."; action: "New message"; act => { root.new-message(); } }
+                                if root.wide && root.main-tab == "dms" && root.dm-rows.length > 0: ListView {
                                     vertical-stretch: 1;
                                     for r[i] in root.dm-rows: DmRow {
                                         r: r;
                                         selected: r.id == root.current-conv && (root.wide || root.show-chat);
                                         clicked => { root.side-clicked(r.id, "conv"); root.show-chat = true; }
                                         menu(x, y) => { root.menu-x = x; root.menu-y = y; root.open-conv-menu(r.id, r.title, r.favourite); }
+                                    }
+                                }
+                                // Phone DMs and Channels: pinned conversations first, then the rest in the chosen order.
+                                if !root.wide && root.main-tab == "dms" && root.phone-dms.length == 0: EmptyState { vertical-stretch: 1; icon: "chat"; title: "No direct messages yet"; hint: root.unread-only || root.hide-muted ? "Nothing matches the filter. Turn it off in the menu at the top right." : "Message a teammate privately."; action: "New message"; act => { root.new-message(); } }
+                                if !root.wide && root.main-tab == "dms" && root.phone-dms.length > 0: PhoneList {
+                                    vertical-stretch: 1;
+                                    rows: root.phone-dms;
+                                    selected: root.show-chat ? root.current-conv : "";
+                                    fab => { root.new-message(); }
+                                    clicked(id) => { root.side-clicked(id, "conv"); root.show-chat = true; }
+                                    menu(id, title, fav, x, y) => { root.menu-x = x; root.menu-y = y; root.open-conv-menu(id, title, fav); }
+                                    dropped => {
+                                        if Drag.target != "" && Drag.zone != 0 { root.pin-drop(Drag.src, Drag.target, Drag.zone); }
+                                        Drag.reset();
+                                    }
+                                }
+                                if !root.wide && root.main-tab == "channels" && root.phone-chans.length == 0 && !root.is-admin: EmptyState { vertical-stretch: 1; icon: "hash"; title: "No channels yet"; hint: root.unread-only || root.hide-muted ? "Nothing matches the filter. Turn it off in the menu at the top right." : "An admin adds you to channels."; }
+                                if !root.wide && root.main-tab == "channels" && (root.phone-chans.length > 0 || root.is-admin): PhoneList {
+                                    vertical-stretch: 1;
+                                    rows: root.phone-chans;
+                                    can-create: root.is-admin;
+                                    selected: root.show-chat ? root.current-conv : "";
+                                    fab => { root.new-message(); }
+                                    clicked(id) => { root.side-clicked(id, "conv"); root.show-chat = true; }
+                                    menu(id, title, fav, x, y) => { root.menu-x = x; root.menu-y = y; root.open-conv-menu(id, title, fav); }
+                                    create => { root.new-channel-name = ""; root.new-channel-open = true; }
+                                    dropped => {
+                                        if Drag.target != "" && Drag.zone != 0 { root.pin-drop(Drag.src, Drag.target, Drag.zone); }
+                                        Drag.reset();
                                     }
                                 }
                                 // Activity.
@@ -860,8 +881,46 @@ export component AppWindow inherits Window {
                                         remove => { root.unsave(s.id); }
                                     }
                                 }
-                                // You / More.
-                                if root.main-tab == "you": ScrollView {
+                                // Phone Menu: you, Activity, Settings.
+                                if !root.wide && root.main-tab == "menu": ScrollView {
+                                    vertical-stretch: 1;
+                                    VerticalLayout {
+                                        padding: 16px;
+                                        padding-bottom: 32px;
+                                        spacing: 14px;
+                                        alignment: start;
+                                        Card {
+                                            Rectangle {
+                                                height: max(84px, 68px * Theme.scale);
+                                                background: mp.pressed ? Theme.bubble-other : transparent;
+                                                HorizontalLayout {
+                                                    padding-left: 16px; padding-right: 12px; spacing: 14px;
+                                                    Avatar { uid: root.me-id; initials: root.me-initials; tint: root.me-color; size: 56px * min(Theme.scale, 1.3); presence: root.presence-i; y: (parent.height - self.height) / 2; }
+                                                    VerticalLayout {
+                                                        alignment: center;
+                                                        horizontal-stretch: 1;
+                                                        spacing: 2px;
+                                                        Text { text: root.me-name; font-size: Theme.fs-large * 0.85; font-weight: 700; color: Theme.text; overflow: elide; }
+                                                        HorizontalLayout {
+                                                            spacing: 6px;
+                                                            Rectangle { width: 9px; height: 9px; y: (parent.height - self.height) / 2; border-radius: 4.5px; background: root.presence-pref == "dnd" ? Theme.danger : (root.presence-pref == "away" ? Theme.warn : Theme.ok); }
+                                                            Text { text: root.presence-pref == "dnd" ? "Do not disturb" : (root.presence-pref == "away" ? "Away" : "Active"); font-size: Theme.fs-small * 1.05; color: Theme.muted; vertical-alignment: center; overflow: elide; }
+                                                        }
+                                                    }
+                                                    Icon { name: "chevron-right"; size: 20px; tint: Theme.icon-soft; y: (parent.height - self.height) / 2; }
+                                                }
+                                                mp := TouchArea { clicked => { root.go-home-tab("you"); } }
+                                            }
+                                        }
+                                        Card {
+                                            SettingRow { icon: "bell"; badge: #e8590c; title: "Activity"; summary: root.activity-unread > 0 ? root.activity-unread + " new" : ""; clicked => { root.go-home-tab("activity"); } }
+                                            SettingRow { icon: "settings"; badge: #64748b; title: "Settings"; clicked => { root.open-settings(); } divider: false; }
+                                        }
+                                        Text { text: root.version; font-size: Theme.fs-small; color: Theme.muted; horizontal-alignment: center; }
+                                    }
+                                }
+                                // Phone You page (opened from the Menu): status, pause notifications, saved items, files, App Lock, devices, sign out.
+                                if !root.wide && root.main-tab == "you": ScrollView {
                                     vertical-stretch: 1;
                                     VerticalLayout {
                                         padding: 16px;
@@ -883,8 +942,6 @@ export component AppWindow inherits Window {
                                                         width: ystl.preferred-width + 50px;
                                                         border-radius: self.height / 2;
                                                         background: Theme.surface-high;
-                                                        accessible-role: button;
-                                                        accessible-label: "Set status. Now " + ystl.text;
                                                         Rectangle { x: 14px; y: (parent.height - self.height) / 2; width: 10px; height: 10px; border-radius: 5px; background: root.presence-pref == "dnd" ? Theme.danger : (root.presence-pref == "away" ? Theme.warn : Theme.ok); }
                                                         ystl := Text { x: 32px; text: root.presence-pref == "dnd" ? "Do not disturb" : (root.presence-pref == "away" ? "Away" : "Active"); font-size: Theme.fs-small * 1.1; color: Theme.text; vertical-alignment: center; }
                                                         TouchArea { clicked => { root.menu-kind = "pick-status"; } }
@@ -894,13 +951,11 @@ export component AppWindow inherits Window {
                                         }
                                         Card {
                                             SettingRow { icon: "bell-off"; badge: #dc2626; title: "Pause notifications"; has-switch: true; on: root.presence-pref == "dnd"; toggled => { root.set-presence(self.on ? "dnd" : "auto"); } }
+                                            SettingRow { icon: "person"; badge: #64748b; title: "Profile"; clicked => { root.open-settings(); root.settings-page = "account"; } }
                                             SettingRow { icon: "bookmark"; badge: #f59e0b; title: "Saved items (Later)"; summary: root.saved-rows.length > 0 ? "" + root.saved-rows.length : ""; clicked => { root.go-home-tab("later"); } }
-                                            SettingRow { icon: "thread"; badge: #0d9488; title: "Threads"; clicked => { root.open-threads(); } }
-                                            SettingRow { icon: "file"; badge: #0d9488; title: "Files"; summary: ""; clicked => { root.open-files(); } }
-                                            SettingRow { icon: "clock"; badge: #3b82f6; title: "Drafts & sent"; summary: root.scheduled-count > 0 ? root.scheduled-count + " scheduled" : ""; clicked => { root.open-drafts(); } divider: false; }
+                                            SettingRow { icon: "file"; badge: #0d9488; title: "Files"; summary: ""; clicked => { root.open-files(); } divider: false; }
                                         }
                                         Card {
-                                            SettingRow { icon: "settings"; badge: #64748b; title: "Preferences"; clicked => { root.open-settings(); } }
                                             SettingRow { icon: "lock"; badge: #16a34a; title: "App Lock"; summary: root.lock-set ? "On" : "Off"; clicked => { root.open-settings(); root.settings-page = "lock"; } divider: root.is-admin || root.sign-out-allowed; }
                                             if root.is-admin: SettingRow { icon: "shield"; badge: #8b5cf6; title: "Admin panel"; summary: "In browser"; clicked => { root.open-admin-panel(); } divider: root.sign-out-allowed; }
                                             if root.sign-out-allowed: SettingRow { icon: "devices"; badge: #3b82f6; title: "Devices"; clicked => { root.open-settings(); root.settings-page = "devices"; } divider: true; }
@@ -909,19 +964,15 @@ export component AppWindow inherits Window {
                                         Text { text: root.version; font-size: Theme.fs-small; color: Theme.muted; horizontal-alignment: center; }
                                     }
                                 }
-                                if !root.wide: BottomNav {
-                                    tab: root.main-tab;
-                                    activity-unread: root.activity-unread;
+                                // Phone Search: the page itself is drawn above (see "search" below); this keeps the bar at the bottom.
+                                if !root.wide && root.main-tab == "search": Rectangle { vertical-stretch: 1; }
+                                if !root.wide && root.virtual-keyboard-size.height == 0px: BottomNav {
+                                    tab: root.phone-tab;
+                                    menu-unread: root.activity-unread;
                                     dm-unread: root.dm-unread;
+                                    chan-unread: root.chan-unread;
                                     picked(t) => { root.go-home-tab(t); }
                                 }
-                            }
-                            if !root.wide && root.main-tab == "home" && root.fab-shown: Fab {
-                                icon: "edit";
-                                label: "New message";
-                                x: parent.width - self.width - 16px;
-                                y: parent.height - self.height - max(64px, 54px * Theme.scale) - 16px;
-                                clicked => { root.new-message(); }
                             }
                         }
                         if root.wide: Rectangle { width: 1px; background: Theme.line; }
@@ -940,8 +991,6 @@ export component AppWindow inherits Window {
                                     if !root.wide: IconButton { icon: "back"; label: "Back to the conversation list"; clicked => { root.back-pressed(); } y: (parent.height - self.height) / 2; }
                                     Rectangle {
                                         horizontal-stretch: 1;
-                                        accessible-role: button;
-                                        accessible-label: root.current-title + ", conversation details";
                                         HorizontalLayout {
                                             spacing: 8px;
                                             if root.current-conv != "" && root.current-kind == "channel": Icon { name: root.is-conv-locked(root.current-conv) ? "lock" : "hash"; size: 20px * Theme.scale; tint: Theme.icon; y: (parent.height - self.height) / 2; }
@@ -965,8 +1014,6 @@ export component AppWindow inherits Window {
                                         border-width: 1px;
                                         border-color: Theme.line;
                                         background: hpa.has-hover ? Theme.row-hover : transparent;
-                                        accessible-role: button;
-                                        accessible-label: root.member-count + " members";
                                         hp := HorizontalLayout {
                                             padding-left: 8px; padding-right: 8px; spacing: 6px;
                                             for p[i] in root.head-people: Avatar { uid: p.id; initials: p.initials; tint: p.color; size: 22px * Theme.scale; y: (parent.height - self.height) / 2; }
@@ -1012,8 +1059,6 @@ export component AppWindow inherits Window {
                             if root.wide && root.tab == 0 && root.current-conv != "" && root.unread-away: Rectangle {
                                 height: max(28px, 24px * Theme.scale);
                                 background: Theme.accent;
-                                accessible-role: button;
-                                accessible-label: root.unread-new + " new messages, jump to the first";
                                 Text { text: (root.unread-above ? "\u{2191} " : "\u{2193} ") + root.unread-new + (root.unread-new == 1 ? " new message" : " new messages") + " - Jump to first unread"; color: Theme.on-accent; font-size: Theme.fs-small; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
                                 TouchArea { clicked => { root.jump-unread(); } }
                             }
@@ -1054,8 +1099,6 @@ export component AppWindow inherits Window {
                                 // Phone: a compact floating pill centred under the top bar; hidden while the first unread is on screen.
                                 if !root.wide && root.unread-away: Rectangle {
                                     x: (parent.width - self.width) / 2; y: 8px; width: fu.preferred-width + 32px; height: max(32px, 28px * Theme.scale); border-radius: self.height / 2; background: Theme.accent;
-                                    accessible-role: button;
-                                    accessible-label: root.unread-new + " new messages, jump to the first";
                                     fu := Text { x: 16px; y: (parent.height - self.height) / 2; text: (root.unread-above ? "\u{2191} " : "\u{2193} ") + root.unread-new + (root.unread-new == 1 ? " new message" : " new messages"); color: Theme.on-accent; font-size: Theme.fs-small; font-weight: 700; }
                                     TouchArea { clicked => { root.jump-unread(); } }
                                 }
@@ -1094,8 +1137,6 @@ export component AppWindow inherits Window {
                                         width: 44px * Theme.scale;
                                         background: es.has-hover ? Theme.bubble-other : transparent;
                                         border-radius: Theme.r-sm;
-                                        accessible-role: button;
-                                        accessible-label: e.ch;
                                         if e.has-img: Image { source: e.img; width: 26px * Theme.scale; height: 26px * Theme.scale; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
                                         if !e.has-img: Text { text: e.ch; font-size: 22px * Theme.scale; horizontal-alignment: center; vertical-alignment: center; }
                                         es := TouchArea { clicked => { root.emoji-pick-sugg(e.ch); } }
@@ -1264,19 +1305,21 @@ export component AppWindow inherits Window {
                     height: parent.height - root.top-h;
 
                 // ---- search ----
-                if root.signed-in && root.screen == "search": Rectangle {
+                if root.signed-in && (root.screen == "search" || root.phone-search): Rectangle {
+                    // Phone: the Search tab, above the list column but not above the bottom bar (it is hidden while the keyboard is up).
+                    height: root.phone-search && root.virtual-keyboard-size.height == 0px ? parent.height - max(64px, 54px * Theme.scale) : parent.height;
                     background: Theme.bg;
                     TouchArea { }
                     VerticalLayout {
                         HorizontalLayout {
                             height: max(56px, 42px * Theme.scale);
-                            padding-left: 4px; padding-right: 12px; spacing: 4px;
-                            IconButton { icon: "back"; label: "Back"; clicked => { root.back-pressed(); } y: (parent.height - self.height) / 2; }
+                            padding-left: root.phone-search ? 12px : 4px; padding-right: 12px; spacing: 4px;
+                            if !root.phone-search: IconButton { icon: "back"; label: "Back"; clicked => { root.back-pressed(); } y: (parent.height - self.height) / 2; }
                             sfield := LineEdit {
+                                init => { if root.phone-search && root.search-text == "" { self.focus(); } }
                                 placeholder-text: "Search " + root.server-name;
                                 font-size: Theme.fs;
                                 text <=> root.search-text;
-                                accessible-label: "Search text";
                                 accepted(t) => { root.search(t); }
                                 edited(t) => { if !root.ai-on { root.search(t); } }
                                 y: (parent.height - self.height) / 2;
@@ -1442,7 +1485,6 @@ export component AppWindow inherits Window {
                             placeholder-text: "Type a name";
                             font-size: Theme.fs;
                             text <=> root.switcher-text;
-                            accessible-label: "Quick switcher";
                             edited(t) => { root.switcher-edited(t); }
                             accepted(t) => { if root.switcher.length > 0 { root.row-clicked("conv", root.switcher[0].id, root.switcher[0].id); } }
                         }
@@ -1504,8 +1546,6 @@ export component AppWindow inherits Window {
                                                         width: stl.preferred-width + 50px;
                                                         border-radius: self.height / 2;
                                                         background: Theme.surface-high;
-                                                        accessible-role: button;
-                                                        accessible-label: "Status: " + stl.text + ". Tap to change";
                                                         Rectangle { x: 14px; y: (parent.height - self.height) / 2; width: 10px; height: 10px; border-radius: 5px; background: root.presence-pref == "dnd" ? Theme.danger : (root.presence-pref == "away" ? Theme.warn : Theme.ok); }
                                                         stl := Text { x: 32px; text: root.presence-pref == "dnd" ? "Do not disturb" : (root.presence-pref == "away" ? "Away" : "Online"); font-size: Theme.fs-small * 1.1; color: Theme.text; vertical-alignment: center; }
                                                         TouchArea { clicked => { root.menu-kind = "pick-status"; } }
@@ -1536,10 +1576,10 @@ export component AppWindow inherits Window {
                                                 padding: 16px; spacing: 10px;
                                                 HorizontalLayout { alignment: center; Avatar { uid: root.me-id; initials: root.me-initials; tint: root.me-color; size: 84px * min(Theme.scale, 1.2); } }
                                                 Text { text: "Display name"; font-size: Theme.fs-small; color: Theme.muted; font-weight: 700; }
-                                                LineEdit { text <=> root.edit-name; placeholder-text: "Display name"; font-size: Theme.fs; accessible-label: "Display name"; }
+                                                LineEdit { text <=> root.edit-name; placeholder-text: "Display name"; font-size: Theme.fs; }
                                                 HorizontalLayout { alignment: end; PrimaryButton { text: "Save"; clicked => { root.save-profile(root.edit-name); } } }
                                                 Text { text: "Profile photo"; font-size: Theme.fs-small; color: Theme.muted; font-weight: 700; }
-                                                if !root.is-android: LineEdit { text <=> root.avatar-path; placeholder-text: "Path of a profile photo (png or jpg)"; font-size: Theme.fs; accessible-label: "Profile photo path"; }
+                                                if !root.is-android: LineEdit { text <=> root.avatar-path; placeholder-text: "Path of a profile photo (png or jpg)"; font-size: Theme.fs; }
                                                 HorizontalLayout {
                                                     alignment: end; spacing: 8px;
                                                     GhostButton { text: "Choose photo"; clicked => { root.choose-avatar(); } }
@@ -1565,7 +1605,7 @@ export component AppWindow inherits Window {
                                             VerticalLayout {
                                                 padding: 16px; spacing: 8px;
                                                 Text { text: "ntfy server"; font-size: Theme.fs-small; color: Theme.muted; font-weight: 700; }
-                                                LineEdit { text <=> root.ntfy-url; placeholder-text: "empty for the server's default"; font-size: Theme.fs; accessible-label: "ntfy server"; edited => { root.setting-changed("push"); } }
+                                                LineEdit { text <=> root.ntfy-url; placeholder-text: "empty for the server's default"; font-size: Theme.fs; edited => { root.setting-changed("push"); } }
                                             }
                                         }
                                         if root.settings-page == "notif" && root.is-android: Text { text: "Pushes never contain message text: the app wakes, syncs and shows its own notification. Sounds and vibration follow Android's notification settings for SuperChat."; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
@@ -1589,7 +1629,7 @@ export component AppWindow inherits Window {
                                                         for c[i] in [#0dbd8b, #0467dd, #6a4cf5, #e8590c]: Rectangle {
                                                             width: 36px; height: 36px; y: 0px; border-radius: 18px; background: c;
                                                             border-width: Theme.accent-index == i ? 3px : 0px; border-color: Theme.text;
-                                                            accessible-role: button; accessible-label: "Accent colour " + (i + 1);
+
                                                             TouchArea { clicked => { Theme.accent-index = i; root.setting-changed("accent"); } }
                                                         }
                                                         Rectangle { horizontal-stretch: 1; }
@@ -1629,10 +1669,10 @@ export component AppWindow inherits Window {
                                                 padding: 16px; spacing: 10px;
                                                 Text { text: "Locked conversations are hidden until you unlock with your PIN."; font-size: Theme.fs; font-weight: 700; color: Theme.text; wrap: word-wrap; }
                                                 Text { text: root.lock-set ? "Choose which conversations to lock below. The PIN stays on this device." : "Set a 6-digit PIN, then choose which conversations to lock. The PIN stays on this device and cannot be recovered; if you forget it, ask your admin to reset your account."; font-size: Theme.fs-small * 1.05; color: Theme.muted; wrap: word-wrap; }
-                                                if root.lock-set: LineEdit { text <=> root.lock-cur; input-type: password; placeholder-text: "Current PIN"; font-size: Theme.fs; accessible-label: "Current PIN"; edited(t) => { root.pin-edited("cur", t); } }
-                                                LineEdit { text <=> root.lock-new; input-type: password; placeholder-text: root.lock-set ? "New PIN (6 digits)" : "PIN (6 digits)"; font-size: Theme.fs; accessible-label: "New PIN"; edited(t) => { root.pin-edited("new", t); } }
-                                                LineEdit { text <=> root.lock-new2; input-type: password; placeholder-text: "Repeat the PIN"; font-size: Theme.fs; accessible-label: "Repeat the PIN"; edited(t) => { root.pin-edited("new2", t); } }
-                                                if root.lock-msg != "": Text { text: root.lock-msg; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; accessible-role: text; }
+                                                if root.lock-set: LineEdit { text <=> root.lock-cur; input-type: password; placeholder-text: "Current PIN"; font-size: Theme.fs; edited(t) => { root.pin-edited("cur", t); } }
+                                                LineEdit { text <=> root.lock-new; input-type: password; placeholder-text: root.lock-set ? "New PIN (6 digits)" : "PIN (6 digits)"; font-size: Theme.fs; edited(t) => { root.pin-edited("new", t); } }
+                                                LineEdit { text <=> root.lock-new2; input-type: password; placeholder-text: "Repeat the PIN"; font-size: Theme.fs; edited(t) => { root.pin-edited("new2", t); } }
+                                                if root.lock-msg != "": Text { text: root.lock-msg; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
                                                 HorizontalLayout {
                                                     spacing: 8px; alignment: start;
                                                     if !root.lock-set: PrimaryButton { text: "Turn on App Lock"; clicked => { root.lock-enable(); } }
@@ -1702,7 +1742,7 @@ export component AppWindow inherits Window {
                                                 for s in root.sections: Text { text: s.title; font-size: Theme.fs; color: Theme.text; }
                                                 HorizontalLayout {
                                                     spacing: 8px;
-                                                    LineEdit { text <=> root.new-section-name; placeholder-text: "New section name"; font-size: Theme.fs; accessible-label: "New section name"; }
+                                                    LineEdit { text <=> root.new-section-name; placeholder-text: "New section name"; font-size: Theme.fs; }
                                                     GhostButton { text: "Add"; clicked => { root.new-section(root.new-section-name); root.new-section-name = ""; } }
                                                 }
                                             }
@@ -1722,10 +1762,10 @@ export component AppWindow inherits Window {
                                                 spacing: 6px;
                                                 HorizontalLayout {
                                                     alignment: center;
-                                                    Image { source: @image-url("assets/icon.png"); width: 72px * min(Theme.scale, 1.3); height: self.width; accessible-role: image; accessible-label: "SuperChat icon"; }
+                                                    Image { source: @image-url("assets/icon.png"); width: 72px * min(Theme.scale, 1.3); height: self.width; }
                                                 }
                                                 Text { text: "SuperChat"; font-size: Theme.fs-large; font-weight: 700; color: Theme.text; horizontal-alignment: center; }
-                                                Text { text: root.version-long; font-size: Theme.fs; color: Theme.text; horizontal-alignment: center; wrap: word-wrap; accessible-role: text; }
+                                                Text { text: root.version-long; font-size: Theme.fs; color: Theme.text; horizontal-alignment: center; wrap: word-wrap; }
                                                 if root.server-text != "": Text { text: "Server: " + root.server-text; font-size: Theme.fs-small * 1.05; color: Theme.muted; horizontal-alignment: center; wrap: word-wrap; }
                                             }
                                         }
@@ -1771,9 +1811,9 @@ export component AppWindow inherits Window {
                             Text { text: "App Lock"; font-size: Theme.fs-title; font-weight: 700; horizontal-alignment: center; color: Theme.text; }
                             HorizontalLayout {
                                 alignment: center;
-                                LineEdit { width: min(260px, root.width - 48px); text <=> root.lock-pin; input-type: password; horizontal-alignment: center; placeholder-text: "6-digit PIN"; font-size: Theme.fs-title; accessible-label: "PIN"; edited(t) => { root.pin-edited("entry", t); } }
+                                LineEdit { width: min(260px, root.width - 48px); text <=> root.lock-pin; input-type: password; horizontal-alignment: center; placeholder-text: "6-digit PIN"; font-size: Theme.fs-title; edited(t) => { root.pin-edited("entry", t); } }
                             }
-                            Text { text: root.lock-error; color: Theme.danger; font-size: Theme.fs; horizontal-alignment: center; wrap: word-wrap; accessible-role: text; }
+                            Text { text: root.lock-error; color: Theme.danger; font-size: Theme.fs; horizontal-alignment: center; wrap: word-wrap; }
                             HorizontalLayout { alignment: center; TextButton { text: "Cancel"; clicked => { root.lock-cancel(); } } }
                         }
                     }
@@ -1817,7 +1857,7 @@ export component AppWindow inherits Window {
                                     Card {
                                         SettingRow { icon: "bell"; badge: #e8590c; title: "Notifications"; summary: root.current-notify; clicked => { root.menu-conv = root.current-conv; root.menu-kind = "notify"; } }
                                         SettingRow { icon: "bell-off"; badge: #dc2626; title: "Mute"; summary: root.current-muted ? "Muted" : "Off"; clicked => { root.menu-conv = root.current-conv; root.menu-kind = "mute"; } }
-                                        SettingRow { icon: "star"; badge: #f59e0b; title: "Favourite"; has-switch: true; on: root.current-fav; toggled => { root.toggle-fav(root.current-conv); } }
+                                        SettingRow { icon: root.wide ? "star" : "pin"; badge: #f59e0b; title: root.wide ? "Favourite" : "Pin to top"; has-switch: true; on: root.current-fav; toggled => { root.toggle-fav(root.current-conv); } }
                                         SettingRow { icon: "lock"; badge: #16a34a; title: root.lock-set ? (root.is-conv-locked(root.current-conv) ? "Unlock this conversation" : "Lock conversation") : "Set up App Lock to lock conversations"; chevron: !root.lock-set; clicked => { if root.lock-set { root.toggle-conv-lock(root.current-conv); } else { root.open-lock-setup(); } } divider: false; }
                                     }
                                     Text { text: "Locked conversations are hidden until you unlock with your PIN."; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
@@ -1884,16 +1924,13 @@ export component AppWindow inherits Window {
                             height: max(48px, 40px * Theme.scale);
                             border-radius: Theme.r-sm;
                             background: lp.has-hover && root.label-msg != "" ? Theme.row-hover : transparent;
-                            accessible-role: checkbox;
-                            accessible-label: l.name;
-                            accessible-checked: l.on;
                             HorizontalLayout {
                                 spacing: 10px;
                                 padding-left: 8px;
                                 padding-right: 8px;
                                 Rectangle { width: 18px; height: 18px; y: (parent.height - self.height) / 2; border-radius: 9px; background: l.tint; }
                                 if root.label-msg != "": Text { text: l.name; font-size: Theme.fs; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
-                                if root.label-msg == "": LineEdit { text: l.name; font-size: Theme.fs; accessible-label: "Label name"; accepted(t) => { root.label-rename(l.id, t); } horizontal-stretch: 1; y: (parent.height - self.height) / 2; }
+                                if root.label-msg == "": LineEdit { text: l.name; font-size: Theme.fs; accepted(t) => { root.label-rename(l.id, t); } horizontal-stretch: 1; y: (parent.height - self.height) / 2; }
                                 if root.label-msg != "": Rectangle { width: 24px; height: 24px; y: (parent.height - self.height) / 2; border-radius: 6px; border-width: l.on ? 0px : 2px; border-color: Theme.icon-soft; background: l.on ? Theme.accent : transparent;
                                     if l.on: Icon { name: "check"; size: 16px; tint: Theme.on-accent; weight: 2.5px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; } }
                                 if root.label-msg == "": ToolButton { icon: "palette"; label: "Change colour"; size: 40px; y: (parent.height - self.height) / 2; clicked => { root.label-recolor(l.id); } }
@@ -1907,13 +1944,13 @@ export component AppWindow inherits Window {
                             for c[i] in [#0dbd8b, #0467dd, #7b61ff, #e8590c, #d6336c, #868e96]: Rectangle {
                                 width: 30px; height: 30px; border-radius: 15px; background: c; y: (parent.height - self.height) / 2;
                                 border-width: root.label-new-color == i ? 3px : 0px; border-color: Theme.text;
-                                accessible-role: button; accessible-label: "Colour " + (i + 1);
+
                                 TouchArea { clicked => { root.label-new-color = i; } }
                             }
                         }
                         HorizontalLayout {
                             spacing: 8px;
-                            LineEdit { text <=> root.label-new-name; placeholder-text: "Label name (up to 30 characters)"; font-size: Theme.fs; accessible-label: "New label name"; accepted(t) => { root.label-create(t, root.label-new-color); } }
+                            LineEdit { text <=> root.label-new-name; placeholder-text: "Label name (up to 30 characters)"; font-size: Theme.fs; accepted(t) => { root.label-create(t, root.label-new-color); } }
                             PrimaryButton { text: "Create"; enabled: root.label-new-name != ""; clicked => { root.label-create(root.label-new-name, root.label-new-color); } }
                         }
                     }
@@ -2025,15 +2062,19 @@ export component AppWindow inherits Window {
                     SheetRow { icon: "bell-off"; text: "Hide muted"; checked: root.hide-muted; clicked => { root.hide-muted = !root.hide-muted; root.setting-changed("sort"); root.menu-kind = ""; } }
                     SheetRow { icon: "sort"; text: "Reset the sidebar order"; clicked => { root.reset-order(); root.menu-kind = ""; } }
                 }
+                // ---- phone: the 3-dot menu of the DMs and Channels tabs ----
                 if root.menu-kind == "overflow": BottomSheet {
-                    title: "Sort and filter"; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y;
+                    title: ""; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y;
                     dismiss => { root.menu-kind = ""; }
-                    SheetRow { icon: "sort"; text: "Sort"; detail: root.sort-alpha ? "A-Z" : "Activity"; chevron: true; clicked => { root.menu-kind = "sort"; } }
-                    SheetRow { icon: "mail"; text: "Unread only"; checked: root.unread-only; clicked => { root.unread-only = !root.unread-only; root.setting-changed("sort"); root.menu-kind = ""; } }
-                    SheetRow { icon: "bell-off"; text: "Hide muted"; checked: root.hide-muted; clicked => { root.hide-muted = !root.hide-muted; root.setting-changed("sort"); root.menu-kind = ""; } }
-                    SheetRow { icon: "sort"; text: "Reset the sidebar order"; clicked => { root.reset-order(); root.menu-kind = ""; } }
                     SheetRow { icon: "thread"; text: "Threads"; clicked => { root.menu-kind = ""; root.open-threads(); } }
-                    SheetRow { icon: "clock"; text: root.scheduled-count > 0 ? "Drafts & sent (" + root.scheduled-count + " scheduled)" : "Drafts & sent"; clicked => { root.menu-kind = ""; root.open-drafts(); } }
+                    SheetRow { icon: "clock"; text: "Drafts & sent"; detail: root.scheduled-count > 0 ? root.scheduled-count + " scheduled" : ""; clicked => { root.menu-kind = ""; root.open-drafts(); } }
+                    SheetRow { icon: "bookmark"; text: "Later"; detail: root.saved-rows.length > 0 ? "" + root.saved-rows.length : ""; clicked => { root.menu-kind = ""; root.go-home-tab("later"); } }
+                    MenuLabel { text: "Sort"; }
+                    ChoiceRow { radio: true; text: "Recent"; on: !root.sort-alpha; clicked => { root.sort-alpha = false; root.setting-changed("sort"); } }
+                    ChoiceRow { radio: true; text: "Name (A–Z)"; on: root.sort-alpha; clicked => { root.sort-alpha = true; root.setting-changed("sort"); } }
+                    MenuLabel { text: "Filter"; }
+                    ChoiceRow { text: "Unread only"; on: root.unread-only; clicked => { root.unread-only = !root.unread-only; root.setting-changed("sort"); } }
+                    ChoiceRow { text: "Hide muted"; on: root.hide-muted; clicked => { root.hide-muted = !root.hide-muted; root.setting-changed("sort"); } }
                 }
                 if root.menu-kind == "sort": BottomSheet {
                     title: "Sort conversations by"; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y;
@@ -2079,13 +2120,16 @@ export component AppWindow inherits Window {
                     dismiss => { root.menu-kind = ""; }
                     SheetRow { icon: "mark-read"; text: "Mark as read"; clicked => { root.mark-read(root.menu-conv); root.menu-kind = ""; } }
                     SheetRow { icon: "mail"; text: "Mark as unread"; clicked => { root.mark-unread(root.menu-conv); root.menu-kind = ""; } }
-                    SheetRow { icon: "star"; text: root.menu-fav ? "Remove from favourites" : "Star (add to favourites)"; clicked => { root.toggle-fav(root.menu-conv); root.menu-kind = ""; } }
+                    if root.wide: SheetRow { icon: "star"; text: root.menu-fav ? "Remove from favourites" : "Star (add to favourites)"; clicked => { root.toggle-fav(root.menu-conv); root.menu-kind = ""; } }
+                    if !root.wide: SheetRow { icon: "pin"; text: root.menu-fav ? "Unpin" : "Pin to top"; clicked => { root.pin-toggle(root.menu-conv); root.menu-kind = ""; } }
+                    if !root.wide && root.menu-fav: SheetRow { icon: "arrow-up"; text: "Move up"; clicked => { root.move-pinned(root.menu-conv, -1); root.menu-kind = ""; } }
+                    if !root.wide && root.menu-fav: SheetRow { icon: "arrow-down"; text: "Move down"; clicked => { root.move-pinned(root.menu-conv, 1); root.menu-kind = ""; } }
                     SheetRow { icon: "bell-off"; text: "Mute"; chevron: true; clicked => { root.menu-kind = "mute"; } }
                     SheetRow { icon: "bell"; text: "Notify me about"; chevron: true; clicked => { root.menu-kind = "notify"; } }
                     SheetRow { icon: "speaker"; text: "Notification sound"; chevron: true; clicked => { root.menu-kind = "sound"; } }
-                    SheetRow { icon: "hash"; text: "Move to section"; chevron: true; clicked => { root.menu-kind = "section"; } }
-                    SheetRow { icon: "arrow-up"; text: "Move up in the list"; clicked => { root.move-row(root.menu-conv, -1); root.menu-kind = ""; } }
-                    SheetRow { icon: "arrow-down"; text: "Move down in the list"; clicked => { root.move-row(root.menu-conv, 1); root.menu-kind = ""; } }
+                    if root.wide: SheetRow { icon: "hash"; text: "Move to section"; chevron: true; clicked => { root.menu-kind = "section"; } }
+                    if root.wide: SheetRow { icon: "arrow-up"; text: "Move up in the list"; clicked => { root.move-row(root.menu-conv, -1); root.menu-kind = ""; } }
+                    if root.wide: SheetRow { icon: "arrow-down"; text: "Move down in the list"; clicked => { root.move-row(root.menu-conv, 1); root.menu-kind = ""; } }
                     SheetRow { icon: "lock"; text: root.lock-set ? (root.is-conv-locked(root.menu-conv) ? "Remove lock from this conversation" : "Lock conversation") : "Set up App Lock to lock conversations"; clicked => { if root.lock-set { root.toggle-conv-lock(root.menu-conv); root.menu-kind = ""; } else { root.menu-kind = ""; root.open-lock-setup(); } } }
                     SheetRow { icon: "info"; text: "View details"; clicked => { root.menu-kind = ""; root.select-conv(root.menu-conv); root.show-chat = true; root.open-details(root.wide ? "about" : ""); } }
                 }
@@ -2139,7 +2183,7 @@ export component AppWindow inherits Window {
                     Rectangle { height: 1px; background: Theme.line; }
                     HorizontalLayout {
                         padding: 8px; padding-left: 20px; spacing: 8px;
-                        LineEdit { text <=> root.new-section-name; placeholder-text: "New section name"; font-size: Theme.fs; accessible-label: "New section name"; accepted(t) => { root.new-section(t); root.set-section(root.menu-conv, ""); root.new-section-name = ""; root.menu-kind = ""; } }
+                        LineEdit { text <=> root.new-section-name; placeholder-text: "New section name"; font-size: Theme.fs; accepted(t) => { root.new-section(t); root.set-section(root.menu-conv, ""); root.new-section-name = ""; root.menu-kind = ""; } }
                         GhostButton { text: "Create"; clicked => { root.new-section(root.new-section-name); root.new-section-name = ""; root.menu-kind = ""; } }
                     }
                 }
@@ -2172,14 +2216,14 @@ export component AppWindow inherits Window {
                             for e in root.quick-emoji: Rectangle {
                                 width: 40px; height: 40px; y: (parent.height - self.height) / 2; border-radius: 20px;
                                 background: qa.pressed ? Theme.bubble-other : Theme.surface;
-                                accessible-role: button; accessible-label: "React " + e.ch;
+
                                 if e.has-img: Image { source: e.img; width: 24px; height: 24px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
                                 if !e.has-img: Text { text: e.ch; font-size: 20px; }
                                 qa := TouchArea { clicked => { root.react(root.menu-msg, e.ch); root.menu-kind = ""; } }
                             }
                             Rectangle {
                                 width: 40px; height: 40px; y: (parent.height - self.height) / 2; border-radius: 20px; background: Theme.surface;
-                                accessible-role: button; accessible-label: "More reactions";
+
                                 Icon { name: "emoji"; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
                                 TouchArea { clicked => { root.picker-target = root.menu-msg; root.menu-kind = "emoji"; } }
                             }
@@ -2204,7 +2248,6 @@ export component AppWindow inherits Window {
                     dismiss => { root.menu-kind = ""; }
                     SheetRow { icon: "file"; text: "File"; clicked => { root.menu-kind = ""; if root.is-android { root.pick-media("files"); } else { root.attach-open = true; root.browse-file(); } } }
                     if root.is-android: SheetRow { icon: "image"; text: "Photo or video"; clicked => { root.menu-kind = ""; root.pick-media("gallery"); } }
-                    if root.is-android && root.can-camera: SheetRow { icon: "video"; text: "Record video"; clicked => { root.menu-kind = ""; root.pick-media("video"); } }
                     if !root.is-android: SheetRow { icon: "video"; text: "Upload video"; clicked => { root.menu-kind = ""; root.attach-open = true; root.browse-video(); } }
                     if !root.is-android && root.can-screen-record: SheetRow { icon: "video"; text: root.screen-rec-text != "" ? "Stop screen recording" : "Record screen"; clicked => { root.menu-kind = ""; root.screen-record-toggle(); } }
                     if !root.is-android: SheetRow { icon: "image"; text: "Paste image or file from clipboard"; clicked => { root.menu-kind = ""; root.paste-image(); } }
@@ -2229,8 +2272,6 @@ export component AppWindow inherits Window {
                                 width: grid.cell;
                                 height: grid.cell;
                                 background: ea.pressed ? Theme.bubble-other : (ea.has-hover ? Theme.row-hover : transparent);
-                                accessible-role: button;
-                                accessible-label: e.ch;
                                 if e.has-img: Image { source: e.img; width: 28px * Theme.scale; height: 28px * Theme.scale; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
                                 if !e.has-img: Text { text: e.ch; font-size: 24px * Theme.scale; }
                                 ea := TouchArea { clicked => { root.emoji-picked(e.ch); root.menu-kind = ""; } }
@@ -2347,16 +2388,13 @@ export component AppWindow inherits Window {
                     for f[i] in root.form-fields: VerticalLayout {
                         spacing: 4px;
                         Text { text: f.label + (f.required ? " *" : ""); font-size: Theme.fs; font-weight: 700; wrap: word-wrap; color: Theme.text; }
-                        if f.kind == 0: LineEdit { text: f.text; placeholder-text: f.placeholder; font-size: Theme.fs; accessible-label: f.label; edited(t) => { root.form-text(i, t); } }
-                        if f.kind == 1: TextEdit { text: f.text; height: 90px * Theme.scale; font-size: Theme.fs; accessible-label: f.label; edited(t) => { root.form-text(i, t); } }
+                        if f.kind == 0: LineEdit { text: f.text; placeholder-text: f.placeholder; font-size: Theme.fs; edited(t) => { root.form-text(i, t); } }
+                        if f.kind == 1: TextEdit { text: f.text; height: 90px * Theme.scale; font-size: Theme.fs; edited(t) => { root.form-text(i, t); } }
                         if f.kind == 2: SettingRow { icon: "settings"; badge: #64748b; title: f.placeholder != "" ? f.placeholder : "Yes"; has-switch: true; on: f.flag; divider: false; toggled => { root.form-toggle(i, ""); } }
                         if f.kind >= 3: VerticalLayout {
                             for o in f.options: Rectangle {
                                 height: max(48px, 38px * Theme.scale);
                                 background: oa.pressed ? Theme.bubble-other : transparent;
-                                accessible-role: checkbox;
-                                accessible-label: o.label;
-                                accessible-checked: o.on;
                                 HorizontalLayout {
                                     padding-left: 6px;
                                     spacing: 12px;
@@ -2383,7 +2421,7 @@ export component AppWindow inherits Window {
                     SheetRow { icon: "clock"; text: "In 3 hours"; clicked => { root.schedule("3h"); } }
                     SheetRow { icon: "calendar"; text: "Tomorrow 9:00 am"; clicked => { root.schedule("tomorrow"); } }
                     SheetRow { icon: "calendar"; text: "Monday 9:00 am"; clicked => { root.schedule("monday"); } }
-                    LineEdit { text <=> root.schedule-when; placeholder-text: "Custom: dd/mm/yyyy hh:mm (24-hour)"; font-size: Theme.fs; accessible-label: "Custom date and time"; accepted => { root.schedule(root.schedule-when); } }
+                    LineEdit { text <=> root.schedule-when; placeholder-text: "Custom: dd/mm/yyyy hh:mm (24-hour)"; font-size: Theme.fs; accepted => { root.schedule(root.schedule-when); } }
                     if root.schedule-error != "": Text { text: root.schedule-error; color: Theme.danger; font-size: Theme.fs-small; wrap: word-wrap; }
                 }
 
@@ -2391,8 +2429,8 @@ export component AppWindow inherits Window {
                 if root.bookmark-open: ModalCard {
                     title: "Add a bookmark"; wide: root.wide; ok-text: "Add"; ok => { root.add-bookmark(root.bm-title, root.bm-url); }
                     dismiss => { root.bookmark-open = false; }
-                    LineEdit { text <=> root.bm-title; placeholder-text: "Title"; font-size: Theme.fs; accessible-label: "Bookmark title"; }
-                    LineEdit { text <=> root.bm-url; placeholder-text: "https://..."; font-size: Theme.fs; accessible-label: "Bookmark link"; accepted => { root.add-bookmark(root.bm-title, root.bm-url); } }
+                    LineEdit { text <=> root.bm-title; placeholder-text: "Title"; font-size: Theme.fs; }
+                    LineEdit { text <=> root.bm-url; placeholder-text: "https://..."; font-size: Theme.fs; accepted => { root.add-bookmark(root.bm-title, root.bm-url); } }
                 }
 
                 // ---- delete channel (C-06): the name must be typed to confirm ----
@@ -2403,14 +2441,14 @@ export component AppWindow inherits Window {
                     dismiss => { root.delete-open = false; }
                     Text { text: "This permanently deletes " + root.current-title + ": every message, reaction, pin and uploaded file is removed for everyone, and it cannot be undone. Consider archiving it instead (it stays readable)."; font-size: Theme.fs; color: Theme.text; wrap: word-wrap; }
                     Text { text: "Type the name to confirm: " + root.current-title; font-size: Theme.fs-small; font-weight: 700; color: Theme.muted; wrap: word-wrap; }
-                    LineEdit { text <=> root.delete-typed; placeholder-text: root.current-title; font-size: Theme.fs; accessible-label: "Type the name to confirm"; }
+                    LineEdit { text <=> root.delete-typed; placeholder-text: root.current-title; font-size: Theme.fs; }
                 }
 
                 // ---- new channel (admins) ----
                 if root.new-channel-open: ModalCard {
                     title: "New channel"; wide: root.wide; ok-text: "Create"; ok => { root.create-channel(root.new-channel-name); }
                     dismiss => { root.new-channel-open = false; }
-                    LineEdit { text <=> root.new-channel-name; placeholder-text: "Channel name"; font-size: Theme.fs; accessible-label: "Channel name"; accepted => { root.create-channel(root.new-channel-name); } }
+                    LineEdit { text <=> root.new-channel-name; placeholder-text: "Channel name"; font-size: Theme.fs; accepted => { root.create-channel(root.new-channel-name); } }
                 }
 
                 // M-31: while the screen is being recorded a red pill with the time and a Stop button sits at the top.
@@ -2426,7 +2464,7 @@ export component AppWindow inherits Window {
                         Text { text: root.screen-rec-text; color: Theme.on-danger; font-size: Theme.fs; vertical-alignment: center; }
                         Rectangle {
                             width: 70px;
-                            TouchArea { clicked => { root.screen-record-toggle(); } accessible-role: button; accessible-label: "Stop screen recording"; }
+                            TouchArea { clicked => { root.screen-record-toggle(); } }
                             Rectangle { x: 0px; y: 5px; width: parent.width; height: parent.height - 10px; border-radius: 13px; background: #ffffff33; Text { text: "Stop"; color: Theme.on-danger; font-size: Theme.fs-small; horizontal-alignment: center; vertical-alignment: center; } }
                         }
                     }
@@ -2443,7 +2481,6 @@ export component AppWindow inherits Window {
                     wrap: word-wrap;
                     single-line: false;
                     read-only: true;
-                    accessible-role: none;
                     cursor-position-changed(p) => { root.probed(root.probe-off, p.x, p.y); }
                 }
                 if Drag.active: Rectangle {

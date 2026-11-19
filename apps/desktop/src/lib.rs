@@ -411,10 +411,10 @@ pub struct Hooks {
     pub take_login_error: Box<dyn Fn() -> Option<String>>,
     /// A one-time login link that arrived from outside (QR scan result, a tapped superchat:// link), once.
     pub take_login_link: Box<dyn Fn() -> Option<String>>,
-    /// Android: opens the system picker or the camera. `mode` is "files" (any file), "gallery" (photos and videos) or "video"
-    /// (record a clip); the second argument is the server's upload limit in bytes. The result comes back through `take_picked`.
+    /// Android: opens the system picker. `mode` is "files" (any file), "gallery" (photos and videos) or "image" (one
+    /// picture); the second argument is the server's upload limit in bytes. The result comes back through `take_picked`.
     pub pick_media: Option<Box<dyn Fn(&str, u64)>>,
-    /// What the picker or the video recorder returned (files copied into the app's cache, with their media details), once.
+    /// What the picker returned (files copied into the app's cache, with their media details), once.
     pub take_picked: Box<dyn Fn() -> Option<Picked>>,
     /// Android: the clipboard text (desktop pastes through the text field itself).
     pub clipboard: Option<Box<dyn Fn() -> Option<String>>>,
@@ -714,6 +714,7 @@ fn apply_prefs(ui: &AppWindow, st: &St) {
     ui.set_sort_alpha(st.prefs.sort == "alpha");
     ui.set_unread_only(st.prefs.unread_only);
     ui.set_hide_muted(st.prefs.hide_muted);
+    ui.set_phone_tab(if ["dms", "channels", "search", "menu"].contains(&st.prefs.last_tab.as_str()) { st.prefs.last_tab.clone() } else { "dms".to_string() }.into());
 }
 
 fn save_prefs(st: &St) {
@@ -735,6 +736,39 @@ fn people_list(c: &Client, filter: &str) -> Vec<PersonItem> {
         .collect();
     v.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     v
+}
+
+/// Fills what the search page lists before it is typed into: recent and saved searches, the From and In filter menus, and
+/// whether AI search is on. Used by the Search tab (phone) and the search page (desktop).
+pub(crate) fn prepare_search(ui: &AppWindow, c: &Client, sh: &Sh) {
+    let recents: Vec<RowItem> = sh.lock().unwrap().prefs.recent_searches.iter().map(|q| row(0, "", "", q.clone(), String::new(), String::new())).collect();
+    ui.set_recents(model(recents));
+    ui.set_saved(model(sh.lock().unwrap().prefs.saved_searches.iter().map(|q| row(0, "", "", q.clone(), String::new(), String::new())).collect()));
+    // The From and In filter menus list people and conversations (they were never filled before 1.3.0).
+    ui.set_filter_people(model(people_list(c, "")));
+    let mut chans: Vec<RowItem> = c
+        .conversations()
+        .into_iter()
+        .filter(|x| !c.is_hidden(&x.conversation.id))
+        .map(|x| row(0, &x.conversation.id, "", c.conversation_title(&x), String::new(), String::new()))
+        .collect();
+    chans.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+    ui.set_filter_chans(model(chans));
+    ui.set_ai_answer("".into());
+    ui.set_ai_note("".into());
+    // The admin may have switched AI on or off since we signed in.
+    let (wk2, c2) = (ui.as_weak(), c.clone());
+    c.handle().spawn(async move {
+        let _ = c2.refresh_server_meta().await;
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(ui) = wk2.upgrade() {
+                ui.set_ai_enabled(c2.ai_enabled());
+                if !c2.ai_enabled() {
+                    ui.set_ai_on(false);
+                }
+            }
+        });
+    });
 }
 
 fn refresh(ui: &AppWindow, c: &Client, sh: &Sh) {
@@ -1292,7 +1326,6 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
     ui.set_is_android(hooks.is_android);
     ui.set_can_record(hooks.media.can_record());
     ui.set_can_scan(hooks.scan_qr.is_some());
-    ui.set_can_camera(hooks.pick_media.is_some());
     if !hooks.is_android {
         let wk = ui.as_weak();
         // Looking for ffmpeg starts a process: do it off the UI thread.
@@ -1383,7 +1416,7 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
             let third = what2.split(':').nth(2).unwrap_or("");
             let find = |name: &str| c.conversations().into_iter().find(|x| c.conversation_title(x).eq_ignore_ascii_case(name));
             let cs = find(conv).or_else(|| find(third)).or_else(|| c.conversations().into_iter().next());
-            if let (Some(cs), false) = (&cs, screen.starts_with("lock") || screen == "tab") {
+            if let (Some(cs), false) = (&cs, screen.starts_with("lock") || screen == "tab" || screen == "pindemo" || screen == "menukind-tab") {
                 select_conv(&ui, &c, &sh, &cs.conversation.id, true);
             }
             if screen.starts_with("lock") {
@@ -1416,6 +1449,22 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                 "sheet" => ui.set_menu_kind(conv.into()),
                 "info" | "details" => ui.invoke_open_details(conv.into()),
                 "tab" => ui.invoke_go_home_tab(conv.into()),
+                // Screenshot hook: pin Bob, the Launch crew group (DMs), random and design (channels), then show the tab named in `conv`.
+                "pindemo" => {
+                    for title in ["Bob", "Launch crew", "random", "design"] {
+                        if let Some(p) = find(title) {
+                            let (cc, id) = (c.clone(), p.conversation.id.clone());
+                            c.handle().spawn(async move {
+                                let _ = cc.pin_conversation(&id).await;
+                            });
+                        }
+                    }
+                    ui.invoke_go_home_tab(conv.into());
+                }
+                "menukind-tab" => {
+                    ui.invoke_go_home_tab(conv.into());
+                    ui.set_menu_kind(third.into());
+                }
                 "addpeople" => ui.invoke_add_people(),
                 "newmessage" => ui.invoke_new_message(),
                 "help" => ui.set_menu_kind("help".into()),
@@ -1446,7 +1495,7 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                             }
                         });
                     }
-                    ui.set_main_tab("later".into());
+                    ui.invoke_go_home_tab("later".into());
                 }
                 "menu" => {
                     let n = ui.get_messages().row_count();
@@ -2800,39 +2849,16 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
         let (wk, c, sh) = (ui.as_weak(), client.clone(), osh.clone());
         ui.on_open_search(move || {
             let Some(ui) = wk.upgrade() else { return };
-            let recents: Vec<RowItem> = sh.lock().unwrap().prefs.recent_searches.iter().map(|q| row(0, "", "", q.clone(), String::new(), String::new())).collect();
-            ui.set_recents(model(recents));
-            ui.set_saved(model(sh.lock().unwrap().prefs.saved_searches.iter().map(|q| row(0, "", "", q.clone(), String::new(), String::new())).collect()));
-            // The From and In filter menus list people and conversations (they were never filled before 1.3.0).
-            ui.set_filter_people(model(people_list(&c, "")));
-            let mut chans: Vec<RowItem> = c
-                .conversations()
-                .into_iter()
-                .filter(|x| !c.is_hidden(&x.conversation.id))
-                .map(|x| row(0, &x.conversation.id, "", c.conversation_title(&x), String::new(), String::new()))
-                .collect();
-            chans.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
-            ui.set_filter_chans(model(chans));
-            ui.set_ai_answer("".into());
-            ui.set_ai_note("".into());
+            prepare_search(&ui, &c, &sh);
             ui.set_search_tab(0);
-            // The admin may have switched AI on or off since we signed in.
-            let (wk2, c2) = (ui.as_weak(), c.clone());
-            c.handle().spawn(async move {
-                let _ = c2.refresh_server_meta().await;
-                let _ = slint::invoke_from_event_loop(move || {
-                    if let Some(ui) = wk2.upgrade() {
-                        ui.set_ai_enabled(c2.ai_enabled());
-                        if !c2.ai_enabled() {
-                            ui.set_ai_on(false);
-                        }
-                    }
-                });
-            });
             ui.set_results(model(vec![]));
             ui.set_search_text("".into());
-            ui.set_screen("search".into());
-            let _ = &c;
+            if ui.get_wide() {
+                ui.set_screen("search".into());
+            } else {
+                // Phone: Search is a bottom tab, not a page above the lists.
+                ui.invoke_go_home_tab("search".into());
+            }
         });
         let (wk, c, sh) = (ui.as_weak(), client.clone(), osh.clone());
         ui.on_search(move |q| {
@@ -3137,11 +3163,31 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
         };
         let sp = Arc::new(spawn_pref);
         let (c, s) = (client.clone(), sp.clone());
-        ui.on_toggle_fav(move |id| {
+        // A favourite is a pinned conversation: pinning puts it at the top of the pinned ones, on every device.
+        let toggle = move |id: slint::SharedString| {
             let fav = !c.pref(&id).favourite;
             let id = id.to_string();
             s(Box::new(move |c| Box::pin(async move {
-                let _ = c.set_favourite(&id, fav).await;
+                let _ = if fav { c.pin_conversation(&id).await } else { c.unpin_conversation(&id).await };
+            })));
+        };
+        let toggle = Arc::new(toggle);
+        let t2 = toggle.clone();
+        ui.on_toggle_fav(move |id| t2(id));
+        ui.on_pin_toggle(move |id| toggle(id));
+        let s = sp.clone();
+        ui.on_move_pinned(move |id, d| {
+            let id = id.to_string();
+            s(Box::new(move |c| Box::pin(async move {
+                let _ = c.move_pinned(&id, d).await;
+            })));
+        });
+        // Dragged on a phone list: `zone` 1 drops above the target pinned row, 2 below it.
+        let s = sp.clone();
+        ui.on_pin_drop(move |src, target, zone| {
+            let (src, target) = (src.to_string(), target.to_string());
+            s(Box::new(move |c| Box::pin(async move {
+                let _ = c.move_pinned_to(&src, &target, zone == 2).await;
             })));
         });
         let s = sp.clone();

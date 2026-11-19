@@ -42,8 +42,11 @@ pub struct NavState {
     pub info_page: String,
     /// Conversation tab: 0 Messages, 1 Files, 2 Pins, 3 Home, 4 Bookmarks.
     pub tab: i32,
-    /// Main tab: home, dms, activity, later, you.
+    /// The page the list column shows: desktop rail tab (home, dms, activity, later) or, on a phone, a bottom tab (dms,
+    /// channels, search, menu) or a page opened from one (activity, you, later).
     pub main_tab: String,
+    /// Phone: the bottom tab that is selected (dms, channels, search, menu); empty on desktop and before sign-in.
+    pub phone_tab: String,
 }
 
 /// What one Back press closed.
@@ -68,6 +71,9 @@ pub enum Closed {
     Thread,
     ConvTab,
     Chat,
+    /// Phone: a page opened from a bottom tab (Activity, You, Later) goes back to that tab.
+    SubPage,
+    /// Phone: a bottom tab other than DMs goes back to DMs.
     MainTab,
 }
 
@@ -76,7 +82,8 @@ pub fn top(s: &NavState) -> Option<Closed> {
     if !s.signed_in {
         return None;
     }
-    let layers: [(bool, Closed); 20] = [
+    let phone_list = !s.wide && !s.show_chat && !s.phone_tab.is_empty();
+    let layers: [(bool, Closed); 21] = [
         (s.tofu_open, Closed::Tofu),
         (!s.confirm.is_empty(), Closed::Confirm),
         (s.form_open, Closed::Form),
@@ -98,8 +105,9 @@ pub fn top(s: &NavState) -> Option<Closed> {
         // Files / Pins / Bookmarks tabs go back to Messages (Esc).
         (s.wide && s.has_conv && s.tab != 0, Closed::ConvTab),
         (!s.wide && s.show_chat, Closed::Chat),
-        // Phone: each bottom tab returns to Home before the app is left.
-        (!s.wide && !s.show_chat && s.main_tab != "home" && !s.main_tab.is_empty(), Closed::MainTab),
+        // Phone: Back pops inside the tab (Activity to Menu), then a tab other than DMs goes to DMs, then the app is left.
+        (phone_list && !s.main_tab.is_empty() && s.main_tab != s.phone_tab, Closed::SubPage),
+        (phone_list && s.phone_tab != "dms", Closed::MainTab),
     ];
     layers.into_iter().find(|(open, _)| *open).map(|(_, l)| l)
 }
@@ -133,7 +141,11 @@ pub fn pop(s: &mut NavState) -> Option<Closed> {
         }
         Closed::ConvTab => s.tab = 0,
         Closed::Chat => s.show_chat = false,
-        Closed::MainTab => s.main_tab = "home".into(),
+        Closed::SubPage => s.main_tab = s.phone_tab.clone(),
+        Closed::MainTab => {
+            s.phone_tab = "dms".into();
+            s.main_tab = "dms".into();
+        }
     }
     Some(layer)
 }
@@ -163,6 +175,7 @@ pub fn read(ui: &AppWindow) -> NavState {
         info_page: ui.get_info_page().to_string(),
         tab: ui.get_tab(),
         main_tab: ui.get_main_tab().to_string(),
+        phone_tab: if ui.get_wide() { String::new() } else { ui.get_phone_tab().to_string() },
     }
 }
 
@@ -197,9 +210,100 @@ pub fn handle_back(ui: &AppWindow) -> bool {
         }
         Closed::ConvTab => ui.set_tab(0),
         Closed::Chat => ui.set_show_chat(false),
-        Closed::MainTab => ui.invoke_go_home_tab("home".into()),
+        Closed::SubPage | Closed::MainTab => {
+            if let Some(page) = PHONE.lock().ok().and_then(|mut p| p.back()) {
+                phone_show(ui, &page);
+            }
+        }
     }
     true
+}
+
+// ------------------------------------------------------------------------------------------------
+// Phone tabs: DMs, Channels, Search, Menu. Each tab has its own small back stack (Menu > Activity, DMs > Later ...).
+
+/// The bottom tabs of the phone layout, left to right.
+pub const PHONE_TABS: [&str; 4] = ["dms", "channels", "search", "menu"];
+
+/// The phone's tab state: which tab is selected and the page stack each tab remembers while another one is shown.
+#[derive(Clone, Debug)]
+pub struct PhoneNav {
+    pub tab: String,
+    stacks: std::collections::BTreeMap<String, Vec<String>>,
+}
+
+impl PhoneNav {
+    pub fn new(tab: &str) -> PhoneNav {
+        PhoneNav { tab: if PHONE_TABS.contains(&tab) { tab.to_string() } else { "dms".to_string() }, stacks: Default::default() }
+    }
+
+    /// The page the list column shows: the top of the current tab's stack, else the tab itself.
+    pub fn page(&self) -> String {
+        self.stacks.get(&self.tab).and_then(|s| s.last().cloned()).unwrap_or_else(|| self.tab.clone())
+    }
+
+    /// A bottom tab was tapped. Another tab shows where it was left; the selected tab goes back to its first page.
+    pub fn pick(&mut self, tab: &str) -> String {
+        let tab = if PHONE_TABS.contains(&tab) { tab } else { "dms" };
+        if tab == self.tab {
+            self.stacks.remove(tab);
+        }
+        self.tab = tab.to_string();
+        self.page()
+    }
+
+    /// A page that belongs to a tab was opened (Activity and You under Menu, Later under the tab it was opened from).
+    pub fn open(&mut self, page: &str) -> String {
+        let parent = match page {
+            "activity" | "you" => "menu",
+            "later" if self.tab == "channels" => "channels",
+            "later" => "dms",
+            other => return self.pick(other),
+        };
+        self.tab = parent.to_string();
+        self.stacks.insert(parent.to_string(), vec![page.to_string()]);
+        page.to_string()
+    }
+
+    /// Back inside the phone's tabs: pops the current tab's stack, else goes to DMs. None at the DMs root (leave the app).
+    pub fn back(&mut self) -> Option<String> {
+        if let Some(st) = self.stacks.get_mut(&self.tab) {
+            if st.pop().is_some() {
+                return Some(self.page());
+            }
+        }
+        if self.tab != "dms" {
+            self.tab = "dms".to_string();
+            return Some(self.page());
+        }
+        None
+    }
+}
+
+static PHONE: Mutex<PhoneNav> = Mutex::new(PhoneNav { tab: String::new(), stacks: std::collections::BTreeMap::new() });
+
+/// Shows a page the phone nav chose: sets the properties, then lets the shell load what the page needs.
+fn phone_show(ui: &AppWindow, page: &str) {
+    let tab = PHONE.lock().map(|p| p.tab.clone()).unwrap_or_else(|_| "dms".into());
+    ui.set_phone_tab(tab.into());
+    ui.set_main_tab(page.into());
+    ui.invoke_set_main_tab(page.into());
+}
+
+/// `go-home-tab` on a phone: a bottom tab, or a page opened from one ("home" means DMs). The first call picks the saved tab.
+pub fn phone_go(ui: &AppWindow, t: &str) {
+    let page = {
+        let Ok(mut p) = PHONE.lock() else { return };
+        if p.tab.is_empty() {
+            *p = PhoneNav::new(ui.get_phone_tab().as_str());
+        }
+        match t {
+            "" | "home" => p.pick("dms"),
+            t if PHONE_TABS.contains(&t) => p.pick(t),
+            t => p.open(t),
+        }
+    };
+    phone_show(ui, &page);
 }
 
 static UI: Mutex<Option<Weak<AppWindow>>> = Mutex::new(None);
@@ -356,7 +460,7 @@ mod tests {
     #[test]
     fn phone_details_subpage_returns_to_details_then_chat() {
         // Chat > details > Files > back > details > back > chat > back > list.
-        let mut s = NavState { show_chat: true, has_conv: true, info_open: true, info_page: "files".into(), main_tab: "home".into(), ..phone() };
+        let mut s = NavState { show_chat: true, has_conv: true, info_open: true, info_page: "files".into(), ..phone() };
         assert_eq!(presses(&mut s), vec![Closed::InfoPage, Closed::Info, Closed::Chat]);
     }
 
@@ -379,24 +483,68 @@ mod tests {
     fn pickers_close_before_the_page_below() {
         let mut s = NavState { show_chat: true, has_conv: true, info_open: true, info_page: "members".into(), pp_open: true, ..phone() };
         assert_eq!(presses(&mut s), vec![Closed::PeoplePicker, Closed::InfoPage, Closed::Info, Closed::Chat]);
-        let mut s = NavState { main_tab: "later".into(), label_open: true, ..phone() };
-        assert_eq!(presses(&mut s), vec![Closed::LabelPicker, Closed::MainTab]);
+        let mut s = NavState { label_open: true, ..on_tab("dms", "later") };
+        assert_eq!(presses(&mut s), vec![Closed::LabelPicker, Closed::SubPage]);
+    }
+
+    fn on_tab(tab: &str, page: &str) -> NavState {
+        NavState { phone_tab: tab.into(), main_tab: page.into(), ..phone() }
     }
 
     #[test]
-    fn phone_tabs_return_to_home_then_exit() {
-        for tab in ["dms", "activity", "later", "you"] {
-            let mut s = NavState { main_tab: tab.into(), ..phone() };
-            assert_eq!(pop(&mut s), Some(Closed::MainTab), "{tab}");
-            assert_eq!(s.main_tab, "home");
-            assert_eq!(pop(&mut s), None, "{tab}: Home then leaves the app");
-        }
-        // A chat opened from a tab goes back to that tab, then Home, then out.
-        let mut s = NavState { main_tab: "activity".into(), show_chat: true, has_conv: true, ..phone() };
-        assert_eq!(presses(&mut s), vec![Closed::Chat, Closed::MainTab]);
-        // Desktop: tabs are a rail, not a stack.
-        let mut s = NavState { wide: true, main_tab: "later".into(), ..phone() };
+    fn phone_tabs_go_back_to_dms_then_exit() {
+        // DMs is the root: Back there leaves the app.
+        let mut s = on_tab("dms", "dms");
         assert_eq!(pop(&mut s), None);
+        for tab in ["channels", "search", "menu"] {
+            let mut s = on_tab(tab, tab);
+            assert_eq!(presses(&mut s), vec![Closed::MainTab], "{tab}");
+            assert_eq!((s.phone_tab.as_str(), s.main_tab.as_str()), ("dms", "dms"));
+        }
+        // A page opened from a tab goes back to the tab, then to DMs, then out.
+        for (tab, page) in [("menu", "activity"), ("menu", "you"), ("dms", "later"), ("channels", "later")] {
+            let mut s = on_tab(tab, page);
+            let want = if tab == "dms" { vec![Closed::SubPage] } else { vec![Closed::SubPage, Closed::MainTab] };
+            assert_eq!(presses(&mut s), want, "{page} under {tab}");
+        }
+        // A chat opened from Activity returns to Activity, then Menu, then DMs.
+        let mut s = NavState { show_chat: true, has_conv: true, ..on_tab("menu", "activity") };
+        assert_eq!(presses(&mut s), vec![Closed::Chat, Closed::SubPage, Closed::MainTab]);
+        // Settings opened from Menu goes back to Menu.
+        let mut s = NavState { screen: "settings".into(), ..on_tab("menu", "menu") };
+        assert_eq!(presses(&mut s), vec![Closed::Screen, Closed::MainTab]);
+        // Desktop: the rail is not a stack.
+        let mut s = NavState { wide: true, main_tab: "later".into(), phone_tab: "menu".into(), ..phone() };
+        assert_eq!(pop(&mut s), None);
+    }
+
+    #[test]
+    fn phone_nav_keeps_a_stack_per_tab() {
+        let mut p = PhoneNav::new("dms");
+        assert_eq!(p.page(), "dms");
+        assert_eq!(p.open("later"), "later");
+        // Menu > Activity, then another tab and back: Menu shows Activity again, DMs still has Later.
+        assert_eq!(p.pick("menu"), "menu");
+        assert_eq!(p.open("activity"), "activity");
+        assert_eq!(p.pick("channels"), "channels");
+        assert_eq!(p.pick("menu"), "activity");
+        assert_eq!(p.pick("dms"), "later");
+        // Tapping the selected tab goes to its first page.
+        assert_eq!(p.pick("dms"), "dms");
+        assert_eq!(p.pick("menu"), "activity");
+        assert_eq!(p.pick("menu"), "menu");
+        // Back pops inside the tab, then goes to DMs, then reports "leave".
+        assert_eq!(p.open("you"), "you");
+        assert_eq!(p.back().as_deref(), Some("menu"));
+        assert_eq!(p.back().as_deref(), Some("dms"));
+        assert_eq!(p.back(), None);
+        // Later opened on Channels belongs to Channels; a stale or unknown page falls back to DMs.
+        p.pick("channels");
+        assert_eq!(p.open("later"), "later");
+        assert_eq!(p.tab, "channels");
+        assert_eq!(p.back().as_deref(), Some("channels"));
+        assert_eq!(p.open("home"), "dms");
+        assert_eq!(PhoneNav::new("nonsense").tab, "dms");
     }
 
     #[test]

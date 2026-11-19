@@ -21,6 +21,11 @@ pub fn refresh_shell(ui: &AppWindow, c: &Client, g: &St) {
     };
     ui.set_side_rows(model(side_rows(c, &opts, &v)));
     ui.set_dm_rows(model(crate::model::dm_rows(c, &v)));
+    // Phone tabs: DMs and Channels, pinned first, sorted and filtered by the 3-dot menu's choices.
+    ui.set_phone_dms(model(crate::model::phone_rows(c, client_core::ListKind::Dms, opts.sort_alpha, opts.unread_only, opts.hide_muted, &v)));
+    ui.set_phone_chans(model(crate::model::phone_rows(c, client_core::ListKind::Channels, opts.sort_alpha, opts.unread_only, opts.hide_muted, &v)));
+    let chan_unread: i64 = c.conversations().iter().filter(|cs| cs.conversation.kind == ConversationKind::Channel && !cs.conversation.archived).map(|cs| cs.unread + cs.mentions).sum();
+    ui.set_chan_unread(chan_unread as i32);
     let dm_unread: i64 = c.conversations().iter().filter(|cs| cs.conversation.kind != ConversationKind::Channel).map(|cs| cs.unread + cs.mentions).sum();
     ui.set_dm_unread(dm_unread as i32);
     ui.set_activity_unread(c.activity_unread() as i32);
@@ -150,10 +155,28 @@ fn fill_picker(ui: &AppWindow, c: &Client, sh: &Sh) {
 pub fn install(ui: &AppWindow, client: &Client, sh: &Sh) {
     // ---- tabs and sidebar ---------------------------------------------------------------------------------------
     {
-        let (wk, c, sh2) = (ui.as_weak(), client.clone(), sh.clone());
+        let wk_nav = ui.as_weak();
+        ui.on_phone_nav(move |t| {
+            if let Some(ui) = wk_nav.upgrade() {
+                crate::nav::phone_go(&ui, t.as_str());
+            }
+        });
+        let (wk, c, sh2, sh3) = (ui.as_weak(), client.clone(), sh.clone(), sh.clone());
         ui.on_set_main_tab(move |t| {
             let Some(ui) = wk.upgrade() else { return };
+            // Phone: remember the bottom tab for the next start.
+            if !ui.get_wide() {
+                let tab = ui.get_phone_tab().to_string();
+                let mut g = sh3.lock().unwrap();
+                if g.prefs.last_tab != tab {
+                    g.prefs.last_tab = tab;
+                    save_prefs(&g);
+                }
+            }
             match t.as_str() {
+                "search" => {
+                    super::prepare_search(&ui, &c, &sh2);
+                }
                 "activity" => {
                     let (wk2, c2) = (ui.as_weak(), c.clone());
                     c.handle().spawn(async move {

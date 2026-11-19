@@ -1,7 +1,7 @@
 // The app shell: rail, top bar, sidebar rows, bottom navigation, list rows of the Activity / DMs / Later views.
 import { Theme, SideRow, ActivityRow, SavedRow, LabelItem, Drag } from "theme.slint";
 import { Icon } from "icons.slint";
-import { Avatar, PressArea, ToolButton, LabelChip, CountBadge, IconButton } from "components.slint";
+import { Avatar, PressArea, ToolButton, LabelChip, CountBadge, IconButton, Fab } from "components.slint";
 
 // The thin left rail (desktop): server tile, Home / DMs / Activity / Later / More, and the profile button.
 export component Rail {
@@ -38,17 +38,12 @@ export component Rail {
                     height: self.width;
                     border-radius: 10px * Theme.scale;
                     background: Theme.accent;
-                    accessible-role: button;
-                    accessible-label: "Server menu";
                     Text { text: root.server-initials; color: Theme.on-accent; font-weight: 700; font-size: Theme.fs * 1.15; horizontal-alignment: center; vertical-alignment: center; }
                     TouchArea { clicked => { root.server-clicked(); } }
                 }
             }
             for t[i] in [{id: "home", icon: "home", label: "Home"}, {id: "dms", icon: "chat", label: "DMs"}, {id: "activity", icon: "bell", label: "Activity"}, {id: "later", icon: "bookmark", label: "Later"}, {id: "more", icon: "more-h", label: "More"}]: Rectangle {
                 height: 58px * Theme.scale;
-                accessible-role: button;
-                accessible-label: t.label + (t.id == "activity" && root.activity-unread > 0 ? ", " + root.activity-unread + " unread" : "");
-                accessible-checked: root.tab == t.id || (t.id == "more" && root.more-open);
                 VerticalLayout {
                     alignment: center;
                     spacing: 2px;
@@ -73,8 +68,6 @@ export component Rail {
             Rectangle { vertical-stretch: 1; }
             if root.update-available: Rectangle {
                 height: 52px * Theme.scale;
-                accessible-role: button;
-                accessible-label: "Update available. Open About to update";
                 VerticalLayout {
                     alignment: center;
                     spacing: 2px;
@@ -96,8 +89,6 @@ export component Rail {
                 Rectangle {
                     width: 38px * Theme.scale;
                     height: self.width;
-                    accessible-role: button;
-                    accessible-label: "Your profile and status";
                     Avatar { uid: root.me-id; initials: root.me-initials; tint: root.me-color; size: parent.width; presence: root.presence; }
                     TouchArea { clicked => { root.profile-clicked(root.width, self.absolute-position.y + self.height); } }
                 }
@@ -134,8 +125,6 @@ export component TopBar {
                 background: sa.has-hover ? Theme.surface-high : Theme.surface;
                 border-width: 1px;
                 border-color: Theme.line;
-                accessible-role: button;
-                accessible-label: "Search " + root.server-name;
                 HorizontalLayout {
                     padding-left: 10px;
                     spacing: 8px;
@@ -169,8 +158,6 @@ export component SideItem {
     property <length> row-h: root.wide ? max(30px, 26px * Theme.scale) : max(52px, 46px * Theme.scale);
     height: r.kind == 0 ? (root.wide ? max(32px, 28px * Theme.scale) : max(48px, 40px * Theme.scale)) : (r.kind == 3 ? 56px * Theme.scale : (r.kind == 4 ? (root.wide ? 0px : 88px) : root.row-h));
     if r.kind == 0: Rectangle {
-        accessible-role: button;
-        accessible-label: r.title + (r.collapsed ? ", collapsed" : ", expanded");
         background: hh.has-hover ? Theme.row-hover : transparent;
         border-radius: Theme.r-sm;
         HorizontalLayout {
@@ -200,9 +187,6 @@ export component SideItem {
         }
     }
     if r.kind == 1 || r.kind == 2: Rectangle {
-        accessible-role: button;
-        accessible-label: r.title + (r.unread > 0 ? ", " + r.unread + " unread" : "") + (r.mentions > 0 ? ", " + r.mentions + " mentions" : "") + (r.muted ? ", muted" : "");
-        accessible-checked: root.selected;
         background: root.selected ? Theme.row-sel : (pa.has-hover ? Theme.row-hover : transparent);
         border-radius: Theme.r-sm;
         HorizontalLayout {
@@ -249,8 +233,6 @@ export component DmRow {
     callback clicked;
     callback menu(length, length);
     height: max(64px, 54px * Theme.scale);
-    accessible-role: button;
-    accessible-label: r.title + (r.unread > 0 ? ", " + r.unread + " unread" : "") + ", " + r.preview;
     Rectangle {
         background: root.selected ? Theme.row-sel : (pa.has-hover ? Theme.row-hover : transparent);
         HorizontalLayout {
@@ -288,8 +270,6 @@ export component ActivityItem {
     in property <ActivityRow> a;
     callback clicked;
     height: max(76px, 64px * Theme.scale);
-    accessible-role: button;
-    accessible-label: a.title + ". " + a.snippet + (a.unread ? ". Unread" : "");
     Rectangle {
         background: pa.has-hover ? Theme.row-hover : (a.unread ? Theme.accent.with-alpha(0.07) : transparent);
         HorizontalLayout {
@@ -374,11 +354,151 @@ export component SavedCard {
     Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
 }
 
-// Phone bottom navigation: Home, DMs, Activity, You.
+// 1.4 phone: the top bar of the DMs and Channels tabs. The app name in the accent colour (the same size and weight as the
+// page title below it), a light App Lock icon (only when a PIN is set) and the 3-dot menu at the far right.
+export component PhoneTopBar {
+    in property <string> app-name;
+    in property <bool> lock-set;
+    in property <bool> lock-engaged;
+    callback lock;
+    callback more;
+    height: max(56px, 44px * Theme.scale);
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 4px;
+        spacing: 0px;
+        Text { text: root.app-name; font-size: Theme.fs-title; font-weight: 700; color: Theme.accent-text; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+        if root.lock-set: IconButton { icon: root.lock-engaged ? "lock" : "unlock"; tint: Theme.icon-soft; weight: 1.5px; label: root.lock-engaged ? "App Lock, locked. Tap to unlock" : "App Lock, unlocked. Tap to lock"; clicked => { root.lock(); } y: (parent.height - self.height) / 2; }
+        IconButton { icon: "more"; label: "More options"; clicked => { root.more(); } y: (parent.height - self.height) / 2; }
+    }
+}
+
+// 1.4 phone: one row of the DMs or Channels list. Pinned rows (`favourite`) sit at the top without a header; a long press arms
+// one for dragging (a handle appears) and sliding it up or down re-orders the pinned rows; letting go in place opens the menu.
+export component PhoneRow {
+    in property <SideRow> r;
+    in property <bool> selected;
+    callback clicked;
+    callback menu(length, length);
+    callback dropped;
+    property <int> zone: (Drag.active && r.kind == 1 && r.favourite && Drag.src != r.id && Drag.y >= root.absolute-position.y && Drag.y < root.absolute-position.y + root.height) ? (Drag.y < root.absolute-position.y + root.height / 2 ? 1 : 2) : 0;
+    changed zone => { if root.zone != 0 { Drag.target = r.id; Drag.zone = root.zone; } }
+    opacity: Drag.active && Drag.src == r.id ? 0.45 : 1.0;
+    height: r.kind == 5 ? max(40px, 32px * Theme.scale) : max(68px, 58px * Theme.scale);
+    if r.kind == 5: Text { x: 16px; width: parent.width - 32px; text: r.title; font-size: Theme.fs-small; font-weight: 700; color: Theme.muted; vertical-alignment: center; overflow: elide; }
+    if r.kind == 1: Rectangle {
+        background: pa.active ? Theme.surface-high : (root.selected ? Theme.row-sel : (pa.has-hover ? Theme.row-hover : transparent));
+        HorizontalLayout {
+            padding-left: 14px;
+            padding-right: 6px;
+            spacing: 12px;
+            if r.conv-kind == "channel": Rectangle {
+                width: 44px * min(Theme.scale, 1.3); height: self.width; y: (parent.height - self.height) / 2; border-radius: 12px; background: r.color.with-alpha(0.18);
+                Icon { name: r.locked ? "lock" : "hash"; size: 22px * min(Theme.scale, 1.3); tint: r.muted ? Theme.icon-soft : (Theme.dark ? r.color.brighter(0.4) : r.color.darker(0.2)); x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+            }
+            if r.conv-kind == "group": Rectangle { width: 44px * min(Theme.scale, 1.3); height: self.width; y: (parent.height - self.height) / 2; border-radius: 12px; background: r.color; Icon { name: "users"; size: 22px; tint: white; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; } }
+            if r.conv-kind == "dm" || r.conv-kind == "self": Avatar { uid: r.user-id; initials: r.initials; tint: r.color; size: 44px * min(Theme.scale, 1.3); presence: r.presence; y: (parent.height - self.height) / 2; }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 1;
+                spacing: 1px;
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: r.title; font-size: Theme.fs; font-weight: r.unread > 0 ? 800 : 600; color: r.muted ? Theme.muted : Theme.text; overflow: elide; horizontal-stretch: 1; }
+                    if r.favourite && !pa.active: Icon { name: "pin"; size: 13px; tint: Theme.icon-soft; y: (parent.height - self.height) / 2; }
+                    Text { text: r.stamp; font-size: Theme.fs-small; color: Theme.muted; }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    if r.draft: Icon { name: "edit"; size: 14px; tint: Theme.icon-soft; y: (parent.height - self.height) / 2; }
+                    Text { text: r.preview; font-size: Theme.fs-small * 1.05; color: r.unread > 0 ? Theme.text : Theme.muted; font-weight: r.unread > 0 ? 600 : 400; overflow: elide; horizontal-stretch: 1; }
+                    if r.mentions > 0: CountBadge { n: r.mentions; hot: true; }
+                    if r.mentions == 0 && r.unread > 0: CountBadge { n: r.unread; quiet: r.muted; }
+                }
+            }
+            if pa.active: Icon { name: "grip"; size: 24px; tint: Theme.icon; y: (parent.height - self.height) / 2; }
+        }
+        pa := PressArea {
+            hold-drag: r.favourite;
+            tapped => { root.clicked(); }
+            long-pressed => { root.menu(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y); }
+            hold-started => { Drag.holding = true; }
+            hold-ended => { Drag.holding = false; }
+            drag-started => { Drag.src = r.id; Drag.label = r.title; Drag.active = true; }
+            drag-moved(x, y) => { Drag.x = x; Drag.y = y; }
+            drag-ended => { root.dropped(); }
+        }
+    }
+    if root.zone == 1: Rectangle { y: 0px; height: 2px; x: 8px; width: parent.width - 16px; background: Theme.accent; border-radius: 1px; }
+    if root.zone == 2: Rectangle { y: parent.height - 2px; height: 2px; x: 8px; width: parent.width - 16px; background: Theme.accent; border-radius: 1px; }
+}
+
+// 1.4 phone: the scrolling list of one tab. Stops scrolling while a row is armed for dragging; leaves room under the last row
+// so the "+" button never covers it.
+export component PhoneList {
+    in property <[SideRow]> rows;
+    in property <string> selected;
+    // Channels, for admins: a first entry that creates a channel.
+    in property <bool> can-create: false;
+    callback clicked(string);
+    callback menu(string, string, bool, length, length);
+    callback dropped;
+    callback create;
+    callback fab;
+    // The "+" button hides while scrolling down and returns on scroll up or at the end of the list. At rest it only shows when
+    // it covers no row (the list fits).
+    property <length> scroll-y <=> fl.viewport-y;
+    property <length> prev-y;
+    property <bool> fab-up: false;
+    property <bool> fab-shown: (fl.viewport-y >= 0px && fl.viewport-height <= fl.height + 2px) || (fl.viewport-height > fl.height && fl.viewport-y <= fl.height - fl.viewport-height + 4px) || (root.fab-up && fl.viewport-y < 0px);
+    changed scroll-y => {
+        if root.scroll-y >= 0px { root.fab-up = false; }
+        else if root.scroll-y > root.prev-y + 1px { root.fab-up = true; }
+        else if root.scroll-y < root.prev-y - 1px { root.fab-up = false; }
+        root.prev-y = root.scroll-y;
+    }
+    fl := Flickable {
+        interactive: !Drag.holding && !Drag.active;
+        viewport-height: lay.preferred-height;
+        lay := VerticalLayout {
+            alignment: start;
+            if root.can-create: Rectangle {
+                height: max(60px, 52px * Theme.scale);
+                background: cr.pressed ? Theme.row-hover : transparent;
+                HorizontalLayout {
+                    padding-left: 14px; spacing: 12px;
+                    Rectangle { width: 44px * min(Theme.scale, 1.3); height: self.width; y: (parent.height - self.height) / 2; border-radius: 12px; background: Theme.accent.with-alpha(0.18);
+                        Icon { name: "plus"; size: 22px; tint: Theme.accent-text; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; } }
+                    Text { text: "Create channel"; font-size: Theme.fs; font-weight: 600; color: Theme.accent-text; vertical-alignment: center; }
+                }
+                cr := TouchArea { clicked => { root.create(); } }
+            }
+            for r[i] in root.rows: PhoneRow {
+                r: r;
+                selected: r.kind == 1 && r.id == root.selected;
+                clicked => { root.clicked(r.id); }
+                menu(x, y) => { root.menu(r.id, r.title, r.favourite, x, y); }
+                dropped => { root.dropped(); }
+            }
+            Rectangle { height: 96px; }
+        }
+    }
+    if root.fab-shown: Fab {
+        icon: "plus";
+        glyph: #ffffff;
+        label: "New message";
+        x: parent.width - self.width - 16px;
+        y: parent.height - self.height - 16px;
+        clicked => { root.fab(); }
+    }
+}
+
+// Phone bottom navigation: DMs, Channels, Search, Menu.
 export component BottomNav {
     in property <string> tab;
-    in property <int> activity-unread;
+    in property <int> menu-unread;
     in property <int> dm-unread;
+    in property <int> chan-unread;
     callback picked(string);
     // The bar never shrinks below its content (pill + label), so the pill always sits fully inside it.
     min-height: max(64px, 54px * Theme.scale);
@@ -390,11 +510,8 @@ export component BottomNav {
             // One hairline at the very top edge of the bar.
             Rectangle { height: 1px; background: Theme.line; }
         HorizontalLayout {
-            for t[i] in [{id: "home", icon: "home", label: "Home"}, {id: "dms", icon: "chat", label: "DMs"}, {id: "activity", icon: "bell", label: "Activity"}, {id: "you", icon: "person", label: "You"}]: Rectangle {
+            for t[i] in [{id: "dms", icon: "chat", label: "DMs"}, {id: "channels", icon: "hash", label: "Channels"}, {id: "search", icon: "search", label: "Search"}, {id: "menu", icon: "menu", label: "Menu"}]: Rectangle {
                 horizontal-stretch: 1;
-                accessible-role: button;
-                accessible-label: t.label + (t.id == "activity" && root.activity-unread > 0 ? ", " + root.activity-unread + " unread" : "") + (t.id == "dms" && root.dm-unread > 0 ? ", " + root.dm-unread + " unread" : "");
-                accessible-checked: root.tab == t.id;
                 VerticalLayout {
                     alignment: center;
                     spacing: 2px;
@@ -406,9 +523,9 @@ export component BottomNav {
                             border-radius: 15px * Theme.scale;
                             background: root.tab == t.id ? Theme.accent.with-alpha(0.25) : transparent;
                             Icon { name: t.icon; size: 24px * min(Theme.scale, 1.3); filled: false; tint: root.tab == t.id ? Theme.accent-text : Theme.icon; weight: root.tab == t.id ? 2.2px : 1.75px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
-                            if (t.id == "activity" && root.activity-unread > 0) || (t.id == "dms" && root.dm-unread > 0): Rectangle {
+                            if (t.id == "menu" && root.menu-unread > 0) || (t.id == "dms" && root.dm-unread > 0) || (t.id == "channels" && root.chan-unread > 0): Rectangle {
                                 x: parent.width / 2 + 6px; y: -2px; width: 18px; height: 18px; border-radius: 9px; background: Theme.danger;
-                                Text { text: t.id == "activity" ? (root.activity-unread > 9 ? "9+" : root.activity-unread) : (root.dm-unread > 9 ? "9+" : root.dm-unread); font-size: 10px; font-weight: 700; color: Theme.on-danger; horizontal-alignment: center; vertical-alignment: center; }
+                                Text { text: t.id == "menu" ? (root.menu-unread > 9 ? "9+" : root.menu-unread) : (t.id == "dms" ? (root.dm-unread > 9 ? "9+" : root.dm-unread) : (root.chan-unread > 9 ? "9+" : root.chan-unread)); font-size: 10px; font-weight: 700; color: Theme.on-danger; horizontal-alignment: center; vertical-alignment: center; }
                             }
                         }
                     }

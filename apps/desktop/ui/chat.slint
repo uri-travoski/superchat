@@ -15,8 +15,6 @@ export component ReactionPill {
     callback clicked;
     height: 26px * Theme.scale;
     width: rch.preferred-width;
-    accessible-role: button;
-    accessible-label: root.emoji + " " + root.count;
     Rectangle {
         border-radius: self.height / 2;
         border-width: 1px;
@@ -43,8 +41,6 @@ export component ThreadSummary {
     callback clicked;
     height: max(34px, 30px * Theme.scale);
     width: row.preferred-width + 16px;
-    accessible-role: button;
-    accessible-label: root.replies + " replies, open the thread";
     Rectangle {
         border-radius: Theme.r-sm;
         background: ta.has-hover ? Theme.surface : transparent;
@@ -93,8 +89,6 @@ export component HoverToolbar {
                 height: 30px * Theme.scale;
                 border-radius: Theme.r-sm;
                 background: qa.has-hover ? Theme.surface-high : transparent;
-                accessible-role: button;
-                accessible-label: "React " + e.ch;
                 if e.has-img: Image { source: e.img; width: 18px * Theme.scale; height: 18px * Theme.scale; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
                 if !e.has-img: Text { text: e.ch; font-size: 16px * Theme.scale; horizontal-alignment: center; vertical-alignment: center; }
                 qa := TouchArea { clicked => { root.react(e.ch); } }
@@ -198,8 +192,6 @@ export component MessageRow inherits Rectangle {
                             y: 2px;
                             border-radius: 3px;
                             background: Theme.accent.with-alpha(0.22);
-                            accessible-role: text;
-                            accessible-label: "App";
                             apptag := Text { text: "APP"; font-size: Theme.fs-small * 0.8; font-weight: 700; color: Theme.accent-text; horizontal-alignment: center; vertical-alignment: center; }
                         }
                         Text {
@@ -245,7 +237,6 @@ export component MessageRow inherits Rectangle {
                                 color: Theme.text;
                                 wrap: word-wrap;
                                 single-line: false;
-                                accessible-label: "Edit message";
                                 init => { self.focus(); }
                                 key-pressed(e) => {
                                     if e.text == Key.Return && !e.modifiers.shift { root.edit-save(root.edit-text); return accept; }
@@ -294,8 +285,6 @@ export component MessageRow inherits Rectangle {
                                     width: (root.wide ? 300px : 220px) * Theme.scale;
                                     height: self.width * f.img.height / max(1, f.img.width);
                                     image-fit: contain;
-                                    accessible-role: image;
-                                    accessible-label: f.name;
                                     TouchArea { clicked => { root.open-file(f.id); } }
                                 }
                             }
@@ -323,11 +312,6 @@ export component MessageRow inherits Rectangle {
                             border-color: m.upload-error != "" ? Theme.danger : Theme.line;
                             background: Theme.surface;
                             height: ub.preferred-height + 2px;
-                            accessible-role: progress-indicator;
-                            accessible-label: m.upload-error != "" ? m.upload-error : m.upload-text;
-                            accessible-value: "" + m.upload-pct;
-                            accessible-value-minimum: 0;
-                            accessible-value-maximum: 100;
                             ub := VerticalLayout {
                                 padding: 10px;
                                 spacing: 6px;
@@ -351,8 +335,6 @@ export component MessageRow inherits Rectangle {
                             border-color: Theme.line;
                             background: Theme.surface;
                             height: fc.preferred-height + 2px;
-                            accessible-role: groupbox;
-                            accessible-label: m.form-title;
                             fc := VerticalLayout {
                                 padding: 12px;
                                 spacing: 8px;
@@ -381,8 +363,6 @@ export component MessageRow inherits Rectangle {
                                 border-radius: self.height / 2;
                                 border-width: 1px;
                                 border-color: Theme.line;
-                                accessible-role: button;
-                                accessible-label: "Add reaction";
                                 Icon { name: "emoji"; size: 16px; tint: Theme.icon; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
                                 TouchArea { clicked => { root.more-reactions(self.absolute-position.x, self.absolute-position.y); } }
                             }
@@ -473,9 +453,6 @@ export component Composer inherits Rectangle {
                     border-width: 2px;
                     border-color: root.also-on ? Theme.accent : Theme.icon-soft;
                     background: root.also-on ? Theme.accent : transparent;
-                    accessible-role: checkbox;
-                    accessible-checked: root.also-on;
-                    accessible-label: root.also-label;
                     if root.also-on: Icon { name: "check"; size: 14px; tint: Theme.on-accent; weight: 2.5px; x: (parent.width - self.width) / 2 - 2px; y: (parent.height - self.height) / 2 - 2px; }
                     TouchArea { clicked => { root.also-on = !root.also-on; } }
                 }
@@ -547,7 +524,6 @@ export component Composer inherits Rectangle {
                                 color: Theme.text;
                                 wrap: word-wrap;
                                 single-line: false;
-                                accessible-label: root.placeholder;
                                 edited => { root.edited(self.text); }
                             }
                         }
@@ -580,8 +556,6 @@ export component Composer inherits Rectangle {
                         width: 48px;
                         height: 48px;
                         y: (parent.height - self.height) / 2;
-                        accessible-role: button;
-                        accessible-label: (root.can-send || !root.can-record) ? (root.editing ? "Save" : "Send") : (root.recording ? "Stop recording" : "Record a voice message");
                         Rectangle {
                             width: 42px; height: 42px; border-radius: 21px;
                             x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
@@ -609,16 +583,12 @@ export component Composer inherits Rectangle {
                         sendrow := HorizontalLayout {
                             Rectangle {
                                 width: 34px * Theme.scale;
-                                accessible-role: button;
-                                accessible-label: root.editing ? "Save" : "Send";
                                 Icon { name: root.editing ? "check" : "send"; size: 18px; weight: 2px; tint: root.can-send ? Theme.on-accent : Theme.muted; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
                                 TouchArea { clicked => { if root.can-send { root.send(); } } }
                             }
                             if root.allow-schedule && !root.editing: Rectangle { width: 1px; background: root.can-send ? Theme.on-accent.with-alpha(0.4) : Theme.line; }
                             if root.allow-schedule && !root.editing: Rectangle {
                                 width: 24px * Theme.scale;
-                                accessible-role: button;
-                                accessible-label: "Schedule message";
                                 Icon { name: "chevron-down"; size: 16px; weight: 2px; tint: root.can-send ? Theme.on-accent : Theme.muted; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
                                 TouchArea { clicked => { root.schedule(); } }
                             }
@@ -657,7 +627,6 @@ export component PeoplePicker {
                     color: Theme.text;
                     vertical-alignment: center;
                     single-line: true;
-                    accessible-label: root.hint;
                     edited => { root.filter(self.text); }
                 }
             }
@@ -668,9 +637,6 @@ export component PeoplePicker {
             height: max(52px, 44px * Theme.scale);
             border-radius: Theme.r-sm;
             background: pa.has-hover ? Theme.row-hover : (p.sel ? Theme.row-sel : transparent);
-            accessible-role: checkbox;
-            accessible-label: p.name;
-            accessible-checked: p.sel;
             HorizontalLayout {
                 padding-left: 8px;
                 padding-right: 8px;

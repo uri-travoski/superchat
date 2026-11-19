@@ -634,6 +634,24 @@ pub fn side_rows(c: &Client, o: &SideOpts, v: &View) -> Vec<SideRow> {
     out
 }
 
+/// 1.4 phone: the rows of the DMs or Channels tab. Pinned conversations first (the user's own order, no header), then the
+/// rest sorted by `sort_alpha` and filtered, then a small "Archived" label and the archived ones. The sort and the filters
+/// never touch the pinned ones.
+pub fn phone_rows(c: &Client, kind: client_core::ListKind, sort_alpha: bool, unread_only: bool, hide_muted: bool, v: &View) -> Vec<SideRow> {
+    let me = c.my_id().unwrap_or_default();
+    let l = c.phone_list(kind, sort_alpha, unread_only, hide_muted);
+    let mut out: Vec<SideRow> = l.pinned.iter().chain(l.others.iter()).map(|cs| conv_row(c, cs, &me, v)).collect();
+    if !l.archived.is_empty() {
+        out.push(blank_row(5, "archived", "Archived"));
+        for cs in &l.archived {
+            let mut r = conv_row(c, cs, &me, v);
+            r.favourite = false;
+            out.push(r);
+        }
+    }
+    out
+}
+
 /// Direct messages, group conversations and notes to self, newest first.
 pub fn dm_rows(c: &Client, v: &View) -> Vec<SideRow> {
     let me = c.my_id().unwrap_or_default();

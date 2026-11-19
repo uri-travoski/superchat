@@ -408,4 +408,32 @@ mod tests {
             assert_eq!(pop(&mut s), None);
         }
     }
+
+    #[test]
+    fn about_opened_from_the_update_banner_unwinds_to_where_it_came_from() {
+        // Phone Home banner or desktop rail "Update": Settings opens on the About page; Back goes to the Settings list, then
+        // back to Home (the app leaves only after that).
+        let mut s = NavState { screen: "settings".into(), settings_page: "about".into(), ..phone() };
+        assert_eq!(presses(&mut s), vec![Closed::SettingsPage, Closed::Screen]);
+        // From a chat on the phone: About, Settings, then the chat is still there.
+        let mut s = NavState { show_chat: true, has_conv: true, screen: "settings".into(), settings_page: "about".into(), ..phone() };
+        assert_eq!(presses(&mut s), vec![Closed::SettingsPage, Closed::Screen, Closed::Chat]);
+        // Desktop: About over a conversation closes in two steps and leaves the conversation open.
+        let mut s = NavState { wide: true, has_conv: true, screen: "settings".into(), settings_page: "about".into(), ..phone() };
+        assert_eq!(presses(&mut s), vec![Closed::SettingsPage, Closed::Screen]);
+    }
+
+    #[test]
+    fn about_from_the_help_dialog_replaces_it() {
+        // "About SuperChat" in the Help dialog or the More sheet closes that layer and opens About, so Back from About does
+        // not reopen it. (The UI clears `menu-kind` before it opens Settings; this is the resulting state.)
+        let mut s = NavState { wide: true, has_conv: true, menu_kind: "help".into(), ..phone() };
+        assert_eq!(pop(&mut s), Some(Closed::Sheet));
+        s.screen = "settings".into();
+        s.settings_page = "about".into();
+        assert_eq!(presses(&mut s), vec![Closed::SettingsPage, Closed::Screen]);
+        // A sheet that is open over About (for example the theme picker was never opened here) closes first.
+        let mut s = NavState { screen: "settings".into(), settings_page: "about".into(), confirm: "signout".into(), ..phone() };
+        assert_eq!(presses(&mut s), vec![Closed::Confirm, Closed::SettingsPage, Closed::Screen]);
+    }
 }

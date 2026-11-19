@@ -9,6 +9,8 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Update checks: the downloaded APK is handed to the system installer (the user must allow "Install unknown apps" for SuperChat once). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:allowBackup="false"
@@ -70,6 +72,21 @@
             android:exported="false"
             android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|smallestScreenSize|uiMode|fontScale|density"
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+        </provider>
+
+        <!-- Status of the PackageInstaller session that installs a downloaded update (see Installer.kt). -->
+        <receiver android:name=".Installer$ResultReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="app.superchat.INSTALL_RESULT" />
+            </intent-filter>
+        </receiver>
 
         <service
             android:name=".SyncService"

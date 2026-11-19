@@ -1,7 +1,7 @@
-# Builds every artifact when a tag like v1.3.0 is pushed and attaches them to the GitHub Release.
-# Android signing: set the repository secrets ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and
-# ANDROID_KEY_PASSWORD to sign with your own key. Without them CI generates a throw-away keystore (the APK installs,
-# but each release is signed with a different key, so it cannot update a previous install: set the secrets for real use).
+# Builds every artifact when a tag like v1.3.1 is pushed and attaches them to the GitHub Release.
+# Android signing is mandatory: set the repository secrets ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS
+# and ANDROID_KEY_PASSWORD (docs/DEPLOY.md, "Android signing"). The Android job fails with an error when one is missing, so a
+# release can never ship an APK signed with a throw-away key that installed apps would refuse to update to.
 name: Release
 on:
   push:
@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing release tag to (re)attach artifacts to, e.g. v1.3.0 (built from the selected branch)"
+        description: "Existing release tag to (re)attach artifacts to, e.g. v1.3.1 (built from the selected branch)"
         required: true
 permissions:
   contents: write
@@ -82,28 +82,29 @@ jobs:
           yes | "$SDKM" --licenses > /dev/null || true
           "$SDKM" "platforms;android-36" "ndk;27.1.12297006" "build-tools;35.0.0"
       - run: cargo install cargo-ndk --locked
-      - name: Signing key
+      - name: Signing key (required)
         env:
           KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KS_KEYPASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          if [ -n "$KS_B64" ]; then
-            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
-            echo "ATOMIC_KEY_ALIAS=${KS_ALIAS:-atomic}" >> "$GITHUB_ENV"
-            echo "ATOMIC_KEY_PASSWORD=$KS_KEYPASS" >> "$GITHUB_ENV"
-            echo "ATOMIC_KEYSTORE_PASSWORD=$KS_PASS" >> "$GITHUB_ENV"
-          else
-            echo "No signing secrets: generating a throw-away keystore"
-            PASS=$(openssl rand -hex 16)
-            keytool -genkeypair -keystore "$RUNNER_TEMP/release.jks" -alias atomic -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass "$PASS" -keypass "$PASS" -dname "CN=SuperChat CI, O=SuperChat"
-            echo "ATOMIC_KEY_ALIAS=atomic" >> "$GITHUB_ENV"
-            echo "ATOMIC_KEY_PASSWORD=$PASS" >> "$GITHUB_ENV"
-            echo "ATOMIC_KEYSTORE_PASSWORD=$PASS" >> "$GITHUB_ENV"
+          # Every run of this workflow publishes a release (a tag push, or a manual run for an existing tag), and installed apps
+          # can only update to an APK signed with the same key. So a missing key is an error, never a throw-away key.
+          missing=""
+          [ -n "$KS_B64" ] || missing="$missing ANDROID_KEYSTORE_BASE64"
+          [ -n "$KS_PASS" ] || missing="$missing ANDROID_KEYSTORE_PASSWORD"
+          [ -n "$KS_ALIAS" ] || missing="$missing ANDROID_KEY_ALIAS"
+          [ -n "$KS_KEYPASS" ] || missing="$missing ANDROID_KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error title=Android signing secrets missing::Not building the release APK: the repository secrets${missing} are not set. A release APK must be signed with the one permanent key, otherwise installed apps cannot update to it. Set the four secrets (Settings > Secrets and variables > Actions) as described in docs/DEPLOY.md, section 'Android signing', then re-run this workflow."
+            exit 1
           fi
+          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
           echo "ATOMIC_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          echo "ATOMIC_KEYSTORE_PASSWORD=$KS_PASS" >> "$GITHUB_ENV"
+          echo "ATOMIC_KEY_ALIAS=$KS_ALIAS" >> "$GITHUB_ENV"
+          echo "ATOMIC_KEY_PASSWORD=$KS_KEYPASS" >> "$GITHUB_ENV"
       - name: Build APK
         run: |
           echo "sdk.dir=$ANDROID_HOME" > apps/android/local.properties

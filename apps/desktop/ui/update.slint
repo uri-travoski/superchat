@@ -1,0 +1,123 @@
+// The update card of Settings > About, and the banner shown in the rail (desktop) and on Home (phone).
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { Icon } from "icons.slint";
+import { PrimaryButton, GhostButton, TextButton, Toggle, Link } from "components.slint";
+
+export component UpdateCard inherits Rectangle {
+    // idle, checking, uptodate, available, downloading, ready, failed
+    in property <string> phase;
+    in property <string> title;
+    in property <string> detail;
+    in property <string> notes;
+    in property <float> progress;
+    in property <string> progress-text;
+    // Label of the main action ("" = none): Download & install, Restart now, Open installer, Try again...
+    in property <string> primary;
+    // A shell command to show with a Copy button (the .deb install line).
+    in property <string> command;
+    in property <bool> auto;
+    in property <bool> can-skip;
+    callback check;
+    callback primary-clicked;
+    callback cancel;
+    callback skip;
+    callback remind;
+    callback copy-command;
+    callback auto-toggled(bool);
+    background: Theme.surface;
+    border-radius: Theme.r-lg;
+    VerticalLayout {
+        padding: 16px;
+        spacing: 10px;
+        alignment: start;
+        HorizontalLayout {
+            spacing: 10px;
+            Rectangle {
+                width: 36px; height: 36px; border-radius: 18px;
+                background: root.phase == "failed" ? Theme.danger : (root.phase == "available" || root.phase == "downloading" || root.phase == "ready" ? Theme.accent : #16a34a);
+                Icon { name: root.phase == "failed" ? "x-circle" : (root.phase == "available" || root.phase == "downloading" || root.phase == "ready" ? "download" : "check"); size: 20px; tint: white; weight: 2px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                Text { text: root.title; font-size: Theme.fs * 1.05; font-weight: 700; color: root.phase == "failed" ? Theme.danger : Theme.text; wrap: word-wrap; accessible-role: text; }
+                if root.detail != "": Text { text: root.detail; font-size: Theme.fs-small * 1.05; color: Theme.muted; wrap: word-wrap; }
+            }
+        }
+        if root.phase == "available" && root.notes != "": Rectangle {
+            height: min(notes-text.preferred-height + 20px, 150px * Theme.scale);
+            border-radius: Theme.r-sm;
+            border-width: 1px;
+            border-color: Theme.line;
+            background: Theme.bg;
+            ScrollView {
+                x: 10px; y: 10px; width: parent.width - 20px; height: parent.height - 20px;
+                notes-text := Text { width: parent.width - 4px; text: root.notes; font-size: Theme.fs-small * 1.05; color: Theme.text; wrap: word-wrap; }
+            }
+        }
+        if root.phase == "downloading": VerticalLayout {
+            spacing: 6px;
+            Rectangle {
+                height: 8px; border-radius: 4px; background: Theme.surface-high;
+                accessible-role: progress-indicator;
+                accessible-label: "Download progress " + root.progress-text;
+                Rectangle { x: 0; width: parent.width * clamp(root.progress, 0.0, 1.0); height: parent.height; border-radius: 4px; background: Theme.accent; }
+            }
+            Text { text: root.progress-text; font-size: Theme.fs-small; color: Theme.muted; }
+        }
+        if root.command != "": Rectangle {
+            height: cmd-text.preferred-height + 20px;
+            border-radius: Theme.r-sm;
+            background: Theme.bg;
+            border-width: 1px;
+            border-color: Theme.line;
+            cmd-text := Text { x: 10px; y: 10px; width: parent.width - 20px; text: root.command; font-size: Theme.fs-small * 1.05; font-family: "monospace"; color: Theme.text; wrap: word-wrap; }
+        }
+        if root.command != "": GhostButton { text: "Copy command"; clicked => { root.copy-command(); } }
+        if root.primary != "": PrimaryButton { text: root.primary; clicked => { root.primary-clicked(); } }
+        if root.phase == "downloading": GhostButton { text: "Cancel"; clicked => { root.cancel(); } }
+        if root.phase != "downloading": GhostButton {
+            text: root.phase == "checking" ? "Checking..." : "Check for updates";
+            on: false;
+            clicked => { if root.phase != "checking" { root.check(); } }
+        }
+        if root.phase == "available": HorizontalLayout {
+            alignment: start;
+            spacing: 4px;
+            TextButton { text: "Remind me later"; clicked => { root.remind(); } }
+            if root.can-skip: TextButton { text: "Skip this version"; clicked => { root.skip(); } }
+        }
+        Rectangle { height: 1px; background: Theme.line; }
+        HorizontalLayout {
+            spacing: 12px;
+            Text { text: "Check for updates automatically"; font-size: Theme.fs; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; wrap: word-wrap; }
+            Toggle { checked: root.auto; y: (parent.height - self.height) / 2; toggled => { root.auto-toggled(self.checked); } }
+        }
+        Text { text: "Checks GitHub for a new release when the app starts and then once a day. Only the app version is sent."; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
+    }
+}
+
+// A slim bar: "Update available: version X", tap to open About; the cross hides it for a day.
+export component UpdateBanner inherits Rectangle {
+    in property <string> text;
+    callback open;
+    callback dismiss;
+    height: max(44px, 36px * Theme.scale);
+    background: Theme.accent.with-alpha(0.14);
+    accessible-role: button;
+    accessible-label: root.text + ". Open About to update";
+    HorizontalLayout {
+        padding-left: 14px; padding-right: 4px; spacing: 10px;
+        Icon { name: "download"; size: 20px; tint: Theme.accent-text; y: (parent.height - self.height) / 2; }
+        Text { text: root.text; font-size: Theme.fs; font-weight: 600; color: Theme.accent-text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+        Rectangle {
+            width: 40px;
+            accessible-role: button;
+            accessible-label: "Remind me later";
+            Icon { name: "close"; size: 18px; tint: Theme.icon; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+            TouchArea { clicked => { root.dismiss(); } }
+        }
+    }
+    TouchArea { width: parent.width - 40px; clicked => { root.open(); } }
+}

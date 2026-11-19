@@ -15,6 +15,7 @@ pub mod platform;
 mod sched;
 mod shell;
 mod spell_ui;
+mod updates;
 mod shortcodes;
 
 use client_core::logic::{datefmt, emoji, initials, markup, searchq};
@@ -417,6 +418,14 @@ pub struct Hooks {
     pub take_picked: Box<dyn Fn() -> Option<Picked>>,
     /// Android: the clipboard text (desktop pastes through the text field itself).
     pub clipboard: Option<Box<dyn Fn() -> Option<String>>>,
+    /// Android: hands a downloaded and verified APK to the system installer.
+    pub install_apk: Option<Box<dyn Fn(&Path)>>,
+    /// Android: what the installer reported (`"cancelled"`, `"permission"` or `"failed"` with a message), once.
+    pub take_install_result: Box<dyn Fn() -> Option<(String, String)>>,
+    /// Android: opens a web address in the browser (false when there is no browser).
+    pub open_url: Option<Box<dyn Fn(&str) -> bool>>,
+    /// Android: the version code of this build, shown on the About page.
+    pub version_code: Option<Box<dyn Fn() -> Option<u32>>>,
 }
 
 impl Hooks {
@@ -439,6 +448,10 @@ impl Hooks {
             take_login_error: Box::new(|| None),
             take_login_link: Box::new(|| None),
             clipboard: None,
+            install_apk: None,
+            take_install_result: Box::new(|| None),
+            open_url: None,
+            version_code: None,
         }
     }
 }
@@ -1324,6 +1337,7 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
     }
     ui.set_close_tray(sh.lock().unwrap().prefs.close_to_tray);
     ui.set_version(format!("SuperChat {}", client_core::CLIENT_VERSION).into());
+    let _update_timer = updates::setup(&ui, &hooks, &sh);
     ui.set_emoji_list(model(model::emoji_items(emoji::all())));
     ui.set_quick_emoji(model(model::emoji_items(["\u{1F44D}", "\u{2764}\u{FE0F}", "\u{1F602}", "\u{1F62E}", "\u{1F622}", "\u{1F64F}"].iter().map(|s| s.to_string()).collect())));
     {

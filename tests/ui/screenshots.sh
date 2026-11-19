@@ -22,6 +22,7 @@ cleanup() {
   [ -n "${APP_PID:-}" ] && kill "$APP_PID" 2>/dev/null || true
   [ -n "${XVFB_PID:-}" ] && kill "$XVFB_PID" 2>/dev/null || true
   [ -n "${DBUS_PID:-}" ] && kill "$DBUS_PID" 2>/dev/null || true
+  [ -n "${REL_PID:-}" ] && kill "$REL_PID" 2>/dev/null || true
   [ -n "${KEEP_APP_LOG:-}" ] && cp "$WORK"/app-*.log "$KEEP_APP_LOG"/ 2>/dev/null; sleep 1; rm -rf "$WORK"
 }
 trap cleanup EXIT
@@ -41,6 +42,13 @@ SEED_URL_FILE="$WORK/url" SEED_STOP_FILE="$WORK/stop" "$SEED_BIN" --ignored --no
 for _ in $(seq 1 120); do [ -s "$WORK/url" ] && break; sleep 0.5; done
 [ -s "$WORK/url" ] || { echo "seed server did not start"; cat "$WORK/seed.log"; exit 1; }
 URL="$(cat "$WORK/url")"
+
+# A fake GitHub release server for the update screens (scenario = first path segment, see tests/update/fake-release-server.py).
+# Variants whose name contains "-upd-<scenario>" use that scenario; all others see "up to date", never the real GitHub.
+CUR="$(sed -n 's/^version = "\(.*\)"/\1/p' "$ROOT/Cargo.toml" | head -1)"
+python3 "$ROOT/tests/update/fake-release-server.py" --port 18391 --current "$CUR" >"$WORK/release.log" 2>&1 &
+REL_PID=$!
+sleep 1
 
 # name | size | theme | font step (100/115/130) | open | optional user (default alice; carol has Privacy options Allow)
 VARIANTS=(
@@ -104,6 +112,12 @@ VARIANTS=(
   "desk-1280-dark-regular-menu-attach|1280x800|dark|100|chat:general||mousemove 409 763 click 1; mousemove 700 300"
   "desk-1280-dark-regular-menu-pick-theme|1280x800|dark|100|menukind:pick-theme:general"
   "desk-1280-dark-large-menu-more|1280x800|dark|115|chat:general||mousemove 34 440 click 1"
+  "desk-1280-light-regular-about-upd-same|1280x800|light|100|settings-page:about"
+  "desk-1280-dark-regular-about-upd-new|1280x800|dark|100|settings-page:about"
+  "desk-1280-light-regular-about-upd-new|1280x800|light|100|settings-page:about"
+  "desk-1280-light-regular-about-upd-limit|1280x800|light|100|settings-page:about"
+  "desk-1280-light-regular-rail-upd-new|1280x800|light|100|chat:general"
+  "desk-1280-light-regular-about-upd-slow|1280x800|light|100|settings-page:about||mousemove CLICKDL"
   "desk-1280-light-regular-spellcheck|1280x800|light|100|spell:general"
   "desk-1280-light-regular-spellmenu|1280x800|light|100|spell:general||mousemove 735 732 click 3"
   "desk-1280-light-regular-media-cards|1280x800|light|100|chat:design"
@@ -145,6 +159,9 @@ VARIANTS=(
   "phone-light-regular-thread|360x640|light|100|thread:general"
   "phone-dark-large-thread|360x640|dark|115|thread:general"
   "phone-light-regular-search|360x640|light|100|searchq:general:release"
+  "phone-light-regular-home-upd-new|360x640|light|100|none"
+  "phone-light-regular-about-upd-new|360x640|light|100|settings-page:about"
+  "phone-light-regular-about-upd-same|360x640|light|100|settings-page:about"
   "phone-light-regular-settings|360x640|light|100|settings"
   "phone-dark-large-settings|360x640|dark|115|settings"
   "phone-light-regular-settings-privacy|360x640|light|100|settings-page:privacy|carol"
@@ -170,6 +187,8 @@ for v in "${VARIANTS[@]}"; do
   W="${size%x*}"; H="${size#*x}"
   export ATOMIC_DATA_DIR="$DATA" ATOMIC_AUTOLOGIN_SERVER="$URL" ATOMIC_AUTOLOGIN_USER="${user:-alice}" ATOMIC_AUTOLOGIN_PASS=password-123
   unset ATOMIC_UI_OPEN
+  SC=same; [[ "$name" =~ -upd-([a-z]+) ]] && SC="${BASH_REMATCH[1]}"
+  export SUPERCHAT_UPDATE_URL="http://127.0.0.1:18391/$SC/releases/latest"
   [ "$open" = none ] || export ATOMIC_UI_OPEN="$open"
   "$ROOT/target/debug/superchat" >"$WORK/app-$n.log" 2>&1 &
   APP_PID=$!

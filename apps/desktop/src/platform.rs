@@ -150,6 +150,18 @@ pub fn open_path(p: &Path) {
     opener(p.as_os_str());
 }
 
+/// A graphical installer is registered for `.deb` files (GNOME Software, gdebi, Discover...).
+pub fn has_deb_installer() -> bool {
+    #[cfg(windows)]
+    {
+        false
+    }
+    #[cfg(not(windows))]
+    {
+        Command::new("xdg-mime").args(["query", "default", "application/vnd.debian.binary-package"]).stderr(Stdio::null()).output().map(|o| !String::from_utf8_lossy(&o.stdout).trim().is_empty()).unwrap_or(false)
+    }
+}
+
 pub fn open_url(u: &str) {
     if u.starts_with("http://") || u.starts_with("https://") || u.starts_with("mailto:") {
         opener(std::ffi::OsStr::new(u));

@@ -48,6 +48,10 @@ object Native {
     @JvmStatic external fun nativePicked(paths: String, metas: String)
     /** Tells the login screen why a scan could not be done (shown as text, never silent). */
     @JvmStatic external fun nativeLoginError(message: String)
+    /** What the system installer said about a downloaded update: kind is "cancelled", "permission" or "failed". */
+    @JvmStatic external fun nativeInstallResult(kind: String, message: String)
+    /** This build's versionCode, for the About page. */
+    @JvmStatic external fun nativeVersionCode(code: Int)
 
     private lateinit var app: Context
     private var ready = false
@@ -65,6 +69,30 @@ object Native {
 
     fun pushTimeZone() {
         nativeTzOffset(TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 1000)
+    }
+
+    // ---- update checks (called from Rust) -------------------------------------------------------------------------------
+
+    /** Hands a downloaded and verified APK (filesDir/updates) to the system installer. */
+    @JvmStatic fun installApkPath(path: String): String {
+        val a = activity
+        if (a == null) {
+            nativeInstallResult("failed", "SuperChat is not on screen. Open it and try again.")
+            return "no-activity"
+        }
+        a.runOnUiThread { Installer.install(a, path) }
+        return "ok"
+    }
+
+    /** Opens a web page in the browser; false when the device has no browser. */
+    @JvmStatic fun openUrl(url: String): Boolean {
+        val a = activity ?: return false
+        return try {
+            a.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            true
+        } catch (e: Exception) {
+            false
+        }
     }
 
     // ---- N-01: local notification for a new message (called from Rust) ------------------------------------------

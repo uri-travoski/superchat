@@ -15,6 +15,9 @@ export component Rail {
     in property <string> me-id;
     in property <color> me-color;
     in property <int> presence: 1;
+    // A newer release exists: a small download button above the profile opens Settings > About.
+    in property <bool> update-available: false;
+    callback update-clicked;
     callback picked(string);
     callback server-clicked;
     // The More button and the avatar open popovers next to the rail: (right edge x, anchor y).
@@ -68,6 +71,26 @@ export component Rail {
                 ta := TouchArea { clicked => { if t.id == "more" { root.more-clicked(root.width, self.absolute-position.y); } else { root.picked(t.id); } } }
             }
             Rectangle { vertical-stretch: 1; }
+            if root.update-available: Rectangle {
+                height: 52px * Theme.scale;
+                accessible-role: button;
+                accessible-label: "Update available. Open About to update";
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+                    HorizontalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 40px * Theme.scale; height: 32px * Theme.scale; border-radius: 10px;
+                            background: ua.has-hover ? Theme.accent.with-alpha(0.35) : Theme.accent.with-alpha(0.22);
+                            Icon { name: "download"; size: 20px * Theme.scale; tint: Theme.accent-text; weight: 2.2px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+                            Rectangle { x: parent.width - 11px; y: 1px; width: 9px; height: 9px; border-radius: 4.5px; background: Theme.danger; }
+                        }
+                    }
+                    Text { text: "Update"; font-size: Theme.fs-small * 0.92; font-weight: 600; color: Theme.accent-text; horizontal-alignment: center; }
+                }
+                ua := TouchArea { clicked => { root.update-clicked(); } }
+            }
             HorizontalLayout {
                 alignment: center;
                 Rectangle {

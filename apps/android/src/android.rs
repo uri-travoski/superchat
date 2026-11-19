@@ -16,6 +16,9 @@ static SHARED: Mutex<Option<Shared>> = Mutex::new(None);
 static PICKED: Mutex<Option<atomic_ui::Picked>> = Mutex::new(None);
 static LOGIN_LINK: Mutex<Option<String>> = Mutex::new(None);
 static LOGIN_ERROR: Mutex<Option<String>> = Mutex::new(None);
+static INSTALL_RESULT: Mutex<Option<(String, String)>> = Mutex::new(None);
+/// This build's versionCode (0 = not reported yet), pushed by MainActivity.
+static VERSION_CODE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 /// Runs `f` on a JNI-attached thread with the `app.superchat.Native` class. None when the shell is not ready or Java threw.
 fn with_env<R>(f: impl FnOnce(&mut JNIEnv, &JClass) -> Option<R>) -> Option<R> {
@@ -234,6 +237,27 @@ fn android_main(app: slint::android::AndroidApp) {
         take_login_error: Box::new(|| LOGIN_ERROR.lock().ok().and_then(|mut g| g.take())),
         take_login_link: Box::new(|| LOGIN_LINK.lock().ok().and_then(|mut g| g.take())),
         clipboard: Some(Box::new(|| call_string("clipboardText", "").filter(|s| !s.is_empty()))),
+        install_apk: Some(Box::new(|path| {
+            let p = path.to_string_lossy().to_string();
+            if call_string("installApkPath", &p).is_none() {
+                // The JNI call itself did not run (shell not ready): say so instead of doing nothing.
+                if let Ok(mut g) = INSTALL_RESULT.lock() {
+                    *g = Some(("failed".into(), "The installer could not be started from the app. Try again.".into()));
+                }
+            }
+        })),
+        take_install_result: Box::new(|| INSTALL_RESULT.lock().ok().and_then(|mut g| g.take())),
+        open_url: Some(Box::new(|url| {
+            with_env(|env, c| {
+                let u = env.new_string(url).ok()?;
+                env.call_static_method(c, "openUrl", "(Ljava/lang/String;)Z", &[JValue::Object(&u)]).ok()?.z().ok()
+            })
+            .unwrap_or(false)
+        })),
+        version_code: Some(Box::new(|| match VERSION_CODE.load(std::sync::atomic::Ordering::Relaxed) {
+            0 => None,
+            c => Some(c),
+        })),
     };
     if let Err(e) = atomic_ui::run_with(hooks) {
         log::error!("ui error: {e}");
@@ -368,6 +392,22 @@ pub extern "system" fn Java_app_superchat_Native_nativeLoginLink(mut env: JNIEnv
 #[no_mangle]
 pub extern "system" fn Java_app_superchat_Native_nativeBack(_env: JNIEnv, _c: JClass) -> jni::sys::jboolean {
     atomic_ui::nav::back_from_platform() as jni::sys::jboolean
+}
+
+/// What the system installer said about the downloaded update ("cancelled", "permission" or "failed" with a message).
+#[no_mangle]
+pub extern "system" fn Java_app_superchat_Native_nativeInstallResult(mut env: JNIEnv, _c: JClass, kind: JString, msg: JString) {
+    let (kind, msg) = (jstr(&mut env, &kind), jstr(&mut env, &msg));
+    log::info!("install result: {kind} {msg}");
+    if let Ok(mut g) = INSTALL_RESULT.lock() {
+        *g = Some((kind, msg));
+    }
+}
+
+/// MainActivity reports the versionCode of this build.
+#[no_mangle]
+pub extern "system" fn Java_app_superchat_Native_nativeVersionCode(_env: JNIEnv, _c: JClass, code: i32) {
+    VERSION_CODE.store(code.max(0) as u32, std::sync::atomic::Ordering::Relaxed);
 }
 
 /// The scanner could not read a login link; the login screen shows why.

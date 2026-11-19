@@ -22,6 +22,12 @@ class MainActivity : NativeActivity() {
         SyncService.start(this)
         Native.nativeFontScale(resources.configuration.fontScale)
         Native.pushTimeZone()
+        runCatching {
+            Native.nativeVersionCode(
+                if (Build.VERSION.SDK_INT >= 28) packageManager.getPackageInfo(packageName, 0).longVersionCode.toInt()
+                else @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, 0).versionCode
+            )
+        }
         // Google push is compiled in only when a config was bundled (see build.gradle.kts).
         runCatching {
             val comp = Class.forName("app.superchat.FcmService").getField("Companion").get(null)!!
@@ -39,6 +45,7 @@ class MainActivity : NativeActivity() {
         super.onResume()
         Native.visible = true
         Native.nativeBackground(false)
+        Installer.resumePending(this) // the user may have just allowed "Install unknown apps"
         Native.pushTimeZone() // the zone (or daylight saving) may have changed while we were away
     }
 

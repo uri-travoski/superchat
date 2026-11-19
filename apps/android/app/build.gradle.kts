@@ -32,13 +32,14 @@ android {
         applicationId = "app.superchat"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.3.0"
+        versionCode = 8
+        versionName = "1.3.1"
         resourceConfigurations += listOf("en")
     }
 
-    // Release signing: set ATOMIC_KEYSTORE_FILE (+ _PASSWORD, ATOMIC_KEY_ALIAS, ATOMIC_KEY_PASSWORD) to sign with your own key
-    // (CI generates one when no secret is configured). Without them the build is signed with the debug key.
+    // Release signing: set ATOMIC_KEYSTORE_FILE (+ ATOMIC_KEYSTORE_PASSWORD, ATOMIC_KEY_ALIAS, ATOMIC_KEY_PASSWORD) to sign with the
+    // permanent release key. CI (release.yml) refuses to build a release without it. Without them a local build is signed with
+    // the debug key, which is fine for testing but cannot update an install signed with the release key.
     val releaseKeystore = System.getenv("ATOMIC_KEYSTORE_FILE")
     if (releaseKeystore != null) {
         signingConfigs.create("atomicRelease") {

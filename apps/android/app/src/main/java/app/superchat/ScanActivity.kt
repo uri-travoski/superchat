@@ -82,8 +82,8 @@ class ScanActivity : ComponentActivity() {
         }
         root.addView(hint, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
         val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
-        val choose = Button(this).apply { text = "Choose image"; contentDescription = "Choose a picture that contains the QR code"; setOnClickListener { pickImage.launch("image/*") } }
-        val cancel = Button(this).apply { text = "Cancel"; contentDescription = "Cancel scanning"; setOnClickListener { finish() } }
+        val choose = Button(this).apply { text = "Choose image"; setOnClickListener { pickImage.launch("image/*") } }
+        val cancel = Button(this).apply { text = "Cancel"; setOnClickListener { finish() } }
         bar.addView(choose); bar.addView(cancel)
         val lp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM)
         lp.bottomMargin = 96

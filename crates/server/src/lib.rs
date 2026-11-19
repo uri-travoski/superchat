@@ -65,6 +65,7 @@ pub async fn build_state(cfg: Config) -> anyhow::Result<St> {
         http: reqwest::Client::builder().timeout(std::time::Duration::from_secs(30)).build()?,
         backup_lock: tokio::sync::Mutex::new(()),
         stopped: std::sync::atomic::AtomicBool::new(false),
+        updates: tokio::sync::Mutex::new(None),
     });
     bootstrap_admin(&st)?;
     Ok(st)

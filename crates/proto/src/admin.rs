@@ -478,3 +478,22 @@ pub struct PublicUrlUpdate {
     #[serde(default)]
     pub url: Option<String>,
 }
+
+/// The admin panel's "Updates" card: this server's version against the newest GitHub release.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct AdminUpdates {
+    /// This server's version.
+    pub current: String,
+    /// The newest published release (drafts and pre-releases skipped), even when it is not newer.
+    #[serde(default)]
+    pub latest: Option<crate::release::ReleaseInfo>,
+    /// `latest` is newer than `current`.
+    pub update_available: bool,
+    /// When the server last asked GitHub (ms since the epoch).
+    pub checked_ms: i64,
+    /// Why the check failed (offline, rate limit...), shown instead of the release.
+    #[serde(default)]
+    pub error: Option<String>,
+    /// The address that was checked.
+    pub source: String,
+}

@@ -4,13 +4,42 @@ The server is one container (Rust binary plus the admin panel). Everything that 
 (SQLite database, settings, local files if you use local storage, backups). Attachments normally live in your chosen
 storage (S3, R2, B2, Google Drive), not on the server's disk.
 
-## Quick start
+## Quick start (install)
+
+The server image is published on GitHub's container registry for every release: `ghcr.io/uri-travoski/superchat-server`. The package is
+**public**, so no login or token is needed to pull it, and nothing is built on your machine. All you need is Docker with the compose plugin
+and two files:
 
 ```
-cd deploy
-cp .env.example .env        # edit ATOMIC_PUBLIC_URL at least
-docker compose up -d        # http://localhost:8080/admin  -> setup wizard
+mkdir superchat && cd superchat
+curl -fLO https://raw.githubusercontent.com/uri-travoski/superchat/main/deploy/docker-compose.yml
+curl -fL  -o .env https://raw.githubusercontent.com/uri-travoski/superchat/main/deploy/.env.example
+# for the caddy profile (HTTPS) also: curl -fLO https://raw.githubusercontent.com/uri-travoski/superchat/main/deploy/Caddyfile
+nano .env                   # set ATOMIC_PUBLIC_URL at least
+docker compose pull && docker compose up -d     # http://localhost:8080/admin  -> setup wizard
 ```
+
+(From a git checkout the same files are in `deploy/`.)
+
+## Updating the server
+
+```
+docker compose pull && docker compose up -d
+```
+
+Run it in the folder with `docker-compose.yml`. The data volume is kept; the container restarts on the new image in a few seconds and the
+database is migrated on start. The admin panel's Overview has an **Updates** card that says whether a newer release exists, shows its release
+notes, these two commands and links to that release's app downloads. Take a backup first if you want a way back.
+
+**Pin a version** (so `pull` never moves you past a release you have not read about): set `SUPERCHAT_IMAGE` in `.env`,
+
+```
+SUPERCHAT_IMAGE=ghcr.io/uri-travoski/superchat-server:1.3.1
+```
+
+(`ATOMIC_IMAGE` is accepted as the older spelling; `SUPERCHAT_IMAGE` wins when both are set). Tags are the release numbers without the `v` (`1.3.1`)
+and `latest`, the newest release. Empty or unset means `latest`. To go back one version, pin the older tag and run the same two commands (a newer
+database is not downgraded, so restore a backup if a release changed the schema; the release notes say when).
 
 The first visit to `/admin` shows the setup wizard: owner account plus attachment storage (with a Test button).
 Alternatively set `ATOMIC_BOOTSTRAP_ADMIN=user:password` in `.env` to create the owner on first start.
@@ -66,13 +95,52 @@ Push (optional): ntfy needs only a URL. FCM needs a Google service account JSON 
 
 ntfy on the same host: `docker compose --profile ntfy up -d` starts ntfy bound to the host's loopback on `NTFY_PORT` (default 2586; set `NTFY_BIND_ADDR=0.0.0.0` only on a trusted network, or put it behind your HTTPS proxy). Set `ATOMIC_NTFY_URL` to the address phones use (for example `https://ntfy.example.org`), then in the app choose You > Preferences > Notifications > Push method > ntfy. The server only sends a wake-up to people who have no open connection, and the wake never carries message text. `tests/e2e/ntfy-emulator.sh` runs this against a real ntfy container and the Android emulator. FCM needs a Firebase `google-services.json` at build time plus a service account in the admin panel and has not been run on a real device.
 
-## Building the image
+## Building the image (developers only)
+
+Normal installs never build: they pull the published image (see above). To run your own build of a checkout, uncomment the `build:` block under the
+`superchat` service in `deploy/docker-compose.yml`, then `docker compose build && docker compose up -d`, or just
 
 ```
-docker build -f deploy/Dockerfile -t superchat-server .
+docker build -f deploy/Dockerfile -t superchat:1.3.1 .
+docker tag superchat:1.3.1 ghcr.io/uri-travoski/superchat-server:1.3.1     # what release.yml publishes, if you want to test the compose file offline
 ```
 The image is multi-stage (node for the admin panel, rust for the server, debian-slim runtime with ca-certificates and tini,
-non-root user, HEALTHCHECK). Updating: pull or rebuild, then `docker compose up -d`.
+non-root user, HEALTHCHECK).
+
+## Update checks (apps and server)
+
+Every app checks GitHub for a newer release: the desktop apps and the Android app under Settings > About (button **Check for updates**, plus an
+automatic check when the app starts and then every 24 hours, which can be switched off there), and the server in the admin panel's Updates card.
+Only the release list is read (`https://api.github.com/repos/uri-travoski/superchat/releases/latest`), and the only thing sent is `User-Agent: SuperChat/<version>`
+(the server sends `SuperChat-Server/<version>`): no account, device or server information. Drafts and pre-releases are ignored.
+
+* **Which file an app downloads** (names are those `release.yml` publishes, each with a `.sha256` file next to it): Android `superchat-<v>-android.apk`;
+  Linux AppImage (when started from `$APPIMAGE`) `SuperChat-<v>-x86_64.AppImage`, otherwise `superchat_<v>-1_amd64.deb`; Windows `superchat-<v>-x64-setup.exe`
+  when installed with the installer, `superchat-<v>-x64-portable.exe` for the portable file. A Flatpak install is told to run `flatpak update`.
+  The download is checked against its `.sha256` file and discarded on a mismatch; a release without that file is refused.
+* **Pointing the check somewhere else** (tests, a mirror): environment `SUPERCHAT_UPDATE_URL` (or `ATOMIC_UPDATE_URL`) for the apps and the server, or the hidden
+  `update_url` entry in the app's `prefs.json`. `tests/update/fake-release-server.py` is a fake GitHub for this.
+* **Admin panel**: the *server* asks GitHub (`GET /api/v1/admin/updates`, admins only, cached for an hour, "Check again" allowed once a minute), not the browser, so the
+  admin pages keep their strict Content-Security-Policy and need no `connect-src` for api.github.com. If the server has no outbound internet the card says so and still
+  shows the commands.
+
+## Android signing
+
+An installed Android app can only be updated by an APK signed with the **same key**. Every release must therefore be signed with one permanent key, which the
+owner keeps (and backs up: a lost key means everybody has to uninstall and reinstall). `release.yml` **fails** the Android job, with an error that points here, when
+any signing secret is missing; it never falls back to a throw-away key. Add four repository secrets (Settings > Secrets and variables > Actions > New repository secret):
+
+| Secret | Value |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | the keystore file, base64 encoded on one line: `base64 -w0 release.jks` |
+| `ANDROID_KEYSTORE_PASSWORD` | the keystore password |
+| `ANDROID_KEY_ALIAS` | the key alias inside it |
+| `ANDROID_KEY_PASSWORD` | the key password (same as the keystore password for a PKCS12 keystore) |
+
+Create a key once with `keytool -genkeypair -v -keystore release.jks -alias superchat -keyalg RSA -keysize 4096 -validity 10000` (do not commit it). The workflow decodes the
+secrets into `ATOMIC_KEYSTORE_FILE`, `ATOMIC_KEYSTORE_PASSWORD`, `ATOMIC_KEY_ALIAS` and `ATOMIC_KEY_PASSWORD`, which `apps/android/app/build.gradle.kts` reads. A local
+`./gradlew assembleRelease` without them is signed with the debug key: fine for testing, but it cannot update an install signed with the release key (Android says the
+signatures do not match; the app explains that and asks the user to uninstall first).
 
 ## Names and upgrading from Atomic Chat 1.0
 

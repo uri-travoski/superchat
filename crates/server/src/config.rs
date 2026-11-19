@@ -10,6 +10,8 @@ pub struct Config {
     pub downloads_dir: PathBuf,
     /// Where the apps are downloaded when no file is in the downloads folder.
     pub release_url: String,
+    /// GitHub API address of the newest release, for the admin "Updates" card (SUPERCHAT_UPDATE_URL; tests point it at a fake).
+    pub update_url: String,
     pub server_name: String,
     pub max_upload_bytes: u64,
     pub ntfy_url: Option<String>,
@@ -55,6 +57,7 @@ impl Config {
             public_url: env("ATOMIC_PUBLIC_URL").map(|u| u.trim_end_matches('/').to_string()),
             downloads_dir: env("ATOMIC_DOWNLOADS_DIR").map(PathBuf::from).unwrap_or_else(|| env("ATOMIC_DATA_DIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("./data")).join("downloads")),
             release_url: env("ATOMIC_RELEASE_URL").unwrap_or_else(|| "https://github.com/uri-travoski/superchat/releases/latest".into()),
+            update_url: env("ATOMIC_UPDATE_URL").unwrap_or_else(|| proto::release::DEFAULT_UPDATE_URL.into()),
             server_name: env("ATOMIC_NAME").unwrap_or_else(|| "SuperChat".into()),
             max_upload_bytes: env("ATOMIC_MAX_UPLOAD_MB")
                 .and_then(|v| v.parse::<u64>().ok())
@@ -85,6 +88,7 @@ impl Config {
             public_url: None,
             downloads_dir: data_dir.join("downloads"),
             release_url: "https://example.invalid/releases".into(),
+            update_url: "http://127.0.0.1:1/unreachable".into(),
             server_name: "SuperChat (test)".into(),
             max_upload_bytes: 5 * 1024 * 1024,
             ntfy_url: None,

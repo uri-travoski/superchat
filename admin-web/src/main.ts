@@ -8,6 +8,7 @@ import { backupsPage, restoreSetupForm } from "./backups";
 import { bookmarksPage, groupsPage } from "./orgadmin";
 import { aiPage, botsPage, webhooksPage } from "./automation";
 import { qrSvg } from "./qr";
+import { updatesCard } from "./updates";
 
 const app = document.getElementById("app")!;
 const tabs = ["overview", "chats", "users", "conversations", "groups", "bookmarks", "bots", "webhooks", "ai", "storage", "sessions", "backups"] as const;
@@ -41,7 +42,8 @@ async function render() {
       h("span", { class: "muted" }, username()),
       h("button", { onclick: async () => { try { await api("POST", "/logout"); } catch { /* ignore */ } signOutLocal(); render(); } }, "Sign out")),
     nav,
-    body);
+    body,
+    h("footer", { class: "foot muted", id: "foot" }, m.name + " admin, SuperChat server v" + m.server_version + " | ", h("a", { href: "https://github.com/uri-travoski/superchat/releases", rel: "noopener noreferrer", target: "_blank" }, "Releases")));
   try {
     await pages[tab()](body, m);
   } catch (e) { fail(e); }
@@ -113,6 +115,7 @@ const pages: Record<Tab, (el: HTMLElement, m: ServerMeta) => Promise<void>> = {
       stat("Users", o.users), stat("Disabled", o.disabled_users), stat("Online now", o.online), stat("Conversations", o.conversations),
       stat("Messages", o.messages), stat("Files", o.attachments), stat("File storage used", fmtBytes(o.attachment_bytes)), stat("Active sessions", o.sessions),
       stat("Storage backend", o.storage), stat("Server version", o.server_version))));
+    el.append(updatesCard());
   },
 
   async users(el) {

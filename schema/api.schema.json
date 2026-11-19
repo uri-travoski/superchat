@@ -190,6 +190,55 @@
       ],
       "type": "object"
     },
+    "AdminUpdates": {
+      "description": "The admin panel's \"Updates\" card: this server's version against the newest GitHub release.",
+      "properties": {
+        "checked_ms": {
+          "description": "When the server last asked GitHub (ms since the epoch).",
+          "format": "int64",
+          "type": "integer"
+        },
+        "current": {
+          "description": "This server's version.",
+          "type": "string"
+        },
+        "error": {
+          "default": null,
+          "description": "Why the check failed (offline, rate limit...), shown instead of the release.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "latest": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ReleaseInfo"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The newest published release (drafts and pre-releases skipped), even when it is not newer."
+        },
+        "source": {
+          "description": "The address that was checked.",
+          "type": "string"
+        },
+        "update_available": {
+          "description": "`latest` is newer than `current`.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "checked_ms",
+        "current",
+        "source",
+        "update_available"
+      ],
+      "type": "object"
+    },
     "AdminUser": {
       "properties": {
         "avatar": {
@@ -607,6 +656,27 @@
       "required": [
         "code",
         "message"
+      ],
+      "type": "object"
+    },
+    "Asset": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "size": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "size",
+        "url"
       ],
       "type": "object"
     },
@@ -3566,6 +3636,47 @@
       ],
       "type": "object"
     },
+    "ReleaseInfo": {
+      "properties": {
+        "assets": {
+          "items": {
+            "$ref": "#/definitions/Asset"
+          },
+          "type": "array"
+        },
+        "html_url": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "notes": {
+          "description": "Release notes as plain text, trimmed.",
+          "type": "string"
+        },
+        "published": {
+          "type": "string"
+        },
+        "tag": {
+          "description": "The tag as published (`v1.3.1`).",
+          "type": "string"
+        },
+        "version": {
+          "description": "Version without the `v` (`1.3.1`).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "assets",
+        "html_url",
+        "name",
+        "notes",
+        "published",
+        "tag",
+        "version"
+      ],
+      "type": "object"
+    },
     "RestoreRequest": {
       "description": "Selective restore from a per-user or full backup (merge by default).",
       "properties": {
@@ -4863,6 +4974,9 @@
     "admin_update_user": {
       "$ref": "#/definitions/UpdateUserRequest"
     },
+    "admin_updates": {
+      "$ref": "#/definitions/AdminUpdates"
+    },
     "ai_defaults_update": {
       "$ref": "#/definitions/AiDefaultsUpdate"
     },
@@ -5022,6 +5136,9 @@
     "refresh_request": {
       "$ref": "#/definitions/RefreshRequest"
     },
+    "release_info": {
+      "$ref": "#/definitions/ReleaseInfo"
+    },
     "restore_request": {
       "$ref": "#/definitions/RestoreRequest"
     },
@@ -5110,6 +5227,7 @@
     "admin_delete_messages_response",
     "admin_set_role",
     "admin_update_user",
+    "admin_updates",
     "ai_defaults_update",
     "ai_overview",
     "ai_provider",
@@ -5162,6 +5280,7 @@
     "push_registration",
     "push_settings",
     "refresh_request",
+    "release_info",
     "restore_request",
     "restore_response",
     "schedule_request",

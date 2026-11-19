@@ -276,6 +276,7 @@ export interface SuperChatAPI {
   admin_delete_messages_response: AdminDeleteMessagesResponse;
   admin_set_role: SetRoleRequest;
   admin_update_user: UpdateUserRequest;
+  admin_updates: AdminUpdates;
   ai_defaults_update: AiDefaultsUpdate;
   ai_overview: AiOverview;
   ai_provider: AiProvider;
@@ -328,6 +329,7 @@ export interface SuperChatAPI {
   push_registration: PushRegistration;
   push_settings: PushSettings;
   refresh_request: RefreshRequest;
+  release_info: ReleaseInfo;
   restore_request: RestoreRequest;
   restore_response: RestoreResponse;
   schedule_request: ScheduleRequest;
@@ -512,6 +514,58 @@ export interface UpdateUserRequest {
    */
   privacy_controls_enabled?: boolean | null;
   role?: Role | null;
+}
+/**
+ * The admin panel's "Updates" card: this server's version against the newest GitHub release.
+ */
+export interface AdminUpdates {
+  /**
+   * When the server last asked GitHub (ms since the epoch).
+   */
+  checked_ms: number;
+  /**
+   * This server's version.
+   */
+  current: string;
+  /**
+   * Why the check failed (offline, rate limit...), shown instead of the release.
+   */
+  error?: string | null;
+  /**
+   * The newest published release (drafts and pre-releases skipped), even when it is not newer.
+   */
+  latest?: ReleaseInfo | null;
+  /**
+   * The address that was checked.
+   */
+  source: string;
+  /**
+   * `latest` is newer than `current`.
+   */
+  update_available: boolean;
+}
+export interface ReleaseInfo {
+  assets: Asset[];
+  html_url: string;
+  name: string;
+  /**
+   * Release notes as plain text, trimmed.
+   */
+  notes: string;
+  published: string;
+  /**
+   * The tag as published (`v1.3.1`).
+   */
+  tag: string;
+  /**
+   * Version without the `v` (`1.3.1`).
+   */
+  version: string;
+}
+export interface Asset {
+  name: string;
+  size: number;
+  url: string;
 }
 /**
  * Which provider serves which feature. An empty string clears the choice (= automatic).

@@ -25,6 +25,8 @@ pub struct AppState {
     pub backup_lock: tokio::sync::Mutex<()>,
     /// Set by `shutdown()`; background workers exit when they see it (tests restart a server on the same data).
     pub stopped: std::sync::atomic::AtomicBool,
+    /// The last answer of the GitHub release check (admin Updates card), cached for an hour.
+    pub updates: tokio::sync::Mutex<Option<proto::AdminUpdates>>,
 }
 
 pub type St = Arc<AppState>;

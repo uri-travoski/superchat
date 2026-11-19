@@ -11,7 +11,8 @@ Android (one Slint UI shared by all three), plus a command-line client. Your dat
 * No end-to-end encryption: TLS in transit, and admins can read messages (needed for the admin chat viewer and search). Backups are
   encrypted with a passphrase.
 * Bots and automation: Telegram-style bot API, webhooks, interactive forms, scheduled messages, optional AI search and recaps.
-* New in 1.3.0: upload progress and cancel, voice waveform and speed, video recording, PDF previews, profile photos, delete channel, notification sounds, tray icon, drag-to-reorder sidebar, spell check, an encrypted local cache and verified ntfy push; see [docs/RELEASE-NOTES-v1.3.0.md](docs/RELEASE-NOTES-v1.3.0.md).
+* New in 1.3.1: every app checks GitHub for a newer release (Settings > About > Check for updates, plus an automatic check you can switch off), shows its version clearly, and downloads and installs updates with a checksum check; the admin panel has an Updates card with the upgrade commands; the server image is pulled from ghcr.io; release APKs are always signed with one permanent key; see [docs/RELEASE-NOTES-v1.3.1.md](docs/RELEASE-NOTES-v1.3.1.md).
+* In 1.3.0: upload progress and cancel, voice waveform and speed, video recording, PDF previews, profile photos, delete channel, notification sounds, tray icon, drag-to-reorder sidebar, spell check, an encrypted local cache and verified ntfy push; see [docs/RELEASE-NOTES-v1.3.0.md](docs/RELEASE-NOTES-v1.3.0.md).
 * In 1.2.0: a Slack-style rebuild of the desktop and phone UI (rail or bottom tabs, sidebar sections, thread panel, Activity, Later with labels), add people to channels from the app, Save for later, a discoverable App Lock and a way back from every screen; see [docs/RELEASE-NOTES-v1.2.0.md](docs/RELEASE-NOTES-v1.2.0.md) and [docs/FEATURE-AUDIT.md](docs/FEATURE-AUDIT.md).
 * In 1.1.3: a mobile-native UX pass (one Back stack, bottom sheets, decluttered list and chat, redesigned Settings, working Android QR scan, closable admin dialogs); see [docs/RELEASE-NOTES-v1.1.3.md](docs/RELEASE-NOTES-v1.1.3.md).
 * New in 1.1.2: self-service Sign out / Sign out of all devices exist only for users whose admin set Privacy options to Allow (see [docs/RELEASE-NOTES-v1.1.2.md](docs/RELEASE-NOTES-v1.1.2.md)).
@@ -26,14 +27,21 @@ Android (one Slint UI shared by all three), plus a command-line client. Your dat
 
 ## Quick start (server)
 
+The server image is `ghcr.io/uri-travoski/superchat-server` (a **public** package, published on every release): nothing is built locally. Download the compose file and
+`.env`, set the public address, pull and start:
+
 ```sh
-git clone https://github.com/uri-travoski/superchat && cd superchat/deploy
-cp .env.example .env            # set ATOMIC_PUBLIC_URL
-docker-compose up -d            # or: docker compose up -d
+mkdir superchat && cd superchat
+curl -fLO https://raw.githubusercontent.com/uri-travoski/superchat/main/deploy/docker-compose.yml
+curl -fL -o .env https://raw.githubusercontent.com/uri-travoski/superchat/main/deploy/.env.example
+nano .env                                       # set ATOMIC_PUBLIC_URL
+docker compose pull && docker compose up -d
 ```
 
-Open `http://<host>:8080/admin` and complete the setup wizard (owner account, attachment storage). Images are published to
-`ghcr.io/uri-travoski/superchat-server` on each release; `docker-compose.yml` builds from source if you prefer.
+Open `http://<host>:8080/admin` and complete the setup wizard (owner account, attachment storage).
+**Update** later with the same two commands (`docker compose pull && docker compose up -d`; the admin panel's Overview says when a new release exists).
+**Pin a version** with `SUPERCHAT_IMAGE=ghcr.io/uri-travoski/superchat-server:1.3.1` in `.env` (`ATOMIC_IMAGE` also works). Developers can build from source instead:
+see "Building the image" in [docs/DEPLOY.md](docs/DEPLOY.md).
 
 | Situation | What to do |
 |---|---|
@@ -47,7 +55,8 @@ HTTP API in [docs/API.md](docs/API.md).
 ## Download the apps
 
 From the [Releases](https://github.com/uri-travoski/superchat/releases) page: Linux AppImage and `.deb`, Windows portable `.exe` and
-installer, Android APK. Sign in with the server address and the username/password (or one-time link) your admin gave you.
+installer, Android APK (each with a `.sha256` file). Sign in with the server address and the username/password (or one-time link) your admin gave you.
+Installed apps check for new releases themselves (Settings > About, version shown there and on the sign-in screen) and can download and install them.
 
 ## Features
 
@@ -100,12 +109,13 @@ Packages (output in `dist/`):
 cargo install cargo-deb && cargo deb -p atomic-desktop --output dist/     # .deb
 packaging/linux/build-appimage.sh                                         # AppImage
 (cd apps/android && ./gradlew assembleRelease)                            # APK (arm64-v8a + x86_64)
-docker build -f deploy/Dockerfile -t superchat:1.3.0 .                    # server image
+docker build -f deploy/Dockerfile -t superchat:1.3.1 .                    # server image (developers; installs pull the published one)
 ```
 
 Windows (`.exe` and NSIS installer) and the published images are built by `.github/workflows/release.yml` when a `v*` tag is pushed.
-Android release signing: set `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` as repository secrets;
-without them CI signs with a throw-away key (installs fine, but cannot update an install signed with another key).
+**Android signing:** installed apps can only update to an APK signed with the same key, so releases use one permanent key. Set the four repository secrets
+`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD` (how: [docs/DEPLOY.md](docs/DEPLOY.md#android-signing));
+`release.yml` fails the Android job with a clear error when one is missing instead of using a throw-away key. A local `assembleRelease` is debug-signed, which is fine for testing.
 
 ## Layout
 

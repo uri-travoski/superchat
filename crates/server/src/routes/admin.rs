@@ -601,6 +601,74 @@ pub async fn overview(State(st): State<St>, Admin(_a): Admin) -> J<serde_json::V
     Ok(Json(v))
 }
 
+// ---------------------------------------------------------------------- updates (GitHub releases)
+
+#[derive(serde::Deserialize)]
+pub struct UpdatesParams {
+    #[serde(default)]
+    refresh: bool,
+}
+
+/// How long a good answer is reused; a failed check is retried after five minutes; "Check again" is honoured after a minute.
+const UPDATES_TTL_MS: i64 = 3_600_000;
+const UPDATES_ERROR_TTL_MS: i64 = 300_000;
+const UPDATES_REFRESH_GAP_MS: i64 = 60_000;
+
+/// `GET /admin/updates`: this server's version against the newest GitHub release. The server asks GitHub (the browser never
+/// does, so the admin pages need no relaxed Content-Security-Policy) and caches the answer for an hour. Only
+/// `User-Agent: SuperChat-Server/<version>` is sent.
+pub async fn get_updates(State(st): State<St>, Admin(_a): Admin, axum::extract::Query(p): axum::extract::Query<UpdatesParams>) -> J<AdminUpdates> {
+    let mut cache = st.updates.lock().await;
+    let now = now_ms();
+    if let Some(c) = cache.as_ref() {
+        let age = now - c.checked_ms;
+        let ttl = if p.refresh { UPDATES_REFRESH_GAP_MS } else if c.error.is_some() { UPDATES_ERROR_TTL_MS } else { UPDATES_TTL_MS };
+        if age < ttl && c.current == VERSION {
+            return Ok(Json(c.clone()));
+        }
+    }
+    let fresh = check_updates(&st).await;
+    *cache = Some(fresh.clone());
+    Ok(Json(fresh))
+}
+
+async fn check_updates(st: &St) -> AdminUpdates {
+    let url = st.cfg.update_url.clone();
+    let mut out = AdminUpdates { current: VERSION.into(), latest: None, update_available: false, checked_ms: now_ms(), error: None, source: url.clone() };
+    let res = async {
+        let resp = st
+            .http
+            .get(&url)
+            .header("User-Agent", format!("SuperChat-Server/{VERSION}"))
+            .header("Accept", "application/vnd.github+json")
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await
+            .map_err(|_| "The server could not reach GitHub (is outbound internet blocked?).".to_string())?;
+        let code = resp.status().as_u16();
+        if code == 403 || code == 429 {
+            return Err("GitHub is limiting update checks from this server's address. Try again later.".to_string());
+        }
+        if code == 404 {
+            return Err("No release has been published yet.".to_string());
+        }
+        if !resp.status().is_success() {
+            return Err(format!("GitHub answered HTTP {code}."));
+        }
+        let text = resp.text().await.map_err(|_| "The answer from GitHub could not be read.".to_string())?;
+        proto::release::parse_releases(&text).map_err(|_| "The release information from GitHub could not be read.".to_string())
+    }
+    .await;
+    match res {
+        Ok(rel) => {
+            out.update_available = rel.as_ref().map(|r| proto::release::is_newer(&r.version, VERSION)).unwrap_or(false);
+            out.latest = rel;
+        }
+        Err(e) => out.error = Some(e),
+    }
+    out
+}
+
 // ---------------------------------------------------------------------- public URL (login links)
 
 pub async fn get_public_url(State(st): State<St>, Admin(_a): Admin, parts: Parts) -> J<PublicUrlSettings> {

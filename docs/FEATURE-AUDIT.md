@@ -1,4 +1,4 @@
-# Feature audit against the original requirements (1.3.0)
+# Feature audit against the original requirements (1.3.1)
 
 One row per feature in `Client Apps.md` (sections X, M, C, NV, SR, F, WF, N, P, A, AD, E, SV). Status words:
 **works** (was there and checked again), **fixed now** (missing or hidden in 1.1.3, changed in 1.2.0), **partial** (works with the gap in Notes), **deferred** (not built, scheduled later).
@@ -203,6 +203,18 @@ One row per feature in `Client Apps.md` (sections X, M, C, NV, SR, F, WF, N, P, 
 ## New in 1.2 (not in the original PRD list)
 
 Save for later and labels (per user, private, synced; Later view with label chips; isolated by user, tested in SV24 and core), server-backed Activity feed (All, Mentions, Threads, Reactions), App Lock discoverability (Settings > Privacy & Security > App Lock lists locked conversations; row menus offer Lock conversation or Set up App Lock; emulator-driven: set PIN, lock a channel, it disappears, unlock, it reappears), one Back stack with a visible way back on every screen (docs/UX-NAVIGATION.md).
+
+## New in 1.3.1 (not in the original PRD list)
+
+| ID | Feature | Status | Where | Tests | Notes |
+|---|---|---|---|---|---|
+| U-01 | Update check (GitHub latest release, 24 h, skip, remind, override URL) | works | Settings > About, rail, Home banner | unit, fake-server integration (`crates/client-core/tests/update.rs`) | real GitHub only reachable from CI or a release |
+| U-02 | Version shown in every app | works | About, login footer, admin header and footer | nav unit, screenshots, PW | |
+| U-03 | Android download, SHA-256 check, system installer | works | About | emulator run (fake release 9.9.9, installer prompt accepted, new version ran) | signature-mismatch text not run (no second key was created) |
+| U-04 | Desktop install: AppImage replace, deb installer, Windows setup | partial | About | unit (asset choice, checksum, AppImage replace) | Windows and deb install not run here |
+| U-05 | Admin panel version and Updates card | works | admin panel | PW `admin-updates.mjs` (mocked release) | |
+| U-06 | Server image from ghcr | works | `deploy/docker-compose.yml` | compose config; ghcr manifest anonymous 200 | |
+| U-07 | Release workflow fails without signing secrets | works | `.github/workflows/release.yml` | read only (no CI run) | |
 
 ## Counts
 

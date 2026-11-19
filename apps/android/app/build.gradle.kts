@@ -32,8 +32,9 @@ android {
         applicationId = "app.superchat"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.3.1"
+        // -PatomicVersionCode / -PatomicVersionName only exist for the update tests (a fake newer build of the same app).
+        versionCode = (project.findProperty("atomicVersionCode") as String?)?.toInt() ?: 8
+        versionName = (project.findProperty("atomicVersionName") as String?) ?: "1.3.1"
         resourceConfigurations += listOf("en")
     }
 

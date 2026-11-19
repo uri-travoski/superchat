@@ -117,7 +117,7 @@ VARIANTS=(
   "desk-1280-light-regular-about-upd-new|1280x800|light|100|settings-page:about"
   "desk-1280-light-regular-about-upd-limit|1280x800|light|100|settings-page:about"
   "desk-1280-light-regular-rail-upd-new|1280x800|light|100|chat:general"
-  "desk-1280-light-regular-about-upd-slow|1280x800|light|100|settings-page:about||mousemove CLICKDL"
+  "desk-1280-light-regular-about-upd-slow|1280x800|light|100|settings-page:about||mousemove 674 563 click 1; mousemove 1000 700"
   "desk-1280-light-regular-spellcheck|1280x800|light|100|spell:general"
   "desk-1280-light-regular-spellmenu|1280x800|light|100|spell:general||mousemove 735 732 click 3"
   "desk-1280-light-regular-media-cards|1280x800|light|100|chat:design"

@@ -37,6 +37,7 @@ chat > details > Files > back > details > back > chat, picker over details, shee
 | Search | Home search pill | back arrow, X | Home |
 | Later (Saved items) | You > Saved items, Home > Later | back arrow or Home tab | You or Home |
 | Settings and sub-pages | You > Preferences | back arrow | You (sub-page first) |
+| About (version, Check for updates) | Settings > About, the Home "Update available" banner, You tab > Preferences > About | back arrow | Settings, then where you came from |
 | App Lock page | Settings > Privacy & Security > App Lock, or "Set up App Lock" anywhere | back arrow | Settings |
 | Unlock screen | padlock when locked | Cancel | Home |
 | Forms, schedule, bookmark dialogs | their buttons | Cancel, X | the chat |
@@ -53,6 +54,7 @@ chat > details > Files > back > details > back > chat, picker over details, shee
 | Add people / Remove | Members tab | Cancel, X | closes the picker |
 | Search overlay and results | top-bar search, Ctrl+K, Ctrl+F | arrow back, X | closes search |
 | Preferences, App Lock | avatar menu, More, server menu | arrow back | closes it |
+| About (version, Check for updates) | Preferences > About, the rail "Update" button, Help > About SuperChat | arrow back | back to Preferences, then closes |
 | Quick switcher | Ctrl+K | X | closes it |
 | Help (`?`) | top bar | X | closes it |
 | Menus (right-click, hover "...", avatar, server name) | pointer | click elsewhere | closes it |

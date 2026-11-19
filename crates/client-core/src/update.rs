@@ -9,7 +9,6 @@
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::sync::{Arc, Mutex};
@@ -19,6 +18,21 @@ pub use proto::release::{is_newer, parse_version, trim_notes, Asset, ReleaseInfo
 /// Automatic checks run on startup (at most once an hour) and then every 24 hours.
 pub const AUTO_CHECK_INTERVAL_MS: i64 = 24 * 60 * 60 * 1000;
 const STARTUP_MIN_GAP_MS: i64 = 60 * 60 * 1000;
+/// After a failed automatic check (offline, rate limit) the next automatic try waits this long. Without it the app polled
+/// the server on every timer tick, which would hit GitHub's anonymous rate limit within a minute.
+pub const AUTO_RETRY_MS: i64 = 60 * 60 * 1000;
+
+/// Whether the automatic check is due: `first` is the first call since the app started.
+pub fn auto_due(first: bool, last_check_ms: i64, last_fail_ms: i64, now: i64) -> bool {
+    let last_try = last_check_ms.max(last_fail_ms);
+    if first {
+        return now - last_try >= STARTUP_MIN_GAP_MS;
+    }
+    if last_fail_ms > last_check_ms {
+        return now - last_fail_ms >= AUTO_RETRY_MS;
+    }
+    now - last_check_ms >= AUTO_CHECK_INTERVAL_MS
+}
 /// "Remind me later" hides the banner for this long.
 pub const REMIND_LATER_MS: i64 = 24 * 60 * 60 * 1000;
 
@@ -407,6 +421,8 @@ struct Inner {
     st: Status,
     gen: u64,
     started: bool,
+    /// When the last check failed (not saved; a restart tries again after the startup gap rule).
+    last_fail_ms: i64,
 }
 
 /// One per app. Cheap to clone.
@@ -447,7 +463,7 @@ impl Updater {
         }
         let allow_http = !url.starts_with("https://") || url != DEFAULT_UPDATE_URL;
         Updater {
-            inner: Arc::new(Mutex::new(Inner { st, gen: 0, started: false })),
+            inner: Arc::new(Mutex::new(Inner { st, gen: 0, started: false, last_fail_ms: 0 })),
             cancel: Arc::new(AtomicBool::new(false)),
             handle,
             dir: dir.to_path_buf(),
@@ -517,6 +533,7 @@ impl Updater {
                 }
             }
             Err(e) => {
+                g.last_fail_ms = now_ms();
                 g.st.phase = Phase::Failed;
                 g.st.stage = Stage::Check;
                 g.st.error = e.to_string();
@@ -535,11 +552,10 @@ impl Updater {
             let mut g = self.inner.lock().unwrap();
             if matches!(g.st.phase, Phase::Checking | Phase::Downloading) {
                 false
-            } else if !g.started {
-                g.started = true;
-                now - g.st.last_check_ms >= STARTUP_MIN_GAP_MS
             } else {
-                now - g.st.last_check_ms >= AUTO_CHECK_INTERVAL_MS
+                let first = !g.started;
+                g.started = true;
+                auto_due(first, g.st.last_check_ms, g.last_fail_ms, now)
             }
         };
         if run {
@@ -743,6 +759,23 @@ mod tests {
                 "superchat-server-notes.txt",
             ],
         )
+    }
+
+    #[test]
+    fn auto_check_backs_off_after_a_failure() {
+        let h = 60 * 60 * 1000;
+        // never checked: the first call runs
+        assert!(auto_due(true, 0, 0, 1_000_000_000));
+        // checked 10 minutes ago: the startup call waits
+        assert!(!auto_due(true, 1_000_000_000, 0, 1_000_000_000 + 10 * 60 * 1000));
+        // a failure just now: no new try on the next ticks, one after an hour
+        let t = 5_000_000_000;
+        assert!(!auto_due(false, 1, t, t + 300));
+        assert!(!auto_due(false, 1, t, t + h - 1));
+        assert!(auto_due(false, 1, t, t + h));
+        // a success: next one in 24 hours
+        assert!(!auto_due(false, t, 0, t + 23 * h));
+        assert!(auto_due(false, t, 0, t + 24 * h));
     }
 
     #[test]

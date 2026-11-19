@@ -35,8 +35,8 @@ export component UpdateCard inherits Rectangle {
             spacing: 10px;
             Rectangle {
                 width: 36px; height: 36px; border-radius: 18px;
-                background: root.phase == "failed" ? Theme.danger : (root.phase == "available" || root.phase == "downloading" || root.phase == "ready" ? Theme.accent : #16a34a);
-                Icon { name: root.phase == "failed" ? "x-circle" : (root.phase == "available" || root.phase == "downloading" || root.phase == "ready" ? "download" : "check"); size: 20px; tint: white; weight: 2px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+                background: root.phase == "failed" ? Theme.danger : (root.phase == "available" || root.phase == "downloading" || root.phase == "ready" ? Theme.accent : (root.phase == "uptodate" ? #16a34a : Theme.muted));
+                Icon { name: root.phase == "failed" ? "x-circle" : (root.phase == "available" || root.phase == "downloading" || root.phase == "ready" ? "download" : (root.phase == "uptodate" ? "check" : "clock")); size: 20px; tint: white; weight: 2px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
             }
             VerticalLayout {
                 horizontal-stretch: 1;

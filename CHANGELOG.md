@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.1
+
+Update checks everywhere, a server image that is pulled instead of built, and a release workflow that refuses to publish an unsigned APK. No server API change that older apps notice (one new admin-only endpoint, `GET /api/v1/admin/updates`).
+
+* **Update check in every app**: the desktop apps, the Android app and the admin panel ask GitHub (`https://api.github.com/repos/uri-travoski/superchat/releases/latest`) for a newer release. The URL is one constant with an override (`SUPERCHAT_UPDATE_URL` environment variable, hidden `update_url` preference). Checks run at start-up (if the last one is over an hour old) and then every 24 hours, can be switched off, and never send more than the app version. After a failed check the next automatic try waits an hour.
+* **Settings > About** (all apps): version (and build or version code), the server's name and version, release notes, Check for updates, Remind me later, Skip this version, and a clear result: up to date, update available, downloading with progress, ready, or a plain-language error (offline, GitHub rate limit, bad answer, checksum mismatch, no checksum published). A banner on Home (phone) and an Update button in the rail (desktop) point to it; the login screen shows the version.
+* **Install flows**: Android downloads the APK, checks its SHA-256 against the release's `.sha256` file and hands it to the system installer (PackageInstaller session, with the "install unknown apps" settings page when Android asks for it, and a message for a signature mismatch). Desktop: AppImage is replaced in place, a `.deb` is installed with the system's graphical installer when there is one, Windows runs the setup. A download without a published checksum is never installed.
+* **Admin panel**: the version in the header and footer, and an Updates card with the upgrade commands and download links. The server fetches the release (cached for an hour) so the panel needs no new browser permissions.
+* **Server image**: `deploy/docker-compose.yml` now pulls `ghcr.io/uri-travoski/superchat-server` (public); pin a version with `SUPERCHAT_IMAGE`. The `build:` block is kept as a comment. See `docs/DEPLOY.md`.
+* **Release workflow**: the Android job fails with a clear message when any of the four signing secrets is missing instead of signing with a throw-away key. The secrets are documented in `README.md` and `docs/DEPLOY.md`.
+* Version 1.3.1 everywhere (workspace, admin panel, Android versionName 1.3.1 / versionCode 8, installer, release workflow, Docker image `superchat:1.3.1`).
+
 ## 1.3.0
 
 Owner fixes to the 1.2 phone and desktop UI plus the features that were still "partial" in the 1.2.0 audit. Additive server API (`PUT /files/{id}/meta`, `DELETE` of channels removes everything they own); 1.0 to 1.2 apps keep working with a 1.3 server and the other way round.

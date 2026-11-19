@@ -1,4 +1,4 @@
-# Builds every artifact when a tag like v1.3.1 is pushed and attaches them to the GitHub Release.
+# Builds every artifact when a tag like v1.3.2 is pushed and attaches them to the GitHub Release.
 # Android signing is mandatory: set the repository secrets ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS
 # and ANDROID_KEY_PASSWORD (docs/DEPLOY.md, "Android signing"). The Android job fails with an error when one is missing, so a
 # release can never ship an APK signed with a throw-away key that installed apps would refuse to update to.
@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing release tag to (re)attach artifacts to, e.g. v1.3.1 (built from the selected branch)"
+        description: "Existing release tag to (re)attach artifacts to, e.g. v1.3.2 (built from the selected branch)"
         required: true
 permissions:
   contents: write
@@ -18,6 +18,7 @@ env:
   VERSION: ${{ inputs.tag || github.ref_name }}
 jobs:
   linux:
+    needs: release-files
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -39,6 +40,7 @@ jobs:
             dist/*.AppImage
             dist/*.sha256
   windows:
+    needs: release-files
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -68,6 +70,7 @@ jobs:
           tag_name: ${{ env.VERSION }}
           files: dist/*
   android:
+    needs: release-files
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -118,6 +121,33 @@ jobs:
         with:
           tag_name: ${{ env.VERSION }}
           files: dist/*
+  release-files:
+    # Creates the release first (name "SuperChat <version>", body from docs/RELEASE-NOTES-<tag>.md when that file exists) and attaches
+    # the two server install files; the app jobs below wait for it and only add their files.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install files and release notes
+        run: |
+          V="${VERSION#v}"
+          # The compose file pins the image it was released with: refuse a release whose compose default is another version.
+          if ! grep -q "ghcr.io/uri-travoski/superchat-server:$V}" deploy/docker-compose.yml; then
+            echo "::error title=docker-compose.yml pins another version::deploy/docker-compose.yml must default to ghcr.io/uri-travoski/superchat-server:$V (the tag being released)."
+            exit 1
+          fi
+          mkdir -p dist-release
+          cp deploy/docker-compose.yml dist-release/docker-compose.yml
+          cp deploy/.env.example dist-release/superchat.env.example
+          echo "REL_NAME=SuperChat $V" >> "$GITHUB_ENV"
+          if [ -f "docs/RELEASE-NOTES-${VERSION}.md" ]; then echo "NOTES=docs/RELEASE-NOTES-${VERSION}.md" >> "$GITHUB_ENV"; fi
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.VERSION }}
+          name: ${{ env.REL_NAME }}
+          body_path: ${{ env.NOTES }}
+          files: |
+            dist-release/docker-compose.yml
+            dist-release/superchat.env.example
   server-image:
     runs-on: ubuntu-latest
     steps:
@@ -133,7 +163,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: deploy/Dockerfile
+          file: docker/Dockerfile
           push: true
           tags: |
             ghcr.io/uri-travoski/superchat-server:${{ steps.v.outputs.ver }}

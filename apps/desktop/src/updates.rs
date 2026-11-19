@@ -47,7 +47,7 @@ fn ago(ms: i64, now: i64) -> String {
     }
 }
 
-/// The text of the "Version" line: `Version 1.3.1 (build abc1234)` on the desktop, `Version 1.3.1 (code 8)` on Android.
+/// The text of the "Version" line: `Version 1.3.2 (build abc1234)` on the desktop, `Version 1.3.1 (code 9)` on Android.
 pub fn version_long(code: Option<u32>) -> String {
     let v = client_core::CLIENT_VERSION;
     if let Some(c) = code {

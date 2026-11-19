@@ -1,102 +1,68 @@
-# SuperChat. From this folder:
-#   cp .env.example .env && edit .env
-#   docker compose pull && docker compose up -d   # server only, on http://localhost:${ATOMIC_PORT}
-#   (update later: the same two commands. The image is the public ghcr.io/uri-travoski/superchat-server, nothing is built locally.)
-#   docker compose --profile caddy up -d          # + Caddy with HTTPS (domain or bare IP)
-#   docker compose --profile tunnel up -d         # + Cloudflare Tunnel (no open ports)
-#   docker compose --profile minio up -d          # + local MinIO for trying S3 storage (dev only)
-#   docker compose --profile ntfy up -d           # + ntfy push server
-# Everything that must survive is in the `superchat-data` volume (database, config, local files, backups).
+# SuperChat server: standalone docker compose file. One service, nothing is built here, nothing else is started.
+#
+#   1. curl -fLO https://github.com/uri-travoski/superchat/releases/latest/download/docker-compose.yml
+#      curl -fL -o .env https://github.com/uri-travoski/superchat/releases/latest/download/superchat.env.example
+#   2. edit .env (at least SUPERCHAT_PUBLIC_URL)
+#   3. docker compose up -d            -> http://<this machine>:8080/admin
+#
+# Update:  set SUPERCHAT_IMAGE in .env to the new version (or download the new docker-compose.yml from the release), then
+#   docker compose pull && docker compose up -d
+#
+# No reverse proxy, Cloudflare Tunnel, ntfy or object store is included: run those separately (see docs/DEPLOY.md).
+# Attachments go to S3, Cloudflare R2, Backblaze B2 or Google Drive, chosen in the admin panel (Storage page).
+# Works with `docker compose` (v2) and `docker-compose` (v1).
 
 name: superchat
 
 services:
   superchat:
-    # THE image: published on ghcr.io for every release (public, no login needed). Pin a version with
-    # SUPERCHAT_IMAGE=ghcr.io/uri-travoski/superchat-server:1.3.1 in .env (ATOMIC_IMAGE is accepted too).
-    image: ${SUPERCHAT_IMAGE:-${ATOMIC_IMAGE:-ghcr.io/uri-travoski/superchat-server:latest}}
-    # Developers only: to run your own build of this checkout instead of the published image, uncomment, then
-    # `docker compose build && docker compose up -d`.
-    # build:
-    #   context: ..
-    #   dockerfile: deploy/Dockerfile
+    # The published, public image. The default is pinned to the release this file belongs to, so an update is a conscious
+    # step. To follow the newest release instead, put this in .env:
+    #   SUPERCHAT_IMAGE=ghcr.io/uri-travoski/superchat-server:latest
+    image: ${SUPERCHAT_IMAGE:-ghcr.io/uri-travoski/superchat-server:1.3.2}
     restart: unless-stopped
     environment:
-      ATOMIC_PUBLIC_URL: ${ATOMIC_PUBLIC_URL:-}
-      ATOMIC_NAME: ${ATOMIC_NAME:-SuperChat}
-      ATOMIC_BOOTSTRAP_ADMIN: ${ATOMIC_BOOTSTRAP_ADMIN:-}
-      ATOMIC_MAX_UPLOAD_MB: ${ATOMIC_MAX_UPLOAD_MB:-100}
-      ATOMIC_NTFY_URL: ${ATOMIC_NTFY_URL:-}
+      # All optional. The server reads the SUPERCHAT_* names (the old ATOMIC_* names also work there).
+      SUPERCHAT_PUBLIC_URL: ${SUPERCHAT_PUBLIC_URL:-}
+      SUPERCHAT_NAME: ${SUPERCHAT_NAME:-SuperChat}
+      SUPERCHAT_BOOTSTRAP_ADMIN: ${SUPERCHAT_BOOTSTRAP_ADMIN:-}
+      SUPERCHAT_MAX_UPLOAD_MB: ${SUPERCHAT_MAX_UPLOAD_MB:-100}
+      # Your own ntfy server (a separate container). Empty = no ntfy push.
+      SUPERCHAT_NTFY_URL: ${SUPERCHAT_NTFY_URL:-}
+      # Empty = a random passphrase is generated into /data/backup.key on first start.
+      SUPERCHAT_BACKUP_PASSPHRASE: ${SUPERCHAT_BACKUP_PASSPHRASE:-}
+      # trace, debug, info, warn, error, or a filter such as info,tower_http=warn
+      RUST_LOG: ${SUPERCHAT_LOG_LEVEL:-info,tower_http=warn}
     volumes:
       - superchat-data:/data
     ports:
-      - "${ATOMIC_BIND_ADDR:-0.0.0.0}:${ATOMIC_PORT:-8080}:8080"
+      # Behind a tunnel or proxy on this machine use SUPERCHAT_BIND_ADDR=127.0.0.1; on a shared Docker network (see below)
+      # you can remove this section altogether.
+      - "${SUPERCHAT_BIND_ADDR:-0.0.0.0}:${SUPERCHAT_PORT:-8080}:8080"
     extra_hosts:
+      # Lets the server reach an ntfy (or anything else) running on the host: http://host.docker.internal:<port>
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/superchat-server", "healthcheck"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    # Optional: join a Docker network that your own cloudflared / ntfy / reverse-proxy containers also use. They then reach
+    # this server as http://superchat:8080 with no published port. Create it once with `docker network create proxy`, or
+    # use the name of the network your other compose project already has, then uncomment these lines and the `networks:`
+    # block at the bottom.
+    # networks:
+    #   - default
+    #   - proxy
 
-  caddy:
-    profiles: ["caddy"]
-    image: caddy:2-alpine
-    restart: unless-stopped
-    depends_on: [superchat]
-    environment:
-      ATOMIC_HOST: ${ATOMIC_HOST:?set ATOMIC_HOST in .env}
-      CADDY_TLS: ${CADDY_TLS:-}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    ports:
-      - "80:80"
-      - "443:443"
-
-  cloudflared:
-    profiles: ["tunnel"]
-    image: cloudflare/cloudflared:latest
-    restart: unless-stopped
-    depends_on: [superchat]
-    command: tunnel --no-autoupdate run
-    environment:
-      # Empty unless you use the tunnel profile (then cloudflared reports a missing token clearly).
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
-
-  ntfy:
-    profiles: ["ntfy"]
-    image: binwiederhier/ntfy:latest
-    restart: unless-stopped
-    command: serve
-    environment:
-      # Only needed for iOS and for links in the web app; Android wake-ups work without it.
-      NTFY_BASE_URL: ${NTFY_BASE_URL:-}
-    volumes:
-      - ntfy-data:/var/lib/ntfy
-    ports:
-      # Bound to the host's loopback by default: put it behind Caddy/HTTPS (or set NTFY_BIND_ADDR=0.0.0.0 on a trusted
-      # network) before phones outside the server can reach it. Then set ATOMIC_NTFY_URL to the address phones use.
-      - "${NTFY_BIND_ADDR:-127.0.0.1}:${NTFY_PORT:-2586}:80"
-
-  minio:
-    profiles: ["minio"]
-    # MinIO stopped publishing images to Docker Hub's minio/minio; override MINIO_IMAGE if you have your own.
-    image: ${MINIO_IMAGE:-bitnamilegacy/minio:latest}
-    user: "0"
-    restart: unless-stopped
-    entrypoint: ["/bin/sh", "-c", "mkdir -p /data/superchat && exec /opt/bitnami/minio/bin/minio server /data --console-address :9001"]
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-superchatdev}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-me-dev-only}
-    volumes:
-      - minio-data:/data
-    ports:
-      - "127.0.0.1:9000:9000"
-      - "127.0.0.1:9001:9001"
-    # In the admin panel use endpoint http://minio:9000, bucket "superchat", path-style on, allow http on.
+# networks:
+#   proxy:
+#     external: true
+#     name: ${SUPERCHAT_NETWORK:-proxy}
 
 volumes:
   superchat-data:
-    # Upgrading from Atomic Chat 1.0? Keep your data: SUPERCHAT_DATA_VOLUME=atomic-chat_atomic-data in .env
+    # All server data lives here: database, settings, backups, local files. A 1.0-era install (project "atomic-chat")
+    # created the volume `atomic-chat_atomic-data`: to keep that data set SUPERCHAT_DATA_VOLUME=atomic-chat_atomic-data in .env.
     name: ${SUPERCHAT_DATA_VOLUME:-superchat-data}
-  caddy-data:
-  caddy-config:
-  ntfy-data:
-  minio-data:

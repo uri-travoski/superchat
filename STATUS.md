@@ -1,6 +1,12 @@
-# Status: v1.3.1 (update checks, ghcr image, signed-release guard; calls are Phase 4, not built)
+# Status: v1.3.2 (standalone server compose file; calls are Phase 4, not built)
 
-## v1.3.1 summary
+## v1.3.2 summary
+
+Done: `deploy/docker-compose.yml` is one service from the published image (pinned to the release, `SUPERCHAT_*` variables, healthcheck, named data volume, optional shared network example), with `deploy/.env.example`; both are attached to every release as `docker-compose.yml` and `superchat.env.example` and the release takes its text from `docs/RELEASE-NOTES-<tag>.md`. The Dockerfile moved to `docker/`, the Caddyfile and the Caddy, tunnel, ntfy and MinIO profiles are gone. Details: `docs/RELEASE-NOTES-v1.3.2.md`, `CHANGELOG.md`, `docs/DECISIONS.md` (1.3.2 section).
+
+Tests (final run for 1.3.2): `cargo test --workspace --no-fail-fast` 224 passed, 0 failed (2 ignored); SV-24 (`sv24`, `sv24_bots`, with the test harness's own MinIO) 2 passed; Playwright admin-automation, admin-dialogs, admin-mobile, admin-roles, admin-updates, admin-viewer all OK; `cargo clippy --workspace --all-targets` 0 errors. The standalone compose file ran in a throw-away project (`docker-compose config` from `.env.example` alone and with no `.env`; healthy, `/api/v1/meta` 1.3.2, `/admin` 200; `down -v`). Note: on this dev box `npm ci` inside `docker build` times out on the container network unless limited to two sockets, so the 1.3.2 test image was built from a copy of `docker/Dockerfile` that differs only by `npm ci --maxsockets=2`; the release workflow builds the real file on GitHub's runners.
+
+## v1.3.1 summary (previous release)
 
 Done: update check in the desktop, Android and admin apps (client-core `update` module, About page, rail and Home banners, Android PackageInstaller flow, admin Updates card through a server proxy), SHA-256 verification (a download without a checksum is refused), a 24 h schedule with a one-hour back-off after a failed check, the compose file pulls the public ghcr image, the release workflow fails when the Android signing secrets are missing, version 1.3.1 everywhere. Details: `docs/RELEASE-NOTES-v1.3.1.md`, `CHANGELOG.md`, `docs/DECISIONS.md` (1.3.1 section). Feature audit: `docs/FEATURE-AUDIT.md` (130 original rows unchanged, plus U-01 to U-07).
 
@@ -99,7 +105,7 @@ Screenshots: `docs/screenshots/` (16 images), regenerate with `tests/ui/screensh
 | SV-07 attachments, streaming upload, size limit, storage backends | tested | local, S3-compatible (MinIO tested), R2/B2 are the same code path with different endpoints (not tested against the real services), Google Drive tested only against a fake |
 | SV-14 roles | tested | owner/admin/member enforced per endpoint |
 | SV-19 admin panel (basic) | done | Vite + TS, served at `/admin`: setup wizard, login, users (create, disable, reset, login link, backup, clear history, delete, privacy flag), conversations + members, storage (test, save, move, verify), sessions, backups, overview. Playwright smoke script passes; not part of `cargo test` |
-| SV-22 deployment | done | Dockerfile (multi-stage, 141 MB), compose with profiles `tunnel`, `caddy`, `ntfy`, `minio`, `.env.example`, Caddyfile incl. `tls internal` for bare IPs. Built and run in the e2e. Caddy, cloudflared and ntfy profiles were not started here (no domain / tunnel token / not needed yet) |
+| SV-22 deployment | done | `docker/Dockerfile` (multi-stage), standalone `deploy/docker-compose.yml` (one service, published image pinned to the release, healthcheck, named data volume) and `deploy/.env.example`; both are attached to every release. Reverse proxy, Cloudflare Tunnel, ntfy and the object store run separately (see `docs/DEPLOY.md`). Built and run in the e2e and in a throw-away compose project |
 | SV-24 test suite | tested | `tests/e2e/run.sh`: login, DM, channel, edit rule, tombstone, upload/download via MinIO, sync after offline, disabled-account wipe, search isolation, storage move+verify S3 -> Drive -> S3, clear-history backup |
 | Server-doc: per-user visibility, clear history with mandatory backup, files moved to backup | tested | refused with `backup_failed` when the backup cannot be written, including while a storage move runs |
 | Server-doc: backup restore | tested | see Phase 2 |

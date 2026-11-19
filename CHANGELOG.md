@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.2
+
+Deployment release: the server is now one standalone `docker-compose.yml`. No server, API or app behaviour change.
+
+* **Standalone compose file**: `deploy/docker-compose.yml` has one service, `superchat`, that pulls `ghcr.io/uri-travoski/superchat-server:1.3.2` (pinned to the release; `SUPERCHAT_IMAGE=...:latest` follows the newest). No `build:` section, no Caddy, cloudflared, ntfy or MinIO services or profiles. Variables are `SUPERCHAT_*` only (the server still also reads the old `ATOMIC_*` names). Data volume name via `SUPERCHAT_DATA_VOLUME`, port and address via `SUPERCHAT_PORT` / `SUPERCHAT_BIND_ADDR`, own ntfy via `SUPERCHAT_NTFY_URL`, `host.docker.internal` mapped to the host, an optional commented `networks:` example for a Docker network shared with your own cloudflared / ntfy containers.
+* **Release assets**: every GitHub Release now carries `docker-compose.yml` and `superchat.env.example`, is named "SuperChat <version>" and takes its body from `docs/RELEASE-NOTES-<tag>.md`. The workflow refuses a release whose compose file pins another version.
+* **Attachment storage**: no object-store container is shipped; pick S3, Cloudflare R2, Backblaze B2, Google Drive or local disk in the admin panel. `docs/DEPLOY.md` has the R2 and B2 endpoint settings.
+* **Moved out of `deploy/`**: the Dockerfile is now `docker/Dockerfile` (with `docker/docker-compose.build.yml` for a developer build); the Caddyfile and the MinIO dev profile are gone (the end-to-end tests start their own MinIO). `docs/DEPLOY.md` has a short "Reverse proxy, tunnel and ntfy run separately" section instead of the Caddy and tunnel profiles.
+* **Admin panel**: the Updates card explains the pinned image (set `SUPERCHAT_IMAGE` or download the new compose file).
+* Version 1.3.2 everywhere (workspace, admin panel, Android versionName 1.3.2 / versionCode 9, installer, release workflow, Docker image `superchat:1.3.2`).
+
 ## 1.3.1
 
 Update checks everywhere, a server image that is pulled instead of built, and a release workflow that refuses to publish an unsigned APK. No server API change that older apps notice (one new admin-only endpoint, `GET /api/v1/admin/updates`).

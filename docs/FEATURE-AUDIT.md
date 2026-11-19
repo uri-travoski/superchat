@@ -1,4 +1,4 @@
-# Feature audit against the original requirements (1.3.1)
+# Feature audit against the original requirements (1.3.2)
 
 One row per feature in `Client Apps.md` (sections X, M, C, NV, SR, F, WF, N, P, A, AD, E, SV). Status words:
 **works** (was there and checked again), **fixed now** (missing or hidden in 1.1.3, changed in 1.2.0), **partial** (works with the gap in Notes), **deferred** (not built, scheduled later).
@@ -213,7 +213,7 @@ Save for later and labels (per user, private, synced; Later view with label chip
 | U-03 | Android download, SHA-256 check, system installer | works | About | emulator run (fake release 9.9.9, installer prompt accepted, new version ran) | signature-mismatch text not run (no second key was created) |
 | U-04 | Desktop install: AppImage replace, deb installer, Windows setup | partial | About | unit (asset choice, checksum, AppImage replace) | Windows and deb install not run here |
 | U-05 | Admin panel version and Updates card | works | admin panel | PW `admin-updates.mjs` (mocked release) | |
-| U-06 | Server image from ghcr | works | `deploy/docker-compose.yml` | compose config; ghcr manifest anonymous 200 | |
+| U-06 | Server image from ghcr | works | `deploy/docker-compose.yml` (standalone since 1.3.2) | compose config; ghcr manifest anonymous 200 | |
 | U-07 | Release workflow fails without signing secrets | works | `.github/workflows/release.yml` | read only (no CI run) | |
 
 ## Counts

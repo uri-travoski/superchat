@@ -1,0 +1,24 @@
+# Developers only: build the server image from this checkout and run it. Installs do NOT use this file, they use
+# deploy/docker-compose.yml, which pulls the published image.
+#
+#   docker compose -f docker/docker-compose.build.yml up -d --build
+#   (the image is tagged ghcr.io/uri-travoski/superchat-server:dev-local, port 8080 on this machine, own volume superchat-dev-data)
+name: superchat-dev
+
+services:
+  superchat:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: ghcr.io/uri-travoski/superchat-server:dev-local
+    restart: unless-stopped
+    environment:
+      SUPERCHAT_PUBLIC_URL: ${SUPERCHAT_PUBLIC_URL:-http://localhost:8080}
+      SUPERCHAT_BOOTSTRAP_ADMIN: ${SUPERCHAT_BOOTSTRAP_ADMIN:-}
+    volumes:
+      - superchat-dev-data:/data
+    ports:
+      - "127.0.0.1:${SUPERCHAT_PORT:-8080}:8080"
+
+volumes:
+  superchat-dev-data:

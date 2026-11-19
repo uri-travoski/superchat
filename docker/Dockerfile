@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1
-# Build context is the repository root:  docker build -f deploy/Dockerfile -t superchat-server .
+# Build context is the repository root:  docker build -f docker/Dockerfile -t superchat-server .
+# Developers and tests only: installs pull the published image (see deploy/docker-compose.yml).
 
 # ---- admin panel (static files) ----
 FROM node:22-alpine AS admin

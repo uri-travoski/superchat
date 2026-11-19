@@ -45,10 +45,12 @@ function fill(box: HTMLElement, u: AdminUpdates, refresh: () => void) {
     parts.push(h("div", { id: "upd-notes", style: "white-space:pre-wrap;max-height:220px;overflow:auto;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--row)" }, rel.notes || "No release notes."));
   }
   parts.push(h("h3", {}, u.update_available ? "Update this server" : "Update commands"));
-  parts.push(h("p", { class: "muted" }, "On the machine that runs the server, in the folder with docker-compose.yml (the image comes from ghcr.io, nothing is built locally):"));
+  parts.push(h("p", { class: "muted" }, "On the machine that runs the server, in the folder with docker-compose.yml (the image comes from ghcr.io, nothing is built locally)."));
+  parts.push(h("p", { class: "muted" }, "Set the image in .env first, for example ",
+    h("code", {}, "SUPERCHAT_IMAGE=ghcr.io/uri-travoski/superchat-server:" + (rel?.version ?? u.current)),
+    " (or download the new docker-compose.yml from the release page, which pins that release), then run the commands below. With ",
+    h("code", {}, "SUPERCHAT_IMAGE=ghcr.io/uri-travoski/superchat-server:latest"), " the commands alone always get the newest release. Your data volume is kept."));
   parts.push(cmdBox(UPGRADE_COMMAND));
-  parts.push(h("p", { class: "muted" }, "To stay on a fixed version, set SUPERCHAT_IMAGE in .env, for example ",
-    h("code", {}, "SUPERCHAT_IMAGE=ghcr.io/uri-travoski/superchat-server:" + (rel?.version ?? u.current)), " (ATOMIC_IMAGE works too), then run the same two commands. Your data volume is kept."));
   const dl = (rel?.assets ?? []).map((a) => ({ a, l: assetLabel(a.name) })).filter((x) => x.l);
   parts.push(h("h3", {}, "Apps" + (rel ? " in v" + rel.version : "")));
   parts.push(dl.length

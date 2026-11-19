@@ -8,7 +8,7 @@ reaches the host as 10.0.2.2). The first path segment is the scenario:
 
   new      a release <version> with all installers and .sha256 files
   slow     the same, but downloads are throttled to --rate bytes/s (so a progress bar can be seen)
-  same     the release equals CURRENT (--current, default 1.3.1): "You're up to date"
+  same     the release equals CURRENT (--current, default 1.3.2): "You're up to date"
   limit    HTTP 403 with GitHub's rate-limit headers
   nosha    like new, without the .sha256 assets
   bad      like new, but the installer bytes do not match the checksum
@@ -23,7 +23,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 A = argparse.ArgumentParser()
 A.add_argument("--port", type=int, default=18390)
 A.add_argument("--version", default="9.9.9")
-A.add_argument("--current", default="1.3.1")
+A.add_argument("--current", default="1.3.2")
 A.add_argument("--apk", default="")
 A.add_argument("--rate", type=int, default=300000)
 A.add_argument("--size", type=int, default=3_000_000)

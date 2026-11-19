@@ -1,4 +1,4 @@
-# Feature audit against the original requirements (1.2.0)
+# Feature audit against the original requirements (1.3.0)
 
 One row per feature in `Client Apps.md` (sections X, M, C, NV, SR, F, WF, N, P, A, AD, E, SV). Status words:
 **works** (was there and checked again), **fixed now** (missing or hidden in 1.1.3, changed in 1.2.0), **partial** (works with the gap in Notes), **deferred** (not built, scheduled later).
@@ -10,9 +10,9 @@ One row per feature in `Client Apps.md` (sections X, M, C, NV, SR, F, WF, N, P, 
 | ID | Feature | Status | Phone | Desktop | Tested | Notes |
 |---|---|---|---|---|---|---|
 | X-01 | Login, TLS, fingerprint pinning | works | login screen | login screen | core, emu (login) | fingerprint dialog only for https servers with a non-public certificate; not exercised against a real self-signed host |
-| X-02 | Secret store | partial | n/a | n/a | core, emu | Android Keystore-encrypted file; Linux uses `secret-tool` else a 0600 file; Windows Credential Manager not wired |
+| X-02 | Secret store | partial | n/a | n/a | core, emu, CI (Windows job) | Android Keystore-encrypted file; Linux `secret-tool` else a 0600 file; Windows Credential Manager (`keyring`, windows-native) is wired, type-checked for x86_64-pc-windows-msvc and has a CI round-trip test, but was never run on Windows here |
 | X-03 | Reconnect, backoff, catch-up | works | automatic | automatic | core | Android keeps the connection with the foreground service instead of pausing |
-| X-04 | SQLite cache with optional encryption | partial | n/a | n/a | core | cache works; SQLCipher encryption not built |
+| X-04 | SQLite cache with optional encryption | works | n/a | n/a | core (`cache_encryption.rs`), emu | SQLCipher, key in the secret store, an older plain cache is converted on first start; checked on the Android emulator (the cache file has no SQLite header). Attachment files in the cache are not encrypted |
 | X-05 | Server is source of truth, wipe on disable | works | login shows the message | same | core, SV24 | |
 | X-06 | Android foreground service | works | You > Preferences > Notifications | n/a | emu (1.1.3) | |
 | X-07 | Forced sign-out message | works | login screen | login screen | core | |
@@ -51,8 +51,8 @@ One row per feature in `Client Apps.md` (sections X, M, C, NV, SR, F, WF, N, P, 
 | M-27 | Multi-device sync | works | automatic | automatic | core, SV24 | saved items and labels sync too (new) |
 | M-28 | Offline delivery | works | automatic | automatic | core | |
 | M-29 | Jump to date, older history | works | Home > search > Date; scroll up | search > Date; scroll up | core | |
-| M-30 | Voice messages | partial | + > Voice message | + > Voice message | UI (1.0) | no waveform or speed control; not exercised with real audio on the emulator |
-| M-31 | Video clips, screen recordings | partial | + > attach video | + > attach file | none new | upload and system player; no in-app recording |
+| M-30 | Voice messages | works | + > Voice message; tap the card to play, 1x button for speed | + > Voice message; click the waveform to seek | core (`features13.rs`), shot, emu | waveform (64 bars) and duration travel with the message; play, pause, seek, 1x/1.5x/2x. Recording itself was tried only with a synthetic audio source |
+| M-31 | Video clips, screen recordings | works | + > Record video (in-app CameraX recorder with the upload limit), Photo or video, File | + > Upload video, Record screen | core (`features13.rs`), emu, shot | poster frame, duration and size are computed by the sender; the emulator's virtual camera recorded, sent and showed a clip. Real phone cameras and pickers untested; desktop screen recording needs ffmpeg on X11 or Windows |
 | M-32 | Delivery status | works | tick and "not sent / Retry" | same | core, emu (tick), shot | |
 
 ## Channels (C)
@@ -64,7 +64,7 @@ One row per feature in `Client Apps.md` (sections X, M, C, NV, SR, F, WF, N, P, 
 | C-03 | Create channel (admin, private) | fixed now | Home > Channels "+" > Create channel (admins) | sidebar Channels "+", server menu | UI build, SV24 | admin-only by design |
 | C-04 | Archive | fixed now | Details > Settings > Admin tools | same | core, shot | moves to an Archived section (collapsed by default) |
 | C-05 | Unarchive | fixed now | Home > Archived > details | same | core | same toggle |
-| C-06 | Delete channel with typed name | partial | Details > Settings > Admin tools > Open admin panel | same | PW (admin panel) | the typed-name confirmation lives in the admin panel, linked from the app |
+| C-06 | Delete channel with typed name | works | Details > Manage > Delete channel... | Details > Settings tab > Delete channel... | core (`features13.rs`), shot | type the channel name to confirm; the server also removes pins, bookmarks, saved items and files |
 | C-07 | Channel bookmarks | works | Details > Bookmarks | Bookmarks tab, "Add a bookmark" (admins) | core, shot | |
 | C-08 | Channel tabs | works | Details > Files, Pins, Bookmarks | tabs Messages, Files, Pins, Bookmarks | emu, shot | back from every page (UX-NAVIGATION.md) |
 | C-09 | Pinned messages | works | long-press > Pin; Details > Pins | hover > More > Pin; Pins tab | core | |
@@ -76,7 +76,7 @@ One row per feature in `Client Apps.md` (sections X, M, C, NV, SR, F, WF, N, P, 
 | NV-01 | Pin a channel (favourite) | works | long-press row > Star | right-click > Star | core | |
 | NV-02 | Pin a DM | works | same | same | core | |
 | NV-03 | Pin a group | works | same | same | core | |
-| NV-04 | Custom sections | partial | row menu > Move to section; Home section header | sidebar "+" > New section, Move to section | core, shot | collapse and sync work; reorder by drag is not built (Move to section instead) |
+| NV-04 | Custom sections | works | row menu > Move to section, Move up/down; Home section header | drag and drop in the sidebar, Move up/down, sidebar "+" > New section | core (`features13.rs`), emu, shot | the order of conversations and sections is synced between devices |
 | NV-05 | Sort, unreads only | works | Home filter icon | server menu / sidebar filter | core, emu | |
 | NV-06 | Hide muted | works | Home filter icon | server menu | core | |
 | NV-07 | Mute | works | row menu > Mute; Details > Mute | right-click > Mute | core | |
@@ -99,9 +99,9 @@ One row per feature in `Client Apps.md` (sections X, M, C, NV, SR, F, WF, N, P, 
 
 | ID | Feature | Status | Phone | Desktop | Tested | Notes |
 |---|---|---|---|---|---|---|
-| F-01 | Upload | partial | + > file | + > file | core, SV24 | no progress bar or cancel |
-| F-02 | Drag-drop and paste | partial | picker | drop and paste image on X11/Windows | none new | Wayland drop untested |
-| F-03 | Previews | partial | inline image, Open for the rest | same | shot, emu | video and audio open in the system player; no PDF preview |
+| F-01 | Upload | works | + > file (progress bar and Cancel in the message list) | same | core (`features13.rs`), emu, SV24 | progress with bytes sent, Cancel, Retry that keeps files that already finished |
+| F-02 | Drag-drop and paste | partial | + > Paste image from clipboard | Ctrl+V of files and images; drop on X11 and Windows | core, shot | Ctrl+V works; dropping files was driven on X11 only. Wayland drop could not be tested here |
+| F-03 | Previews | works | inline image, PDF first page, video poster; Open for the rest | same | core (`features13.rs`), emu, shot | the server draws the first PDF page (pure Rust, cached); a broken PDF falls back to a file card |
 | F-04 | Share file to channels | works | long-press > Forward | hover > Forward | core | re-posts the reference |
 | F-05 | Files browser | fixed now | You > Files, Details > Files | More > Files, server menu > Files, Files tab | emu (Details > Files), shot | global Files view with type chips is the Files tab of Search |
 | F-06 | Comments on files | works | "Reply in thread" on the file message | same | core | |
@@ -118,10 +118,10 @@ One row per feature in `Client Apps.md` (sections X, M, C, NV, SR, F, WF, N, P, 
 
 | ID | Feature | Status | Phone | Desktop | Tested | Notes |
 |---|---|---|---|---|---|---|
-| N-01 | Mobile push | partial | You > Preferences > Notifications | n/a | core (fakes), emu (ntfy setting) | ntfy listener works with a fake; FCM compiled only with a Firebase config; never run on a real device |
+| N-01 | Mobile push | partial | You > Preferences > Notifications > Push method | n/a | core (fakes), emu (real ntfy container, `tests/e2e/ntfy-emulator.sh`) | ntfy wake-ups verified end to end on the emulator (content-free wake, sync, the app's own notification); FCM is compiled only with a Firebase config and never ran on a device |
 | N-02 | Desktop notifications | works | n/a | Preferences > Notifications | shot | via `notify-send`; inline reply not built |
 | N-03 | Per-conversation level | works | Details > Notifications | right-click > Notify; details > Settings | core | |
-| N-04 | Sounds and badges | partial | Preferences > Notifications | same | shot | global sound switch and badges; per-channel sound not built |
+| N-04 | Sounds and badges | works | Preferences > Notifications > Default sound; chat row menu > Notification sound | same (Preferences, row menu) | unit (`prefs.rs`), emu, shot | bundled sounds, per-conversation sound, global switch, unread number on the badge. Sounds are per device, not synced |
 
 ## Presence and profile (P)
 
@@ -129,7 +129,7 @@ One row per feature in `Client Apps.md` (sections X, M, C, NV, SR, F, WF, N, P, 
 |---|---|---|---|---|---|---|
 | P-01 | Online / away / DND | works | You > Set status, Pause notifications | rail avatar menu | core, emu (You), shot | |
 | P-02 | Auto-away | fixed now | backgrounded app reports idle | 10 minutes without input reports idle | core (set_idle) | desktop timer and Android background hook added in 1.2; not observed over a real 10 minute idle |
-| P-03 | Profile photo | partial | You > profile | rail avatar > Preferences | core | own photo path only; other people's photos are initials |
+| P-03 | Profile photo | works | You > Preferences > Profile > Choose photo (system picker) | Preferences > Profile > Choose photo | core (`features13.rs`), emu | the photo shows everywhere the person appears; other people's photos are downloaded and cached |
 | P-04 | Display name | works | You > profile | Preferences | core | |
 | P-05 | Last active, privacy | works | DM header, Preferences > Privacy (only when the server flag is on) | same | core, PW | |
 
@@ -166,10 +166,10 @@ One row per feature in `Client Apps.md` (sections X, M, C, NV, SR, F, WF, N, P, 
 | E-02 | Compact | works | Preferences > Appearance | same | shot | |
 | E-03 | Font size, zoom, reduce motion | works | Preferences; follows system | Ctrl +/-, Preferences | emu (Regular and 1.3), shot | |
 | E-04 | Date and time formats | works | Preferences | Preferences | UI-unit | |
-| E-05 | Spell check | partial | keyboard | switch in Preferences | none | Slint text field has no spell-check hook; the switch is stored |
+| E-05 | Spell check | works | the keyboard's own spell check | red squiggles in the message box, right-click for suggestions, Add to dictionary, Ignore; Preferences > Chats > Check spelling, Spelling language | unit (`spell.rs`), shot | bundled en_AU plus system Hunspell dictionaries (pure Rust, no hunspell library). Android depends on the keyboard (not driven here) |
 | E-06 | Android share target | works | share from another app | n/a | emu (1.0 build) | not re-run in 1.2 |
 | E-07 | Offline mode, draft sync | works | offline banner | same | core | |
-| E-08 | Launch on login, tray | partial | n/a | Preferences > General | none | autostart file (Linux); tray icon not created |
+| E-08 | Launch on login, tray | partial | n/a | Preferences > General | `tests/ui/tray-check.sh` (fake tray host), shot | autostart file (Linux) and tray icon with an unread dot, Status and Pause notifications menu, start minimised; tested against a fake StatusNotifierWatcher, not a real desktop panel or Windows |
 
 ## Server (SV)
 
@@ -187,7 +187,7 @@ One row per feature in `Client Apps.md` (sections X, M, C, NV, SR, F, WF, N, P, 
 | SV-10 | Scheduled messages | works | Drafts & sent | core, SV24 | |
 | SV-11 | Sessions | works | Devices | core | |
 | SV-12 | Privacy flag | works | Preferences > Privacy | core, PW | |
-| SV-13 | Push | partial | Preferences > Notifications | core (fakes) | not against real FCM/ntfy/APNs; on-device registration not exercised |
+| SV-13 | Push | partial | Preferences > Notifications | n/a | core (fakes), emu (ntfy) | ntfy end to end on the emulator; not against real FCM or APNs |
 | SV-14 | Roles | works | admin rows | core, SV24 | |
 | SV-15 | Bots | works | admin panel | SV24, PW | |
 | SV-16 | Webhooks | works | admin panel | SV24, PW | |

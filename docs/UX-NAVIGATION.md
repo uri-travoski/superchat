@@ -1,4 +1,4 @@
-# Navigation audit: every screen has a way back (1.2.0)
+# Navigation audit: every screen has a way back (1.3.0)
 
 Rule: every page, panel, tab, modal and menu has a **visible** close or back control and also answers Esc (desktop) and the Android system Back key.
 Messages is always one click or tap away. There is one Back stack, `apps/desktop/src/nav.rs`; Esc, Alt+Left, the on-screen arrows and Android Back all call it.
@@ -27,7 +27,7 @@ chat > details > Files > back > details > back > chat, picker over details, shee
 | DMs, Activity, You tab | bottom bar | tap Home in the bar | Home |
 | Conversation | tap a row | top-bar back arrow | the tab list it was opened from |
 | Conversation details | tap the name, the info icon or the 3-dot menu | back arrow | the chat |
-| Details > About, Members, Files, Pins, Bookmarks, Notifications | rows on the Details page | back arrow | the Details list, then the chat |
+| Details > About, Members, Files, Pins, Bookmarks, Manage (rename, archive, delete; admins), Notifications | rows on the Details page | back arrow | the Details list, then the chat |
 | People picker (Add people, New message) | Members > Add people, pencil button | Cancel and X | the page below |
 | Label picker | message sheet > Add label | X, tap outside | the page below |
 | Message sheet | long-press a message | tap outside | the chat |

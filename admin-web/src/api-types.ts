@@ -653,12 +653,32 @@ export interface FileHit {
 export interface Attachment {
   content_type: string;
   id: string;
+  /**
+   * M-30/M-31: duration, waveform peaks, size and poster frame of voice messages and videos (set by the uploader).
+   */
+  meta?: AttachmentMeta | null;
   name: string;
   /**
    * True when an admin removed the file; clients show "File removed".
    */
   removed?: boolean;
   size: number;
+}
+/**
+ * Media details the sender's app computes before sending: used to draw waveforms and video posters without downloading the file first. Everything is optional; the server only checks the size and field limits.
+ */
+export interface AttachmentMeta {
+  duration_ms?: number | null;
+  height?: number | null;
+  /**
+   * Loudness per slice of the recording, 0..=255, 64 values at most.
+   */
+  peaks?: number[];
+  /**
+   * A small JPEG of the first video frame, base64 (at most about 40 KB).
+   */
+  poster_b64?: string | null;
+  width?: number | null;
 }
 export interface SearchHit {
   message: Message;
@@ -977,6 +997,10 @@ export interface ConvPref {
    * "all", "mentions" or "nothing" (N-03).
    */
   notify: string;
+  /**
+   * NV-04: the user's own order inside the section (lower first). Absent: not reordered, sorted by the list setting.
+   */
+  position?: number | null;
   section_id?: string | null;
 }
 /**

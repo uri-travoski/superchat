@@ -1,6 +1,18 @@
-# Status: v1.2.0 (Slack-style UI rebuild on 1.1.3; calls are Phase 4, not built)
+# Status: v1.3.0 (owner UI fixes and the 1.2 "partial" features; calls are Phase 4, not built)
 
-## v1.2.0 summary
+## v1.3.0 summary
+
+Done: owner fixes to menus (desktop popovers, phone sheets, every menu checked in a screenshot), uploads with progress and cancel, voice waveform and speed, video clips (Android in-app recorder, desktop screen recording), PDF first-page preview, profile photos, delete channel, notification sounds, tray icon, drag-to-reorder sidebar, spell check, encrypted local cache, Windows Credential Manager, ntfy push verified on the emulator, Android file, photo and video pickers. Details: `docs/RELEASE-NOTES-v1.3.0.md`, `CHANGELOG.md`, `docs/DECISIONS.md` (1.3.0 section). Feature audit: `docs/FEATURE-AUDIT.md`.
+
+Feature audit counts (130 rows): 111 works, 12 fixed now, 5 partial, 2 deferred.
+Partial: X-02 (Windows Credential Manager not run on Windows), F-02 (Wayland drop untested), N-01 and SV-13 (FCM and APNs never run on a device; ntfy verified), E-08 (tray tested with a fake tray host only).
+Deferred: CL-01 and SV-18 (calls).
+
+Tests (final run for 1.3.0): `cargo test --workspace` 205 passed, 0 failed (2 ignored: the seed server and the ntfy emulator harness); `tests/e2e/run.sh` SV-24 passes (full scenario and bots, webhooks, forms, schedule, AI); Playwright admin-roles, admin-viewer, admin-dialogs, admin-automation, admin-mobile all OK (Node 24, `PLAYWRIGHT_DIR` pointing at a node_modules with playwright-core; the browser is found under `~/.cache/ms-playwright`); `cargo clippy --workspace --all-targets`: 0 errors (style warnings only). New tests: upload progress and cancel, failed upload retry, profile photos, delete channel, voice metadata, sidebar order sync, PDF preview, video metadata (`crates/client-core/tests/features13.rs`), SQLCipher cache (`cache_encryption.rs`), spell check and sound preferences (unit), tray (`tests/ui/tray-check.sh`), ntfy on the emulator (`tests/e2e/ntfy-emulator.sh`).
+Emulator (emulator-5556, debug APK x86_64): Part 1 items at Regular and font scale 1.3 (Home, shortcuts collapsed, Later), design channel (image, PDF preview, voice waveform and speed, video posters), attach sheet, in-app video recorder (virtual camera) recording and sending, file picker upload with progress and Cancel, notification sound sheet, Move up in the list, profile photo picker and update, Details > Manage > Delete channel dialog, ntfy notification, encrypted cache header check. Screenshots: `docs/screenshots/android-1.3-*.png`. Desktop screenshots: 112 variants from `tests/ui/screenshots.sh` (1280x800 and 1000x700 and phone 360x640, light and dark, Regular and Large) including every menu.
+Not verified: real phones, Windows, Wayland drop, a real tray panel, the Android keyboard's spell check, FCM.
+
+## v1.2.0 summary (previous release)
 
 Done: Slack-style desktop shell and phone shell (one Slint UI), membership management in the apps, Save for later and labels, server-backed Activity feed, App Lock discoverability, one Back stack with a visible way back everywhere (`docs/UX-NAVIGATION.md`), rename/topic/archive in Details, quote reply, `@channel`/group mentions, search tabs and highlighting, global Files view, auto-away. Spec: `docs/UI-SPEC-1.2.md`. Feature audit: `docs/FEATURE-AUDIT.md`.
 
@@ -34,7 +46,7 @@ APP tag, M-23/M-24, SR-06, SR-07, bookmarks, colour emoji (picker and reactions)
 Android: Keystore secrets (X-02), ntfy listener + local notifications + wake (N-01), time-zone fix, share target (E-06), RECORD_AUDIO recording.
 Release: README, docs/RELEASE-NOTES-v1.0.md, ci.yml, release.yml, packaging. Local artifacts in `dist/` (git-ignored): deb, AppImage, APK; image `superchat:1.0`.
 
-Partial / not done: video recording (M-31: upload and system player only), no waveform or speed control, FCM compiled only with a Firebase config
+Partial / not done (1.2.0 list, see the 1.3.0 summary above for what changed): FCM compiled only with a Firebase config
 (never run against Google), Windows paths never run, arm64 APK never executed, emoji inside message text monochrome, Wayland drag-drop,
 voice recording not exercised with real audio on the emulator, calls (SV-18, CL-01), auto-away (P-02), flatpak not built in CI.
 Verified on the emulator (x86_64): install, sign-in, chat view, Keystore-encrypted `secrets.keystore.json`. The ntfy listener, share intent and
@@ -86,9 +98,9 @@ Screenshots: `docs/screenshots/` (16 images), regenerate with `tests/ui/screensh
 | ID | core | UI | Gaps |
 |---|---|---|---|
 | X-01 login (server, user, password; TLS; fingerprint for self-signed) | tested | done | Fingerprint dialog (trust on first use) shows for https servers without a public certificate; accepted fingerprint is pinned. Verified only against http test servers and by code path (no self-signed https server was run through the UI) |
-| X-02 credentials in platform secret store | tested | partial | Desktop: Secret Service keyring through `secret-tool` when it works, else 0600 file. Windows Credential Manager and Android Keystore not wired (Android uses the 0600 file in app-private storage) |
+| X-02 credentials in platform secret store | tested | partial | 1.3: Secret Service or 0600 file (Linux), Android Keystore file, Windows Credential Manager wired and type-checked with a CI round-trip test; never run on Windows here |
 | X-03 reconnect, backoff, cursor catch-up, background pause | tested | done | Android keeps connection via foreground service rather than pausing |
-| X-04 SQLite cache, optional encryption | partial | partial | Plain SQLite; SQLCipher not done |
+| X-04 SQLite cache, optional encryption | tested | done | 1.3: SQLCipher by default, key in the secret store, plain caches converted on first start |
 | X-05 wipe on disabled/revoked | tested | done | UI returns to login with the server's message |
 | X-06 Android foreground service | n/a | done | low-priority persistent notification, verified on emulator; user toggle not built |
 | X-07 forced sign-out message | tested | done | |
@@ -108,15 +120,15 @@ Screenshots: `docs/screenshots/` (16 images), regenerate with `tests/ui/screensh
 | C-01..C-03 rename, topic, create channel | tested | n/a | admin panel and CLI do these; members cannot, by design |
 | P-01 presence / DND | tested | done | Online / Away / Do not disturb in Settings; dot on own avatar. Auto-away idle detection still missing (P-02) |
 | P-02 auto-away | partial | not started | core `set_idle`; no idle detection yet |
-| P-03 profile photo, initials fallback | tested | partial | Settings takes the path of a photo; other people's photos are not drawn (initials only) |
+| P-03 profile photo, initials fallback | tested | done | 1.3: photos shown everywhere; Android system photo picker, desktop file dialog |
 | P-04 display name | tested | done | Settings |
 | E-01 dark mode / themes | n/a | done | System / Light / Dark and four accent colours, saved in `prefs.json` |
 | E-02 compact layout | n/a | done | Settings switch |
 | E-03 font size | n/a | done | Regular/Large buttons plus Android system font scale; verified by screenshots |
 | E-04 en-AU dates, 12/24 h | tested | partial | 12/24 h switch added. Android time zone still falls back to UTC (no JNI zone hook) |
-| F-01 upload with progress, limit | tested | partial | Native file chooser (zenity or kdialog) or a typed path; no progress bar or cancel |
-| F-02 drag-drop and paste | not started | not started | Slint 1.19 has no OS file drop or image paste hook that fits; file chooser used instead |
-| F-03 previews | not started | partial | Inline image previews (downloaded in the background), file cards; video and audio open in the system player |
+| F-01 upload with progress, limit | tested | done | 1.3: progress bar, Cancel, Retry; native file chooser on desktop, system pickers on Android |
+| F-02 drag-drop and paste | tested | partial | 1.3: Ctrl+V of files and images; drop on X11 and Windows; Wayland drop untested |
+| F-03 previews | tested | done | 1.3: inline images, server-drawn PDF first page, video poster; the rest open in the system |
 | N-02 desktop notifications | tested | partial | Desktop: `notify-send` on incoming messages, honouring mute, notify level, DND and the preview switch. Android: channel + tap-to-open only; real message notifications from the service not built |
 
 ## Phase 2: organisation and search

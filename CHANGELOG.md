@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.3.0
+
+Owner fixes to the 1.2 phone and desktop UI plus the features that were still "partial" in the 1.2.0 audit. Additive server API (`PUT /files/{id}/meta`, `DELETE` of channels removes everything they own); 1.0 to 1.2 apps keep working with a 1.3 server and the other way round.
+
+* **Menus and popups**: on desktop every menu opens as a popover next to what was clicked (attach, emoji, row menus, sound menu) instead of a bottom sheet; on phones they stay bottom sheets. Audited for clipping at 1280x800 and 1000x700, light and dark, Regular and Large text.
+* **Uploads (F-01)**: progress bar with bytes sent, Cancel, and Retry that keeps the files that already finished.
+* **Profile photos (P-03)**: shown everywhere a person appears; Android picks the photo with the system photo picker, desktop with the file dialog.
+* **Delete channel (C-06)**: from Details > Settings with the channel name typed to confirm; the server also removes pins, saved items and files.
+* **Voice messages (M-30)**: waveform, duration, play and pause, seek and 1x/1.5x/2x speed; video and file cards show duration and size.
+* **Sounds and badge (N-04)**: bundled notification sounds, a default and a per-conversation choice, a global sound switch, unread count on the badge (Android channel per sound).
+* **Tray (E-08)**: tray icon with an unread dot and count, Status and Pause notifications menu, start minimised to the tray.
+* **Sidebar order (NV-04)**: drag and drop or Move up/down for conversations and sections, synced between devices.
+* **PDF preview (F-03)**: the server draws the first page (pure Rust, no poppler); broken PDFs fall back to a file card.
+* **Spell check (E-05)**: red squiggles in the message box on desktop, right-click suggestions, Add to dictionary, Ignore, language choice (bundled en_AU plus system Hunspell dictionaries). On Android it is the keyboard's own spell check.
+* **Video (M-31)**: Android records inside the app (CameraX, 480p) with the upload limit shown first and the size shown while recording, picks photos and videos with the system picker, and sends any file with the file picker (new: before, only Share-to-SuperChat worked). Desktop: Upload video, Record screen (needs ffmpeg on X11 or Windows), poster frame and duration.
+* **Encrypted cache (X-04)**: the local cache is SQLCipher-encrypted by default, the key lives in the secret store, and an older plain cache is converted on first start.
+* **Windows secret store (X-02)**: Credential Manager is type-checked and a CI job round-trips a secret on a Windows runner.
+* **Push (N-01, SV-13)**: ntfy wake-ups verified end to end on the emulator against a real ntfy container (`tests/e2e/ntfy-emulator.sh`); `docker compose --profile ntfy` and its ports are configurable. FCM remains build-time optional and unrun on a device.
+* **Paste (F-02)**: Ctrl+V of files and images into the message box.
+* **Licences**: Inter, Noto emoji and the en_AU dictionary licences ship with the deb, AppImage, Flatpak and Windows installer (`THIRD-PARTY-NOTICES.txt`).
+* Version 1.3.0 everywhere (workspace, admin panel, Android versionName 1.3.0 / versionCode 7, installer, release workflow, Docker image `superchat:1.3.0`).
+
 ## 1.2.0
 
 A Slack-style rebuild of the desktop and phone UI (SuperChat's own theme, name, icon and icon set) plus the functions owners asked for. Additive server API; 1.0 to 1.1.x apps keep working with a 1.2 server (`min_client_version` is still 1.0.0).

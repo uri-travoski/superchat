@@ -64,6 +64,8 @@ admin panel are stored in your attachment storage under `backups/`, not on the s
 
 Push (optional): ntfy needs only a URL. FCM needs a Google service account JSON and APNs a `.p8` key, both entered in the admin panel; wakes never contain message text.
 
+ntfy on the same host: `docker compose --profile ntfy up -d` starts ntfy bound to the host's loopback on `NTFY_PORT` (default 2586; set `NTFY_BIND_ADDR=0.0.0.0` only on a trusted network, or put it behind your HTTPS proxy). Set `ATOMIC_NTFY_URL` to the address phones use (for example `https://ntfy.example.org`), then in the app choose You > Preferences > Notifications > Push method > ntfy. The server only sends a wake-up to people who have no open connection, and the wake never carries message text. `tests/e2e/ntfy-emulator.sh` runs this against a real ntfy container and the Android emulator. FCM needs a Firebase `google-services.json` at build time plus a service account in the admin panel and has not been run on a real device.
+
 ## Building the image
 
 ```

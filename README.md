@@ -13,6 +13,7 @@ Android (one Slint UI shared by all three), plus a command-line client. Your dat
 * Bots and automation: Telegram-style bot API, webhooks, interactive forms, scheduled messages, optional AI search and recaps.
 * New in 1.3.2: the server is one standalone `docker-compose.yml` (published image, no Caddy, cloudflared, ntfy or MinIO inside) attached to every release together with `superchat.env.example`; see [docs/RELEASE-NOTES-v1.3.2.md](docs/RELEASE-NOTES-v1.3.2.md).
 * In 1.3.1: every app checks GitHub for a newer release (Settings > About > Check for updates, plus an automatic check you can switch off), shows its version clearly, and downloads and installs updates with a checksum check; the admin panel has an Updates card with the upgrade commands; the server image is pulled from ghcr.io; release APKs are always signed with one permanent key; see [docs/RELEASE-NOTES-v1.3.1.md](docs/RELEASE-NOTES-v1.3.1.md).
+* New in 1.4.0: a simpler phone app (four tabs DMs, Channels, Search, Menu; pin to top with drag reorder; 3-dots menu for Threads, Drafts, Later, Sort and Filter), file-type icons, separate arm64 and x86_64 Android APKs that are much smaller (R8 and a size-optimised build), no in-app video recording and no screen-reader support (both removed by owner request). See [docs/RELEASE-NOTES-v1.4.0.md](docs/RELEASE-NOTES-v1.4.0.md).
 * In 1.3.0: upload progress and cancel, voice waveform and speed, video recording, PDF previews, profile photos, delete channel, notification sounds, tray icon, drag-to-reorder sidebar, spell check, an encrypted local cache and verified ntfy push; see [docs/RELEASE-NOTES-v1.3.0.md](docs/RELEASE-NOTES-v1.3.0.md).
 * In 1.2.0: a Slack-style rebuild of the desktop and phone UI (rail or bottom tabs, sidebar sections, thread panel, Activity, Later with labels), add people to channels from the app, Save for later, a discoverable App Lock and a way back from every screen; see [docs/RELEASE-NOTES-v1.2.0.md](docs/RELEASE-NOTES-v1.2.0.md) and [docs/FEATURE-AUDIT.md](docs/FEATURE-AUDIT.md).
 * In 1.1.3: a mobile-native UX pass (one Back stack, bottom sheets, decluttered list and chat, redesigned Settings, working Android QR scan, closable admin dialogs); see [docs/RELEASE-NOTES-v1.1.3.md](docs/RELEASE-NOTES-v1.1.3.md).
@@ -80,7 +81,7 @@ Full per-item notes are in [STATUS.md](STATUS.md).
 | X-01..X-08 | Login, TLS fingerprint pinning, secret storage, sync, offline cache, forced sign-out, emoji picker | done (see limits) |
 | M-01..M-13, M-16, M-25..M-29, M-32 | Messaging: DMs, channels, edit/delete, reactions, formatting, mentions, unread, offline outbox | tested + done |
 | M-20..M-24 | Forward, quote, drafts, drafts and sent view, schedule send | done |
-| M-30, M-31 | Voice messages (record on Android and Linux with `arecord`, inline audio player), video clips (upload, opens system player) | partial |
+| M-30, M-31 | Voice messages (record on Android and Linux with `arecord`, inline audio player), video clips (upload from the picker, opens system player; no in-app recording since 1.4) | partial |
 | C-07, C-09 | Bookmarks (add in the apps and the admin panel), pins | done |
 | NV-01..NV-09, SR-01..SR-06 | Switcher, history, sections, search filters, recent and saved searches | done |
 | F-01..F-03 | File upload, drag-and-drop (X11/Windows), paste image, previews | partial |
@@ -106,8 +107,8 @@ Packages (output in `dist/`):
 ```sh
 cargo install cargo-deb && cargo deb -p atomic-desktop --output dist/     # .deb
 packaging/linux/build-appimage.sh                                         # AppImage
-(cd apps/android && ./gradlew assembleRelease)                            # APK (arm64-v8a + x86_64)
-docker build -f docker/Dockerfile -t superchat:1.3.2 .                    # server image (developers; installs pull the published one)
+(cd apps/android && ./gradlew exportApks)                                 # dist/superchat-<v>-android-arm64.apk + ...-android-x86_64.apk
+docker build -f docker/Dockerfile -t superchat:1.4.0 .                    # server image (developers; installs pull the published one)
 ```
 
 Windows (`.exe` and NSIS installer) and the published images are built by `.github/workflows/release.yml` when a `v*` tag is pushed.

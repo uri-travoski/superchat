@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.4.0
+
+A simpler phone app, file-type icons, smaller Android downloads. The desktop layout is unchanged except for the file icons. Server API unchanged (pinning reuses the favourite and position state).
+
+* **Phone top bar**: no server avatar, no pencil, no filter icon. The app name (or the configured server name) is in the accent colour at the size of the page title, then the App Lock lock icon (only when a PIN is set) and a 3-dots menu at the far right.
+* **3-dots menu** (bottom sheet): Threads, Drafts & sent, Later, Sort (Recent, Name A-Z) and Filter (Unread only, Hide muted). The "Shortcuts" section is gone from the lists. The top search bar is gone; search is a tab.
+* **Four bottom tabs: DMs, Channels, Search, Menu.** DMs is the default and the last tab is remembered. Every tab has its own back stack: Back goes back inside the tab, then to DMs, then leaves the app. Search is the full search page with the field focused. Menu shows your avatar, name and status (tap for the old You page), Activity (with the unread badge, also on the tab icon) and Settings. Channels has a "Create channel" entry for admins.
+* **New message button**: a white + on an accent circle on DMs and Channels (admins can pick "New channel" in the flow). It still never covers the last row.
+* **Pin to top / Unpin** (long-press menu and conversation details) for DMs and Channels. Pinned rows sit at the top without a header, in your own order; reorder by long-press and drag, or Move up / Move down in the long-press menu. The order is saved on the server and synced to your other devices (it reuses the favourite and position state, so nothing changes on the server). Unpinned rows follow Sort (Recent by default). Sort and Filter do not touch pinned rows (they are always shown).
+* **File-type icons** wherever files appear (message file cards, Files tab, global Files, attach previews, search results): a document glyph with a coloured band and the extension (DOCX blue, PDF red, XLSX/CSV green, PPTX orange, archives amber, text and code grey, audio purple, video pink, unknown grey). Images keep their thumbnails. Same component on desktop and phone.
+* **Android: no in-app video recording** (owner request). The attach sheet no longer has "Record video", the CameraX video dependency is gone; the camera permission is only for the QR scanner. Videos can still be attached from the photo or file picker and played. Voice recording stays.
+* **Android: smaller APKs.** One APK per ABI (`superchat-<v>-android-arm64.apk`, `superchat-<v>-android-x86_64.apk`, each with a `.sha256`), R8 code and resource shrinking, a size-optimised Rust profile (`release-android`: opt-level z, fat LTO, one codegen unit, stripped). Sizes are in docs/RELEASE-NOTES-v1.4.0.md.
+* **Accessibility dropped** (owner request): Slint's accessibility (AccessKit) feature and all `accessible-*` properties are removed from the apps. Touch targets are unchanged.
+* **Update check picks the right APK**: the app reports `Build.SUPPORTED_ABIS`; `arm64-v8a` takes `-android-arm64.apk`, `x86_64` takes `-android-x86_64.apk`, and releases before 1.4 (one `-android.apk`) still work as the fallback. `release.yml` builds and uploads both.
+* Version 1.4.0 everywhere (workspace, admin panel, Android versionName 1.4.0 / versionCode 10 for both ABIs, installer, compose default image `1.4.0`, Docker image `superchat:1.4.0`).
+
 ## 1.3.2
 
 Deployment release: the server is now one standalone `docker-compose.yml`. No server, API or app behaviour change.

@@ -1,4 +1,4 @@
-# What SuperChat does today (version 1.3.2)
+# What SuperChat does today (version 1.4.0)
 
 * Self-hosted team chat. One small server (Docker), apps for Linux and Android (Windows later), an admin web panel, and a command-line client.
 * **Accounts are created by admins only.** There is no sign-up. New people get a one-time login link (works once, expires in 7 days): a web address that opens the app and signs them in, also as a QR code.
@@ -14,7 +14,7 @@
 * **Reach it anywhere:** works with a domain, a bare IP address, or a Cloudflare Tunnel.
 * **Text size:** Regular and Large, and it follows the Android system font size.
 
-Not included: end-to-end encryption (the server can read messages), voice/video, public sign-up, custom emoji, screen-reader support.
+Not included: end-to-end encryption (the server can read messages), voice/video calls, in-app video recording on Android (removed in 1.4), public sign-up, custom emoji, screen-reader support (removed in 1.4).
 See `STATUS.md` for what is partly built.
 
 ## Phase 2
@@ -46,7 +46,7 @@ See `STATUS.md` for what is partly built.
 
 ## 1.3 additions
 
-* **Uploads** show progress and can be cancelled or retried; **voice messages** have a waveform, duration, seek and 1x/1.5x/2x speed; **video clips** record in the app on Android (and from the screen on desktop), with a poster frame and duration; **PDFs** show their first page.
+* **Uploads** show progress and can be cancelled or retried; **voice messages** have a waveform, duration, seek and 1x/1.5x/2x speed; **video clips** can be attached from the picker on Android (desktop can also record the screen), with a poster frame and duration; **PDFs** show their first page.
 * **Profile photos** everywhere a person appears (Android picks from the system photo picker). **Delete a channel** from Details with the name typed to confirm.
 * **Notification sounds** per conversation and a default, plus an unread number on the badge; a **tray icon** on desktop with Status and Pause notifications.
 * **Sidebar order** by drag and drop or Move up/down, synced between devices.

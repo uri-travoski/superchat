@@ -76,3 +76,15 @@ See [UX-NAVIGATION.md](UX-NAVIGATION.md) for every path and how to go back. Rule
 ## 8. Interaction states
 
 Hover (rows, buttons) raises the background; pressed darkens; selected rows use the accent tint; disabled uses muted ink; focus is visible on text fields; empty states always say what the list is for and offer the action (no saved items, no threads, no activity, no files, no pins, no results).
+
+## Phone changes in 1.4.0 (these replace the phone rows above where they differ; the desktop layout is unchanged)
+
+* **Bottom navigation, 4 tabs: DMs, Channels, Search, Menu** (icons and labels; unread badges on DMs, Channels and Menu). Home, Activity and You are no longer tabs. DMs is the default and the last tab is remembered. Each tab keeps its own Back stack: Back pops inside the tab, then goes to DMs, then leaves the app. The bar is hidden on full-screen pages and while the keyboard is open.
+* **Top bar** (DMs and Channels): the app name (or configured server name) in the accent colour at the page-title size, an App Lock lock icon only when a PIN is set, and a 3-dots button at the far right. No server avatar, no pencil, no filter icon, no search bar.
+* **3-dots menu** (bottom sheet): Threads, Drafts & sent, Later, Sort (Recent, Name A-Z), Filter (Unread only, Hide muted). No "Shortcuts" section.
+* **Page titles**: "Direct Messages" and "Channels" (Channels shows a "Create channel" entry for admins).
+* **Search tab**: the full search page, field focused, recents, filter chips, results tabs.
+* **Menu tab**: avatar, name and status at the top (tap: the You page with status, pause notifications, saved items, files, devices and sign-out when allowed, App Lock); rows Activity (badge) and Settings.
+* **New message**: white + on an accent circle, bottom right of DMs and Channels; it does not cover the last row.
+* **Pinned**: "Pin to top" / "Unpin" in the long-press menu and Details; pinned rows first with a pin mark and no header; long-press and drag (or Move up / Move down) to reorder; Sort and Filter only affect the rows below.
+* **Files** show a document glyph with a coloured band and the extension (`filetype.slint`, shared with desktop).

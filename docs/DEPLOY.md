@@ -35,7 +35,7 @@ docker compose pull && docker compose up -d
 or, without touching the file, set the image in `.env` and run the same two compose commands:
 
 ```
-SUPERCHAT_IMAGE=ghcr.io/uri-travoski/superchat-server:1.3.2     # a specific release (tags are the release numbers without the v)
+SUPERCHAT_IMAGE=ghcr.io/uri-travoski/superchat-server:1.4.0     # a specific release (tags are the release numbers without the v)
 SUPERCHAT_IMAGE=ghcr.io/uri-travoski/superchat-server:latest    # always the newest release: docker compose pull is then the whole update
 ```
 
@@ -124,8 +124,8 @@ Push (optional): ntfy needs only a URL (see "Reverse proxy, tunnel and ntfy run 
 Normal installs never build: they pull the published image. The Dockerfile lives in `docker/` (not in `deploy/`, which holds only the two files of a release):
 
 ```
-docker build -f docker/Dockerfile -t superchat:1.3.2 .
-docker tag superchat:1.3.2 ghcr.io/uri-travoski/superchat-server:1.3.2     # what release.yml publishes; lets deploy/docker-compose.yml run it offline
+docker build -f docker/Dockerfile -t superchat:1.4.0 .
+docker tag superchat:1.4.0 ghcr.io/uri-travoski/superchat-server:1.4.0     # what release.yml publishes; lets deploy/docker-compose.yml run it offline
 docker compose -f docker/docker-compose.build.yml up -d --build            # or: build and run a throw-away dev instance (port 8080, volume superchat-dev-data)
 ```
 The image is multi-stage (node for the admin panel, rust for the server, debian-slim runtime with ca-certificates and tini,
@@ -139,7 +139,7 @@ automatic check when the app starts and then every 24 hours, which can be switch
 Only the release list is read (`https://api.github.com/repos/uri-travoski/superchat/releases/latest`), and the only thing sent is `User-Agent: SuperChat/<version>`
 (the server sends `SuperChat-Server/<version>`): no account, device or server information. Drafts and pre-releases are ignored.
 
-* **Which file an app downloads** (names are those `release.yml` publishes, each with a `.sha256` file next to it): Android `superchat-<v>-android.apk`;
+* **Which file an app downloads** (names are those `release.yml` publishes, each with a `.sha256` file next to it): Android `superchat-<v>-android-arm64.apk` or `superchat-<v>-android-x86_64.apk` (the one that matches the device's `Build.SUPPORTED_ABIS`, first match wins; releases before 1.4 have one `superchat-<v>-android.apk`, still used as the fallback);
   Linux AppImage (when started from `$APPIMAGE`) `SuperChat-<v>-x86_64.AppImage`, otherwise `superchat_<v>-1_amd64.deb`; Windows `superchat-<v>-x64-setup.exe`
   when installed with the installer, `superchat-<v>-x64-portable.exe` for the portable file. A Flatpak install is told to run `flatpak update`.
   The download is checked against its `.sha256` file and discarded on a mismatch; a release without that file is refused.

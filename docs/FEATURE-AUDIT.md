@@ -1,4 +1,4 @@
-# Feature audit against the original requirements (1.3.2)
+# Feature audit against the original requirements (1.4.0)
 
 One row per feature in `Client Apps.md` (sections X, M, C, NV, SR, F, WF, N, P, A, AD, E, SV). Status words:
 **works** (was there and checked again), **fixed now** (missing or hidden in 1.1.3, changed in 1.2.0), **partial** (works with the gap in Notes), **deferred** (not built, scheduled later).
@@ -52,7 +52,7 @@ One row per feature in `Client Apps.md` (sections X, M, C, NV, SR, F, WF, N, P, 
 | M-28 | Offline delivery | works | automatic | automatic | core | |
 | M-29 | Jump to date, older history | works | Home > search > Date; scroll up | search > Date; scroll up | core | |
 | M-30 | Voice messages | works | + > Voice message; tap the card to play, 1x button for speed | + > Voice message; click the waveform to seek | core (`features13.rs`), shot, emu | waveform (64 bars) and duration travel with the message; play, pause, seek, 1x/1.5x/2x. Recording itself was tried only with a synthetic audio source |
-| M-31 | Video clips, screen recordings | works | + > Record video (in-app CameraX recorder with the upload limit), Photo or video, File | + > Upload video, Record screen | core (`features13.rs`), emu, shot | poster frame, duration and size are computed by the sender; the emulator's virtual camera recorded, sent and showed a clip. Real phone cameras and pickers untested; desktop screen recording needs ffmpeg on X11 or Windows |
+| M-31 | Video clips, screen recordings | works (in-app recording removed on Android by owner request in 1.4) | + > Photo or video, File (videos still attach and play; there is no in-app camera recorder any more) | + > Upload video, Record screen | core (`features13.rs`), emu, shot | poster frame, duration and size are computed by the sender; the emulator's virtual camera recorded, sent and showed a clip. Real phone cameras and pickers untested; desktop screen recording needs ffmpeg on X11 or Windows |
 | M-32 | Delivery status | works | tick and "not sent / Retry" | same | core, emu (tick), shot | |
 
 ## Channels (C)
@@ -73,7 +73,7 @@ One row per feature in `Client Apps.md` (sections X, M, C, NV, SR, F, WF, N, P, 
 
 | ID | Feature | Status | Phone | Desktop | Tested | Notes |
 |---|---|---|---|---|---|---|
-| NV-01 | Pin a channel (favourite) | works | long-press row > Star | right-click > Star | core | |
+| NV-01 | Pin a channel (favourite) | works | long-press row > Pin to top / Unpin, Details > Pin to top; pinned rows sit at the top of DMs and Channels, reorder by long-press and drag or Move up / Move down | right-click > Star | core | |
 | NV-02 | Pin a DM | works | same | same | core | |
 | NV-03 | Pin a group | works | same | same | core | |
 | NV-04 | Custom sections | works | row menu > Move to section, Move up/down; Home section header | drag and drop in the sidebar, Move up/down, sidebar "+" > New section | core (`features13.rs`), emu, shot | the order of conversations and sections is synced between devices |
@@ -164,7 +164,7 @@ One row per feature in `Client Apps.md` (sections X, M, C, NV, SR, F, WF, N, P, 
 |---|---|---|---|---|---|---|
 | E-01 | Themes | works | Preferences > Appearance | same | shot (light, dark) | |
 | E-02 | Compact | works | Preferences > Appearance | same | shot | |
-| E-03 | Font size, zoom, reduce motion | works | Preferences; follows system | Ctrl +/-, Preferences | emu (Regular and 1.3), shot | |
+| E-03 | Font size, zoom, reduce motion | works | Preferences; follows system | Ctrl +/-, Preferences | emu (Regular and 1.3), shot | 1.4: screen-reader support (Slint accessibility / AccessKit, accessible-* properties) removed by owner request; touch targets unchanged |
 | E-04 | Date and time formats | works | Preferences | Preferences | UI-unit | |
 | E-05 | Spell check | works | the keyboard's own spell check | red squiggles in the message box, right-click for suggestions, Add to dictionary, Ignore; Preferences > Chats > Check spelling, Spelling language | unit (`spell.rs`), shot | bundled en_AU plus system Hunspell dictionaries (pure Rust, no hunspell library). Android depends on the keyboard (not driven here) |
 | E-06 | Android share target | works | share from another app | n/a | emu (1.0 build) | not re-run in 1.2 |

@@ -1,4 +1,4 @@
-# Navigation audit: every screen has a way back (1.3.0)
+# Navigation audit: every screen has a way back (1.4.0)
 
 Rule: every page, panel, tab, modal and menu has a **visible** close or back control and also answers Esc (desktop) and the Android system Back key.
 Messages is always one click or tap away. There is one Back stack, `apps/desktop/src/nav.rs`; Esc, Alt+Left, the on-screen arrows and Android Back all call it.
@@ -14,32 +14,35 @@ Messages is always one click or tap away. There is one Back stack, `apps/desktop
 7. Thread (side panel or full screen).
 8. Conversation tab (Files, Pins, Bookmarks) back to Messages (desktop).
 9. The conversation itself (phone: back to the tab it was opened from).
-10. Phone main tab (DMs, Activity, You) back to Home. Home then leaves the app (Android moves the task to the background).
+10. Phone: a page inside a tab (a conversation, Settings, Activity, the You page, Later, Threads ...) goes back inside its own tab. Every tab keeps its own back stack (`PhoneNav` in `nav.rs`).
+11. Phone main tab (Channels, Search, Menu) back to DMs. DMs then leaves the app (Android moves the task to the background).
 
 The unit tests in `apps/desktop/src/nav.rs` (`cargo test -p atomic-desktop nav`) cover each of these orderings, including
-chat > details > Files > back > details > back > chat, picker over details, sheet over settings, tabs returning to Home, and "every screen name has a layer that Back closes".
+chat > details > Files > back > details > back > chat, picker over details, sheet over settings, tabs returning to DMs, a separate back stack per tab, and "every screen name has a layer that Back closes".
 
-## Phone (360x640, bottom tabs Home, DMs, Activity, You)
+## Phone (360x640, bottom tabs DMs, Channels, Search, Menu)
 
 | Screen | How to open | Visible way back | Back key / Esc goes to |
 |---|---|---|---|
-| Home | launch, Home tab | none needed (root) | leaves the app |
-| DMs, Activity, You tab | bottom bar | tap Home in the bar | Home |
+| DMs (default, last tab is remembered) | launch, DMs tab | none needed (root) | leaves the app |
+| Channels, Search, Menu tab | bottom bar | tap DMs in the bar | DMs |
+| Activity, Settings, You page | Menu tab rows; Menu > avatar card opens the You page | back arrow | the Menu tab |
+| 3-dots menu (Threads, Drafts & sent, Later, Sort, Filter) | top bar, far right | tap outside | the list |
 | Conversation | tap a row | top-bar back arrow | the tab list it was opened from |
 | Conversation details | tap the name, the info icon or the 3-dot menu | back arrow | the chat |
 | Details > About, Members, Files, Pins, Bookmarks, Manage (rename, archive, delete; admins), Notifications | rows on the Details page | back arrow | the Details list, then the chat |
-| People picker (Add people, New message) | Members > Add people, pencil button | Cancel and X | the page below |
+| People picker (Add people, New message) | Members > Add people, the + button on DMs and Channels | Cancel and X | the page below |
 | Label picker | message sheet > Add label | X, tap outside | the page below |
 | Message sheet | long-press a message | tap outside | the chat |
 | Thread (full screen) | "N replies" row or sheet > Reply in thread | back arrow | the chat |
-| Threads list | Home > Threads | back arrow | Home |
-| Drafts & sent | Home > Drafts & sent | back arrow | Home |
-| Search | Home search pill | back arrow, X | Home |
-| Later (Saved items) | You > Saved items, Home > Later | back arrow or Home tab | You or Home |
-| Settings and sub-pages | You > Preferences | back arrow | You (sub-page first) |
-| About (version, Check for updates) | Settings > About, the Home "Update available" banner, You tab > Preferences > About | back arrow | Settings, then where you came from |
+| Threads list | 3-dots menu > Threads | back arrow | the list it was opened from |
+| Drafts & sent | 3-dots menu > Drafts & sent | back arrow | the list it was opened from |
+| Search | Search tab (full page, field focused) | the DMs tab in the bar | DMs |
+| Later (Saved items) | You page > Saved items, 3-dots menu > Later | back arrow | You page or the list |
+| Settings and sub-pages | Menu tab > Settings | back arrow | the Menu tab (sub-page first) |
+| About (version, Check for updates) | Settings > About, the "Update available" banner on DMs, Menu tab > Settings > About | back arrow | Settings, then where you came from |
 | App Lock page | Settings > Privacy & Security > App Lock, or "Set up App Lock" anywhere | back arrow | Settings |
-| Unlock screen | padlock when locked | Cancel | Home |
+| Unlock screen | padlock when locked | Cancel | DMs |
 | Forms, schedule, bookmark dialogs | their buttons | Cancel, X | the chat |
 
 ## Desktop (wide window: rail, sidebar, conversation, thread panel)
@@ -64,7 +67,7 @@ chat > details > Files > back > details > back > chat, picker over details, shee
 * **Chat 3-dot menu > Files had no way back** (1.1.3 showed Files as a sub-screen of the details page with only a hidden gesture). Fixed: on the phone Files, Pins, Bookmarks, Members and About are pages of the Details screen with a back arrow; Back returns to Details and then to the chat. On desktop the tabs have a visible Messages tab and Esc.
 * Details used to be a different screen per entry point; there is now one Details component reached from the title, the info icon, the member avatars and the conversation menu.
 * The people picker, label picker, help and invite dialogs are layers of the same stack, so Esc and Android Back close them.
-* On the phone each bottom tab returns to Home before the app is left (it used to leave the app straight away from any tab).
+* On the phone each bottom tab returns to DMs before the app is left (it used to leave the app straight away from any tab).
 * A conversation opened from Activity, Later or Search returns to where it was opened from (the tab keeps its own list).
 
 ## Emulator Back-key runs

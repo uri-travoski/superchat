@@ -122,6 +122,8 @@ pub enum ClientEvent {
 mod auto;
 mod org;
 mod social;
+mod pins;
+pub use pins::{merge_pinned_order, ListKind, PhoneList};
 pub use social::SavedView;
 
 pub struct Inner {

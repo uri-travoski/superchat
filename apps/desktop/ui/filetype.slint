@@ -1,0 +1,81 @@
+// 1.4: one file icon for every place a file appears (message cards, Files tabs, search results). A document with a
+// folded corner and a coloured band that carries the extension (DOCX blue, PDF red, XLSX green, PPTX orange, ZIP amber,
+// TXT grey, audio purple, video pink, anything else slate). The white label on each band keeps at least 4.5:1.
+import { Theme } from "theme.slint";
+
+export component FileGlyph {
+    // Upper-case extension, at most four characters ("" when the name has none).
+    in property <string> ext;
+    // 0 other, 1 image, 2 video, 3 audio (the type the app already knows from the content type).
+    in property <int> kind: 0;
+    in property <length> size: 40px;
+    width: root.size * 0.8;
+    height: root.size;
+
+    pure function band(e: string, k: int) -> color {
+        if e == "DOC" || e == "DOCX" || e == "RTF" || e == "ODT" || e == "DOCM" { return #1d4ed8; }
+        if e == "PDF" { return #c62828; }
+        if e == "XLS" || e == "XLSX" || e == "CSV" || e == "ODS" || e == "XLSM" { return #15803d; }
+        if e == "PPT" || e == "PPTX" || e == "ODP" || e == "PPS" || e == "PPSX" { return #c2410c; }
+        if e == "ZIP" || e == "7Z" || e == "RAR" || e == "TAR" || e == "GZ" || e == "TGZ" || e == "BZ2" || e == "XZ" || e == "APK" { return #a16207; }
+        if e == "TXT" || e == "MD" || e == "LOG" || e == "JSON" || e == "XML" || e == "YAML" || e == "YML" || e == "TOML" || e == "INI"
+            || e == "RS" || e == "PY" || e == "JS" || e == "TS" || e == "KT" || e == "JAVA" || e == "C" || e == "H" || e == "CPP" || e == "GO" || e == "SH" || e == "HTML" || e == "CSS" || e == "SQL" { return #4b5563; }
+        if k == 3 || e == "MP3" || e == "WAV" || e == "OGG" || e == "M4A" || e == "FLAC" || e == "AAC" || e == "OPUS" || e == "WMA" { return #6d28d9; }
+        if k == 2 || e == "MP4" || e == "MKV" || e == "MOV" || e == "AVI" || e == "WEBM" || e == "M4V" || e == "3GP" { return #be185d; }
+        if k == 1 || e == "PNG" || e == "JPG" || e == "JPEG" || e == "GIF" || e == "WEBP" || e == "HEIC" || e == "SVG" || e == "BMP" { return #0f766e; }
+        return #64748b;
+    }
+    pure function label(e: string, k: int) -> string {
+        if e != "" { return e; }
+        if k == 3 { return "AUDIO"; }
+        if k == 2 { return "VIDEO"; }
+        if k == 1 { return "IMG"; }
+        return "FILE";
+    }
+
+    // The sheet: a page with its top right corner folded.
+    Path {
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: 24;
+        viewbox-height: 30;
+        fill: Theme.dark ? #3a404a : #f4f6fa;
+        stroke: Theme.dark ? #7f8896 : #9aa3b2;
+        stroke-width: 1px;
+        stroke-line-join: round;
+        commands: "M2.5 3.5a2 2 0 0 1 2-2H16l5.5 5.5V26.5a2 2 0 0 1-2 2h-15a2 2 0 0 1-2-2z";
+    }
+    Path {
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: 24;
+        viewbox-height: 30;
+        fill: Theme.dark ? #5b6371 : #cbd2de;
+        commands: "M16 1.5V5.5a1.5 1.5 0 0 0 1.5 1.5H21.5z";
+    }
+    // Two faint text lines on the page.
+    Rectangle { x: parent.width * 0.2; y: parent.height * 0.22; width: parent.width * 0.4; height: max(1px, parent.height * 0.05); border-radius: 1px; background: Theme.dark ? #7f8896 : #b4bccb; }
+    Rectangle { x: parent.width * 0.2; y: parent.height * 0.34; width: parent.width * 0.55; height: max(1px, parent.height * 0.05); border-radius: 1px; background: Theme.dark ? #7f8896 : #b4bccb; }
+    // The coloured band with the extension.
+    Path {
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: 24;
+        viewbox-height: 30;
+        fill: root.band(root.ext, root.kind);
+        commands: "M2.5 17H21.5V26.5a2 2 0 0 1-2 2h-15a2 2 0 0 1-2-2z";
+    }
+    Text {
+        x: 0px;
+        y: parent.height * 17 / 30;
+        width: parent.width;
+        height: parent.height * 11.5 / 30;
+        text: root.label(root.ext, root.kind);
+        color: #ffffff;
+        font-size: root.size * 0.19;
+        font-weight: 800;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: clip;
+    }
+}

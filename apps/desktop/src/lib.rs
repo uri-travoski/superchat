@@ -904,7 +904,7 @@ fn refresh(ui: &AppWindow, c: &Client, sh: &Sh) {
             .into_iter()
             .map(|(m, a)| {
                 g.atts.insert(a.id.clone(), a.clone());
-                row(1, &a.id, &cur, a.name.clone(), String::new(), format!("{}  |  {}  |  {}", model::human_size(a.size), c.display_name(&m.sender_id), datefmt::format_date(m.ts, v.off)))
+                model::file_row(&a.id, &cur, a.name.clone(), String::new(), format!("{}  |  {}  |  {}", model::human_size(a.size), c.display_name(&m.sender_id), datefmt::format_date(m.ts, v.off)), &a.name)
             })
             .collect(),
     ));
@@ -2848,7 +2848,7 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                     {
                         let mut g = sh2.lock().unwrap();
                         for fh in files {
-                            rows.push(row(1, &fh.attachment.id, &fh.conv_id, format!("{}  in {}  |  {}", c2.display_name(&fh.sender_id), conv_title_of_id(&c2, &fh.conv_id), datefmt::format_date(fh.ts, off)), fh.attachment.name.clone(), String::new()));
+                            rows.push(model::file_row(&fh.attachment.id, &fh.conv_id, format!("{}  in {}  |  {}", c2.display_name(&fh.sender_id), conv_title_of_id(&c2, &fh.conv_id), datefmt::format_date(fh.ts, off)), fh.attachment.name.clone(), String::new(), &fh.attachment.name));
                             g.atts.insert(fh.attachment.id.clone(), fh.attachment);
                         }
                     }
@@ -2918,7 +2918,7 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                     }
                     let start = rows.len();
                     for fh in &r.files {
-                        rows.push(row(1, &fh.attachment.id, &fh.conv_id, format!("{}  |  {}", c2.display_name(&fh.sender_id), datefmt::format_date(fh.ts, off)), fh.attachment.name.clone(), String::new()));
+                        rows.push(model::file_row(&fh.attachment.id, &fh.conv_id, format!("{}  |  {}", c2.display_name(&fh.sender_id), datefmt::format_date(fh.ts, off)), fh.attachment.name.clone(), String::new(), &fh.attachment.name));
                     }
                     if rows.len() > start {
                         rows[start].header = "Files".into();

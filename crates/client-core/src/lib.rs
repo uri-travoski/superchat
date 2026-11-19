@@ -16,7 +16,7 @@ pub mod tls;
 pub mod update;
 
 pub use api::{normalize_server_url, Session};
-pub use client::{guess_content_type, Client, ClientConfig, ClientEvent, ConnState, SendOptions, UploadState};
+pub use client::{guess_content_type, ListKind, PhoneList, Client, ClientConfig, ClientEvent, ConnState, SendOptions, UploadState};
 pub use error::{ClientError, Result};
 pub use prefs::Prefs;
 pub use store::{SendState, TimelineItem};

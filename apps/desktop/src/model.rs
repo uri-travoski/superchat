@@ -244,7 +244,7 @@ pub fn msg_item(cx: &mut Ctx, t: &TimelineItem, day: String, divider: bool) -> M
                 }
             }
             let dur = a.meta.as_ref().and_then(|m| m.duration_ms).unwrap_or(0);
-            let ext = a.name.rsplit_once('.').map(|(_, e)| e.to_uppercase()).filter(|e| e.len() <= 4).unwrap_or_default();
+            let ext = ext_of(&a.name);
             FileItem {
                 id: a.id.clone().into(),
                 name: a.name.clone().into(),
@@ -411,7 +411,20 @@ pub fn row(kind: i32, id: &str, conv: &str, title: String, text: String, sub: St
         pre: text.clone().into(),
         hit: SharedString::new(),
         post: SharedString::new(),
+        ext: SharedString::new(),
     }
+}
+
+/// Upper-case extension of a file name, at most four characters ("report.docx" is "DOCX"); empty when there is none.
+pub fn ext_of(name: &str) -> String {
+    name.rsplit_once('.').map(|(_, e)| e.trim().to_uppercase()).filter(|e| !e.is_empty() && e.chars().all(|c| c.is_ascii_alphanumeric())).map(|e| e.chars().take(4).collect()).unwrap_or_default()
+}
+
+/// A file row (kind 1) with its icon extension.
+pub fn file_row(id: &str, conv: &str, title: String, text: String, sub: String, name: &str) -> RowItem {
+    let mut r = row(1, id, conv, title, text, sub);
+    r.ext = ext_of(name).into();
+    r
 }
 
 pub fn bookmarks(c: &Client, conv: &str) -> Vec<BookmarkItem> {

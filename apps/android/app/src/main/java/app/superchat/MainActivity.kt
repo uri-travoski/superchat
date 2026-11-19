@@ -28,6 +28,7 @@ class MainActivity : NativeActivity() {
                 else @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, 0).versionCode
             )
         }
+        runCatching { Native.nativeAbis(Build.SUPPORTED_ABIS.joinToString(",")) }
         // Google push is compiled in only when a config was bundled (see build.gradle.kts).
         runCatching {
             val comp = Class.forName("app.superchat.FcmService").getField("Companion").get(null)!!

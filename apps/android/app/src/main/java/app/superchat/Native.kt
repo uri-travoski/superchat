@@ -52,6 +52,8 @@ object Native {
     @JvmStatic external fun nativeInstallResult(kind: String, message: String)
     /** This build's versionCode, for the About page. */
     @JvmStatic external fun nativeVersionCode(code: Int)
+    /** Build.SUPPORTED_ABIS, best first, comma separated: the update check downloads the APK built for the first one it ships. */
+    @JvmStatic external fun nativeAbis(abis: String)
 
     private lateinit var app: Context
     private var ready = false

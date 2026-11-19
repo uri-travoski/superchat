@@ -122,15 +122,57 @@ pub struct AssetPick {
     pub sha256: Option<Asset>,
 }
 
+static DEVICE_ABIS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// Android: the device's ABIs in order of preference (`Build.SUPPORTED_ABIS`), reported by the shell at start-up.
+pub fn set_device_abis(abis: Vec<String>) {
+    if let Ok(mut g) = DEVICE_ABIS.lock() {
+        *g = abis;
+    }
+}
+
+/// The ABIs to look for, best first: what the shell reported, else the ABI this very binary was built for (an app
+/// that runs as arm64 is updated with the arm64 APK).
+pub fn device_abis() -> Vec<String> {
+    if let Some(v) = DEVICE_ABIS.lock().ok().filter(|g| !g.is_empty()).map(|g| g.clone()) {
+        return v;
+    }
+    let own = if cfg!(target_arch = "aarch64") {
+        "arm64-v8a"
+    } else if cfg!(target_arch = "arm") {
+        "armeabi-v7a"
+    } else if cfg!(target_arch = "x86") {
+        "x86"
+    } else {
+        "x86_64"
+    };
+    vec![own.to_string()]
+}
+
+/// The file name suffix of the APK built for an Android ABI (1.4 builds one APK per ABI), None for an ABI we do not ship.
+pub fn apk_suffix(abi: &str) -> Option<&'static str> {
+    match abi {
+        "arm64-v8a" => Some("-android-arm64.apk"),
+        "x86_64" => Some("-android-x86_64.apk"),
+        _ => None,
+    }
+}
+
 /// The asset for `platform` in `rel`, with its `.sha256` file. Names follow `docs/DEPLOY.md`:
-/// `superchat-<v>-android.apk`, `superchat_<v>-1_amd64.deb`, `SuperChat-<v>-x86_64.AppImage`,
-/// `superchat-<v>-x64-setup.exe`, `superchat-<v>-x64-portable.exe`.
+/// `superchat-<v>-android-arm64.apk` and `superchat-<v>-android-x86_64.apk` (older releases: one `superchat-<v>-android.apk`),
+/// `superchat_<v>-1_amd64.deb`, `SuperChat-<v>-x86_64.AppImage`, `superchat-<v>-x64-setup.exe`, `superchat-<v>-x64-portable.exe`.
+/// On Android the APK is picked by the device's ABI ([`device_abis`]).
 pub fn select_asset(rel: &ReleaseInfo, platform: Platform) -> Option<AssetPick> {
+    select_asset_for(rel, platform, &device_abis())
+}
+
+/// [`select_asset`] with the Android ABIs given (tests, and the shell's `Build.SUPPORTED_ABIS`).
+pub fn select_asset_for(rel: &ReleaseInfo, platform: Platform, abis: &[String]) -> Option<AssetPick> {
     let x86_64 = cfg!(not(any(target_arch = "aarch64", target_arch = "arm")));
     let ok = |n: &str| -> bool {
         let l = n.to_ascii_lowercase();
         match platform {
-            Platform::Android => l.ends_with(".apk"),
+            Platform::Android => false,
             Platform::LinuxAppImage => l.ends_with(".appimage") && (l.contains("x86_64") || l.contains("amd64")) == x86_64,
             Platform::LinuxDeb => l.ends_with(".deb") && (l.contains("amd64") || l.contains("x86_64")) == x86_64,
             Platform::WindowsInstalled => l.ends_with("-setup.exe") || l.ends_with("setup.exe"),
@@ -138,7 +180,17 @@ pub fn select_asset(rel: &ReleaseInfo, platform: Platform) -> Option<AssetPick> 
             Platform::Flatpak | Platform::Other => false,
         }
     };
-    let asset = rel.assets.iter().find(|a| ok(&a.name))?.clone();
+    let asset = if platform == Platform::Android {
+        let by_abi = abis.iter().filter_map(|a| apk_suffix(a)).find_map(|suf| rel.assets.iter().find(|a| a.name.to_ascii_lowercase().ends_with(suf)));
+        // Releases before 1.4 have one APK for every ABI, named `...-android.apk`.
+        let legacy = || rel.assets.iter().find(|a| {
+            let l = a.name.to_ascii_lowercase();
+            l.ends_with(".apk") && !l.contains("-android-")
+        });
+        by_abi.or_else(legacy)?.clone()
+    } else {
+        rel.assets.iter().find(|a| ok(&a.name))?.clone()
+    };
     let sha = rel.assets.iter().find(|a| a.name.eq_ignore_ascii_case(&format!("{}.sha256", asset.name))).cloned();
     Some(AssetPick { asset, sha256: sha })
 }
@@ -796,6 +848,34 @@ mod tests {
         assert_eq!(parse_version("v1.3.1").unwrap(), Version { major: 1, minor: 3, patch: 1, pre: String::new() });
         assert!(parse_version("1.2.3.4").is_none());
         assert!(parse_version("").is_none());
+    }
+
+    #[test]
+    fn android_asset_follows_the_device_abi() {
+        let v = "1.4.0";
+        let names = [
+            format!("superchat-{v}-android-arm64.apk"),
+            format!("superchat-{v}-android-arm64.apk.sha256"),
+            format!("superchat-{v}-android-x86_64.apk"),
+            format!("superchat-{v}-android-x86_64.apk.sha256"),
+            format!("superchat_{v}-1_amd64.deb"),
+        ];
+        let r = rel(v, &names.iter().map(String::as_str).collect::<Vec<_>>());
+        let abis = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let pick = |a: &[&str]| select_asset_for(&r, Platform::Android, &abis(a)).unwrap();
+        assert_eq!(pick(&["arm64-v8a", "armeabi-v7a"]).asset.name, "superchat-1.4.0-android-arm64.apk");
+        assert_eq!(pick(&["arm64-v8a"]).sha256.unwrap().name, "superchat-1.4.0-android-arm64.apk.sha256");
+        assert_eq!(pick(&["x86_64", "arm64-v8a"]).asset.name, "superchat-1.4.0-android-x86_64.apk");
+        // The first ABI that has an APK wins when the device lists several.
+        assert_eq!(pick(&["x86", "arm64-v8a"]).asset.name, "superchat-1.4.0-android-arm64.apk");
+        // An ABI we do not ship and no universal APK: nothing to offer (the About page then links to the release).
+        assert!(select_asset_for(&r, Platform::Android, &abis(&["armeabi-v7a"])).is_none());
+        // Older releases have one universal `-android.apk`: used for every ABI.
+        let old = rel("1.3.2", &["superchat-1.3.2-android.apk", "superchat-1.3.2-android.apk.sha256"]);
+        assert_eq!(select_asset_for(&old, Platform::Android, &abis(&["arm64-v8a"])).unwrap().asset.name, "superchat-1.3.2-android.apk");
+        assert_eq!(select_asset_for(&old, Platform::Android, &abis(&["x86_64"])).unwrap().sha256.unwrap().name, "superchat-1.3.2-android.apk.sha256");
+        // Not Android: the ABI list is irrelevant.
+        assert!(select_asset_for(&r, Platform::LinuxDeb, &abis(&["arm64-v8a"])).is_some());
     }
 
     #[test]

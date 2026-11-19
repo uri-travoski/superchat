@@ -410,6 +410,13 @@ pub extern "system" fn Java_app_superchat_Native_nativeVersionCode(_env: JNIEnv,
     VERSION_CODE.store(code.max(0) as u32, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// MainActivity reports `Build.SUPPORTED_ABIS` (comma separated, best first): the update check picks the APK built for it.
+#[no_mangle]
+pub extern "system" fn Java_app_superchat_Native_nativeAbis(mut env: JNIEnv, _c: JClass, abis: JString) {
+    let abis = jstr(&mut env, &abis);
+    client_core::update::set_device_abis(abis.split(',').map(|a| a.trim().to_string()).filter(|a| !a.is_empty()).collect());
+}
+
 /// The scanner could not read a login link; the login screen shows why.
 #[no_mangle]
 pub extern "system" fn Java_app_superchat_Native_nativeLoginError(mut env: JNIEnv, _c: JClass, msg: JString) {

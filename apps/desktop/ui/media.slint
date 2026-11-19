@@ -2,6 +2,7 @@
 // and the file card (PDF and others).
 import { Theme, FileItem } from "theme.slint";
 import { Icon } from "icons.slint";
+import { FileGlyph } from "filetype.slint";
 
 // M-30: a voice message. Click the waveform to jump, the round button plays or pauses, the pill cycles 1x / 1.5x / 2x.
 export component AudioCard {
@@ -14,7 +15,7 @@ export component AudioCard {
     callback toggle;
     callback seek(float);
     callback speed;
-    height: max(60px, 52px * Theme.scale);
+    height: max(48px, 42px * Theme.scale);
     preferred-width: 360px * max(1.0, Theme.scale * 0.9);
     min-width: 220px;
     horizontal-stretch: 0;
@@ -119,7 +120,7 @@ export component FileCard {
     in property <FileItem> f;
     callback open;
     property <bool> preview: root.f.has-poster && !root.f.removed;
-    preferred-height: root.preview ? max(210px, 190px * Theme.scale) + max(48px, 42px * Theme.scale) : max(48px, 42px * Theme.scale);
+    preferred-height: root.preview ? max(210px, 190px * Theme.scale) + max(60px, 52px * Theme.scale) : max(60px, 52px * Theme.scale);
     preferred-width: 340px * max(1.0, Theme.scale * 0.9);
     min-width: 200px;
     horizontal-stretch: 0;
@@ -146,16 +147,8 @@ export component FileCard {
                 padding-left: 10px;
                 padding-right: 12px;
                 spacing: 10px;
-                height: max(48px, 42px * Theme.scale);
-                Rectangle {
-                    width: 34px * Theme.scale;
-                    height: self.width;
-                    y: (parent.height - self.height) / 2;
-                    border-radius: 7px;
-                    background: root.f.ext == "PDF" ? #d6402e : (root.f.kind == 1 ? Theme.accent : Theme.icon-soft);
-                    if root.f.ext != "": Text { text: root.f.ext; color: white; font-size: Theme.fs-small * 0.85; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
-                    if root.f.ext == "": Icon { name: root.f.kind == 1 ? "image" : "file"; size: 18px; tint: white; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
-                }
+                height: max(60px, 52px * Theme.scale);
+                FileGlyph { ext: root.f.ext; kind: root.f.kind; size: 40px * min(Theme.scale, 1.3); y: (parent.height - self.height) / 2; }
                 VerticalLayout {
                     horizontal-stretch: 1;
                     alignment: center;

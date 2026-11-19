@@ -10,6 +10,7 @@ import { Avatar, Icon, IconButton, Fab, AppBar, BottomSheet, ModalCard, AlertDia
 import { MessageRow, Composer, PeoplePicker } from "chat.slint";
 import { Rail, TopBar, SideItem, DmRow, ActivityItem, SavedCard, BottomNav } from "shell.slint";
 import { DetailsView } from "details.slint";
+import { FileGlyph } from "filetype.slint";
 import { UpdateCard, UpdateBanner } from "update.slint";
 export { Avatars, AvatarImg, Drag, SpellMark, Theme, ConvItem, MsgItem, PersonItem, RowItem, BookmarkItem, BlockItem, FileItem, ReactItem, EmojiItem, FormFieldItem, FormOptionItem, FormButtonItem, SideRow, LabelItem, SavedRow, ActivityRow }
 
@@ -1335,8 +1336,9 @@ export component AppWindow inherits Window {
                                             HorizontalLayout {
                                                 padding-left: 16px; padding-right: 16px; spacing: 14px;
                                                 if r.kind >= 2: Avatar { uid: r.kind == 2 ? r.id : ""; initials: r.initials; tint: r.color; size: 40px * Theme.scale; y: (parent.height - self.height) / 2; }
-                                                if r.kind < 2: Rectangle { width: 40px; height: 40px; y: (parent.height - self.height) / 2; border-radius: 10px; background: Theme.surface;
-                                                    Icon { name: r.kind == 1 ? "file" : "thread"; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; } }
+                                                if r.kind == 1: FileGlyph { ext: r.ext; size: 40px * min(Theme.scale, 1.3); y: (parent.height - self.height) / 2; }
+                                                if r.kind == 0: Rectangle { width: 40px; height: 40px; y: (parent.height - self.height) / 2; border-radius: 10px; background: Theme.surface;
+                                                    Icon { name: "thread"; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; } }
                                                 VerticalLayout {
                                                     alignment: center;
                                                     horizontal-stretch: 1;

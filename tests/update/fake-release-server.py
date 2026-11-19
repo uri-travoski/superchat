@@ -8,12 +8,13 @@ reaches the host as 10.0.2.2). The first path segment is the scenario:
 
   new      a release <version> with all installers and .sha256 files
   slow     the same, but downloads are throttled to --rate bytes/s (so a progress bar can be seen)
-  same     the release equals CURRENT (--current, default 1.3.2): "You're up to date"
+  same     the release equals CURRENT (--current, default 1.4.0): "You're up to date"
   limit    HTTP 403 with GitHub's rate-limit headers
   nosha    like new, without the .sha256 assets
   bad      like new, but the installer bytes do not match the checksum
   pre      only a pre-release
   none     404 (no release published)
+  oldname  like new, with the single universal -android.apk of releases before 1.4
 
 The .apk asset is --apk when given (so an emulator can really install it); the other installers are small random files.
 """
@@ -23,20 +24,23 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 A = argparse.ArgumentParser()
 A.add_argument("--port", type=int, default=18390)
 A.add_argument("--version", default="9.9.9")
-A.add_argument("--current", default="1.3.2")
+A.add_argument("--current", default="1.4.0")
 A.add_argument("--apk", default="")
 A.add_argument("--rate", type=int, default=300000)
 A.add_argument("--size", type=int, default=3_000_000)
 ARGS = A.parse_args()
 
 def payload(name):
-    if name.endswith(".apk") and ARGS.apk:
+    # --apk is served for the x86_64 (emulator) and the universal name; the arm64 APK is other bytes, so installing the wrong one fails.
+    if name.endswith(".apk") and ARGS.apk and "arm64" not in name:
         return open(ARGS.apk, "rb").read()
     r = random.Random(name)
     return bytes(r.getrandbits(8) for _ in range(ARGS.size // 8)) * 8
 
-def names(v):
-    return [f"superchat-{v}-android.apk", f"superchat_{v}-1_amd64.deb", f"SuperChat-{v}-x86_64.AppImage",
+def names(v, sc=""):
+    # 1.4 ships one APK per ABI; the "oldname" scenario has the single universal APK of releases before 1.4.
+    apks = [f"superchat-{v}-android.apk"] if sc == "oldname" else [f"superchat-{v}-android-arm64.apk", f"superchat-{v}-android-x86_64.apk"]
+    return apks + [f"superchat_{v}-1_amd64.deb", f"SuperChat-{v}-x86_64.AppImage",
             f"superchat-{v}-x64-setup.exe", f"superchat-{v}-x64-portable.exe"]
 
 NOTES = ("## What's new in {v}\n\n* **Update checks** in every app, with release notes\n* Check for updates button under Settings > About\n"
@@ -70,7 +74,7 @@ class H(BaseHTTPRequestHandler):
             if sc == "none":
                 return self.send(404, b'{"message":"Not Found"}')
             assets = []
-            for n in names(v):
+            for n in names(v, sc):
                 data = payload(n)
                 assets.append({"name": n, "size": len(data), "browser_download_url": f"http://{host}/{sc}/dl/{n}"})
                 if sc != "nosha":

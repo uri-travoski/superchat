@@ -199,6 +199,8 @@ for v in "${VARIANTS[@]}"; do
   SC=same; [[ "$name" =~ -upd-([a-z]+) ]] && SC="${BASH_REMATCH[1]}"
   export SUPERCHAT_UPDATE_URL="http://127.0.0.1:18391/$SC/releases/latest"
   [ "$open" = none ] || export ATOMIC_UI_OPEN="$open"
+  # A phone-width run waits for the window to be narrow before the open hook fires (the first resize can come late).
+  unset ATOMIC_UI_PHONE; [ "${W:-1000}" -lt 720 ] && export ATOMIC_UI_PHONE=1
   "$ROOT/target/debug/superchat" >"$WORK/app-$n.log" 2>&1 &
   APP_PID=$!
   for _ in $(seq 1 120); do xdotool search --onlyvisible --name "SuperChat" >/dev/null 2>&1 && break; sleep 0.25; done

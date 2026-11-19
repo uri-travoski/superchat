@@ -1308,7 +1308,7 @@ export component AppWindow inherits Window {
                 if root.signed-in && (root.screen == "search" || root.phone-search): Rectangle {
                     // Phone: the Search tab, above the list column but not above the bottom bar (it is hidden while the keyboard is up).
                     height: root.phone-search && root.virtual-keyboard-size.height == 0px ? parent.height - max(64px, 54px * Theme.scale) : parent.height;
-                    background: Theme.bg;
+                    background: Theme.bg; y: 0px; x: 0px;
                     TouchArea { }
                     VerticalLayout {
                         HorizontalLayout {

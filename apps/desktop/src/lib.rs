@@ -1406,6 +1406,10 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
             if !ui.get_signed_in() || c.conversations().is_empty() || ui.get_conversations().row_count() == 0 {
                 return;
             }
+            // Screenshot runs at phone width: wait until the window really is narrow (the first resize can come late).
+            if ui.get_wide() && proto::env_var("ATOMIC_UI_PHONE").is_ok() {
+                return;
+            }
             // Runs once: stop by flagging through the prefs-less property.
             if ui.get_status().as_str() == "\u{0}done" {
                 return;

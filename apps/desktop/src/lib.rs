@@ -426,6 +426,13 @@ pub struct Hooks {
     pub open_url: Option<Box<dyn Fn(&str) -> bool>>,
     /// Android: the version code of this build, shown on the About page.
     pub version_code: Option<Box<dyn Fn() -> Option<u32>>>,
+    /// 1.4.1 Android: the full-screen photo viewer. Gets a JSON list of {path, name, mime, sender, date} and the index to show;
+    /// false when it could not start (the app then falls back to the system opener).
+    pub view_media: Option<Arc<dyn Fn(&str, i32) -> bool + Send + Sync>>,
+    /// 1.4.1 Android: moves the app to the background so the app that shared something comes back to the front.
+    pub leave_app: Option<Arc<dyn Fn() + Send + Sync>>,
+    /// 1.4.1 Android: the full-screen video player (path, title).
+    pub play_video: Option<Arc<dyn Fn(&Path, &str) -> bool + Send + Sync>>,
 }
 
 impl Hooks {
@@ -452,6 +459,9 @@ impl Hooks {
             take_install_result: Box::new(|| None),
             open_url: None,
             version_code: None,
+            view_media: None,
+            leave_app: None,
+            play_video: None,
         }
     }
 }
@@ -532,6 +542,30 @@ fn now_ms() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }
 
+/// Where a picture chosen from the picker goes (1.4.1).
+#[derive(Clone, Debug)]
+enum AvatarTarget {
+    /// The picture everyone sees for a channel or group DM.
+    Public(String),
+    /// A private picture only this account sees: kind "user" or "conv".
+    Private(String, String),
+}
+
+fn apply_avatar_target(ui: &AppWindow, c: &Client, t: AvatarTarget, p: PathBuf) {
+    let (wk, c2) = (ui.as_weak(), c.clone());
+    c.handle().spawn(async move {
+        let (ok, done) = match &t {
+            AvatarTarget::Public(id) => (p.is_file() && c2.set_conversation_avatar(id, &p).await.is_ok(), "Photo updated for everyone."),
+            AvatarTarget::Private(k, id) => (p.is_file() && c2.set_avatar_override(k, id, &p).await.is_ok(), "Custom photo set. Only you see it."),
+        };
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(ui) = wk.upgrade() {
+                toast(&ui, if ok { done } else { "Could not set that photo." });
+            }
+        });
+    });
+}
+
 /// Uploads `p` as the signed-in user's profile photo and says how it went.
 fn apply_avatar(ui: &AppWindow, c: &Client, p: PathBuf) {
     let (wk, c2) = (ui.as_weak(), c.clone());
@@ -575,6 +609,8 @@ struct St {
     shared: Option<Shared>,
     /// The next result from the media picker is a profile photo, not an attachment.
     avatar_pick: bool,
+    /// 1.4.1: the next picture from the picker is for this (a channel/group picture, or a private picture), not the profile photo.
+    avatar_target: Option<AvatarTarget>,
     home_bot: String,
     home_forms: Vec<proto::automation::Form>,
     pp_sel: HashSet<String>,
@@ -776,6 +812,21 @@ fn refresh(ui: &AppWindow, c: &Client, sh: &Sh) {
     let v = view(&g);
     let me_id = c.my_id().unwrap_or_default();
     ui.set_conversations(model(model::conv_items(c, g.prefs.sort == "alpha", g.prefs.unread_only, g.prefs.hide_muted, &v)));
+    // The Share / Forward picker lists every conversation, locked ones included (nothing from inside them is shown).
+    ui.set_share_list(model(
+        c.share_targets()
+            .into_iter()
+            .map(|cs| {
+                let t = c.conversation_title(&cs);
+                let mut p = model::person_blank();
+                p.id = cs.conversation.id.clone().into();
+                p.name = (if cs.conversation.kind == proto::types::ConversationKind::Channel { format!("# {t}") } else { t.clone() }).into();
+                p.initials = initials::initials(&t).into();
+                p.color = model::color_of(&cs.conversation.id);
+                p
+            })
+            .collect(),
+    ));
     ui.set_total_unread(c.unread_total() as i32);
     shell::refresh_shell(ui, c, &g);
     // P-03 and 1.4.1: pictures on disk. Profile photos by user id (the one this account chose for a person wins), channel and
@@ -992,6 +1043,32 @@ fn special_mentions(c: &Client, kind: &proto::types::ConversationKind, q: &str) 
         }
     }
     v
+}
+
+/// The pictures of the conversation an attachment belongs to (only those already on this device, oldest first) as the JSON the
+/// photo viewer takes, and the index of `shown` in it. Locked conversations are never listed.
+fn viewer_items(c: &Client, shown: &Attachment, shown_path: &Path) -> (String, i32) {
+    let off = tz_offset();
+    let conv = c.store().cached_files(None, 4000).into_iter().find(|(_, x)| x.id == shown.id).map(|(m, _)| m.conv_id);
+    let mut list: Vec<(i64, serde_json::Value, String)> = vec![];
+    if let Some(conv) = conv.filter(|id| !c.is_hidden(id)) {
+        for (m, a) in c.store().cached_files(Some(&conv), 1000) {
+            if a.removed || !a.content_type.starts_with("image/") || a.content_type.contains("svg") {
+                continue;
+            }
+            if let Some(path) = c.cached_attachment_path(&a) {
+                let item = serde_json::json!({ "path": path.to_string_lossy(), "name": a.name, "mime": a.content_type, "sender": c.display_name(&m.sender_id), "date": format!("{}  {}", datefmt::format_date(m.ts, off), datefmt::list_stamp(m.ts, m.ts, off, true)) });
+                list.push((m.ts, item, a.id.clone()));
+            }
+        }
+    }
+    list.sort_by_key(|x| x.0);
+    list.dedup_by(|a, b| a.2 == b.2);
+    let idx = list.iter().position(|x| x.2 == shown.id);
+    match idx {
+        Some(i) => (serde_json::Value::Array(list.into_iter().map(|x| x.1).collect()).to_string(), i as i32),
+        None => (serde_json::json!([{ "path": shown_path.to_string_lossy(), "name": shown.name, "mime": shown.content_type, "sender": "", "date": "" }]).to_string(), 0),
+    }
 }
 
 fn conv_title_of_id(c: &Client, id: &str) -> String {
@@ -1847,18 +1924,23 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
             }
             if let Some(sharing) = (h2.take_shared)() {
                 if ui.get_signed_in() {
-                    ui.set_share_text(if sharing.0.is_empty() { format!("{} file(s)", sharing.1.len()) } else { sharing.0.clone() }.into());
+                    ui.set_share_text(if sharing.1.is_empty() { "Text".to_string() } else { format!("{} file{}", sharing.1.len(), if sharing.1.len() == 1 { "" } else { "s" }) }.into());
+                    ui.set_share_caption(sharing.0.clone().into());
                     sh.lock().unwrap().shared = Some(sharing);
                     ui.set_menu_msg("share".into());
                     ui.set_menu_kind("share".into());
                 }
             }
             if let Some(items) = (h2.take_picked)() {
-                let (cur, avatar) = {
+                let (cur, avatar, target) = {
                     let mut g = sh.lock().unwrap();
-                    (g.current.clone(), std::mem::take(&mut g.avatar_pick))
+                    (g.current.clone(), std::mem::take(&mut g.avatar_pick), g.avatar_target.take())
                 };
-                if avatar {
+                if let Some(t) = target {
+                    if let Some((p, _)) = items.into_iter().next() {
+                        apply_avatar_target(&ui, &c, t, p);
+                    }
+                } else if avatar {
                     if let Some((p, _)) = items.into_iter().next() {
                         apply_avatar(&ui, &c, p);
                     }
@@ -2454,18 +2536,21 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
         });
         let (wk, c) = (ui.as_weak(), client.clone());
         let shd = osh.clone();
+        let leave = hooks.leave_app.clone();
         ui.on_forward_to(move |id, conv| {
             if id.as_str() == "share" {
-                let Some((text, files)) = shd.lock().unwrap().shared.take() else { return };
-                if !text.trim().is_empty() {
-                    let _ = c.send_text(&conv, text.trim(), SendOptions::default());
-                }
-                if !files.is_empty() {
-                    let _ = c.send_files(&conv, "", &files, SendOptions::default());
-                }
-                if let Some(ui) = wk.upgrade() {
-                    select_conv(&ui, &c, &shd, &conv, true);
-                    toast(&ui, "Shared");
+                // 1.4.1: the content is sent WITHOUT opening the conversation and without touching App Lock: a locked chat stays
+                // locked and hidden (opening it still needs the PIN). On Android the app then hands back to the sharing app.
+                let Some((_, files)) = shd.lock().unwrap().shared.take() else { return };
+                let Some(ui) = wk.upgrade() else { return };
+                let caption = ui.get_share_caption().to_string();
+                ui.set_share_caption("".into());
+                let r = c.share_to(&conv, &caption, &files);
+                toast(&ui, if r.is_ok() { "Sent" } else { "Could not send that" });
+                if r.is_ok() {
+                    if let Some(f) = &leave {
+                        f();
+                    }
                 }
                 return;
             }
@@ -2480,13 +2565,28 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
             });
         });
         let (wk, c, sh) = (ui.as_weak(), client.clone(), osh.clone());
+        let (vm, pv) = (hooks.view_media.clone(), hooks.play_video.clone());
         ui.on_open_file(move |id| {
             let att = sh.lock().unwrap().atts.get(id.as_str()).cloned();
             let Some(a) = att else { return };
-            let (wk, c2) = (wk.clone(), c.clone());
+            let (wk, c2, vm, pv) = (wk.clone(), c.clone(), vm.clone(), pv.clone());
             c.handle().spawn(async move {
                 match c2.download_attachment(&a).await {
-                    Ok(p) => platform::open_path(&p),
+                    Ok(p) => {
+                        // 1.4.1: pictures open in the full-screen viewer, videos in the full-screen player, anything else in the
+                        // system's own app. (Before, Android had no opener at all, so tapping a picture did nothing.)
+                        if a.content_type.starts_with("image/") && vm.is_some() {
+                            let (json, idx) = viewer_items(&c2, &a, &p);
+                            if vm.as_ref().map(|f| f(&json, idx)).unwrap_or(false) {
+                                return;
+                            }
+                        } else if a.content_type.starts_with("video/") && pv.is_some() {
+                            if pv.as_ref().map(|f| f(&p, &a.name)).unwrap_or(false) {
+                                return;
+                            }
+                        }
+                        platform::open_path(&p)
+                    }
                     Err(e) => {
                         let _ = slint::invoke_from_event_loop(move || {
                             if let Some(ui) = wk.upgrade() {
@@ -3409,6 +3509,80 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                     }
                 });
             });
+        });
+        // 1.4.1: the Photo sheet of a conversation (view, private photo for me, channel photo for everyone).
+        let (wk, c, h2, sh2) = (ui.as_weak(), client.clone(), hooks.clone(), osh.clone());
+        let vm = hooks.view_media.clone();
+        ui.on_avatar_action(move |action| {
+            let Some(ui) = wk.upgrade() else { return };
+            let cur = sh2.lock().unwrap().current.clone();
+            let Some(cs) = c.conversations().into_iter().find(|x| x.conversation.id == cur) else { return };
+            let conv = &cs.conversation;
+            let me = c.my_id().unwrap_or_default();
+            let (ov_kind, ov_target) = match conv.kind {
+                proto::types::ConversationKind::Dm => ("user", conv.members.iter().map(|m| m.user_id.clone()).find(|u| *u != me).unwrap_or_default()),
+                proto::types::ConversationKind::SelfNote => ("", String::new()),
+                _ => ("conv", conv.id.clone()),
+            };
+            let pick = |t: AvatarTarget| {
+                if let Some(f) = &h2.pick_media {
+                    sh2.lock().unwrap().avatar_target = Some(t);
+                    f("image", c.server_meta().map(|m| m.max_upload_bytes).unwrap_or(100 * 1024 * 1024));
+                    return;
+                }
+                let (wk, c) = (wk.clone(), c.clone());
+                std::thread::spawn(move || {
+                    if let Some(p) = platform::pick_file() {
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(ui) = wk.upgrade() {
+                                apply_avatar_target(&ui, &c, t, p);
+                            }
+                        });
+                    }
+                });
+            };
+            match action.as_str() {
+                "set-private" if !ov_kind.is_empty() => pick(AvatarTarget::Private(ov_kind.to_string(), ov_target)),
+                "set-public" => pick(AvatarTarget::Public(conv.id.clone())),
+                "clear-private" if !ov_kind.is_empty() => {
+                    let (c2, wk2) = (c.clone(), wk.clone());
+                    let (k, t) = (ov_kind.to_string(), ov_target);
+                    c.handle().spawn(async move {
+                        let ok = c2.clear_avatar_override(&k, &t).await.is_ok();
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(ui) = wk2.upgrade() {
+                                toast(&ui, if ok { "Custom photo removed." } else { "Could not remove it." });
+                            }
+                        });
+                    });
+                }
+                "clear-public" => {
+                    let (c2, wk2, id) = (c.clone(), wk.clone(), conv.id.clone());
+                    c.handle().spawn(async move {
+                        let ok = c2.clear_conversation_avatar(&id).await.is_ok();
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(ui) = wk2.upgrade() {
+                                toast(&ui, if ok { "Channel photo removed." } else { "Could not remove it." });
+                            }
+                        });
+                    });
+                }
+                "view" => {
+                    let p = match conv.kind {
+                        proto::types::ConversationKind::Dm => c.avatar_path(&ov_target),
+                        proto::types::ConversationKind::SelfNote => c.avatar_path(&me),
+                        _ => c.conversation_avatar_path(&conv.id),
+                    };
+                    if let Some(p) = p {
+                        let json = serde_json::json!([{ "path": p.to_string_lossy(), "name": "photo.jpg", "mime": "image/jpeg", "sender": c.conversation_title(&cs), "date": "" }]).to_string();
+                        if !vm.as_ref().map(|f| f(&json, 0)).unwrap_or(false) {
+                            platform::open_path(&p);
+                        }
+                    }
+                }
+                _ => {}
+            }
+            let _ = &ui;
         });
         let (wk, c) = (ui.as_weak(), client.clone());
         ui.on_set_avatar(move |path| {

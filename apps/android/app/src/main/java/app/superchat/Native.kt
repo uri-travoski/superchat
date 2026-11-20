@@ -86,6 +86,26 @@ object Native {
         return "ok"
     }
 
+    /** 1.4.1: the full-screen photo viewer. [items] is a JSON list of {path, name, mime, sender, date}. */
+    @JvmStatic fun viewMedia(items: String, index: Int): Boolean {
+        val a = activity ?: return false
+        a.runOnUiThread { a.startActivity(Intent(a, ViewerActivity::class.java).putExtra("items", items).putExtra("index", index)) }
+        return true
+    }
+
+    /** 1.4.1: after something shared from another app was sent, go back to that app (this task moves behind it). */
+    @JvmStatic fun leaveToSharer() {
+        val a = activity ?: return
+        a.runOnUiThread { a.moveTaskToBack(true) }
+    }
+
+    /** 1.4.1: the full-screen video player. */
+    @JvmStatic fun playVideo(path: String, title: String): Boolean {
+        val a = activity ?: return false
+        a.runOnUiThread { a.startActivity(Intent(a, VideoActivity::class.java).putExtra("path", path).putExtra("title", title)) }
+        return true
+    }
+
     /** Opens a web page in the browser; false when the device has no browser. */
     @JvmStatic fun openUrl(url: String): Boolean {
         val a = activity ?: return false

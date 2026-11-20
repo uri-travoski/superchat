@@ -31,6 +31,10 @@ export component DetailsView {
     in-out property <string> topic-edit;
     in property <bool> archived;
     in-out property <string> name-edit;
+    in property <string> avatar-key;
+    in property <string> avatar-initials;
+    in property <color> avatar-tint: #888888;
+    callback avatar-tap;
     callback rename(string);
     callback archive-toggle;
     callback open-admin;
@@ -60,6 +64,8 @@ export component DetailsView {
                 VerticalLayout {
                     padding: 16px;
                     spacing: 6px;
+                    HorizontalLayout { alignment: center; Rectangle { width: 72px * min(Theme.scale, 1.2); height: self.width; Avatar { uid: root.avatar-key; initials: root.avatar-initials; tint: root.avatar-tint; size: parent.width; } TouchArea { clicked => { root.avatar-tap(); } } } }
+                    HorizontalLayout { alignment: center; GhostButton { text: root.kind == "self" ? "Change profile photo" : "Photo"; clicked => { root.avatar-tap(); } } }
                     Text { text: root.kind == "channel" ? "Channel" : (root.kind == "group" ? "Group conversation" : (root.kind == "self" ? "Notes to self" : "Direct message")); font-size: Theme.fs-small; color: Theme.muted; font-weight: 700; }
                     Text { text: (root.kind == "channel" ? "# " : "") + root.title; font-size: Theme.fs-title; font-weight: 700; color: Theme.text; wrap: word-wrap; }
                 }

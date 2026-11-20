@@ -813,9 +813,28 @@ impl Client {
 
     /// 1.4.1: sets the picture everyone sees for a channel or group DM (owners and admins). Pass a pre-cropped image file.
     pub async fn set_conversation_avatar(&self, conv_id: &str, path: &Path) -> Result<ConversationSummary> {
-        let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "avatar.png".into());
-        let up = self.upload_path(path, &name, Some("avatar"), None).await?;
+        let (path, name) = self.square_for_upload(path);
+        let up = self.upload_path(&path, &name, Some("avatar"), None).await?;
         self.put_conv_avatar(conv_id, &up.attachment.id).await
+    }
+
+    /// 1.4.1: pictures are cut to a centred square (at most 512 px) before they are uploaded as a profile, channel or private
+    /// picture. A file that cannot be decoded is uploaded as it is (the server decides).
+    fn square_for_upload(&self, path: &Path) -> (PathBuf, String) {
+        let orig_name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "avatar.png".into());
+        let Ok(img) = image::open(path) else { return (path.to_path_buf(), orig_name) };
+        let (w, h) = (img.width(), img.height());
+        if w == 0 || h == 0 {
+            return (path.to_path_buf(), orig_name);
+        }
+        let side = w.min(h);
+        let sq = img.crop_imm((w - side) / 2, (h - side) / 2, side, side);
+        let sq = if side > 512 { sq.resize_exact(512, 512, image::imageops::FilterType::Triangle) } else { sq };
+        let out = self.inner.cfg.data_dir.join(format!("avatar-upload-{}.jpg", std::process::id()));
+        match sq.to_rgb8().save_with_format(&out, image::ImageFormat::Jpeg) {
+            Ok(()) => (out, "avatar.jpg".into()),
+            Err(_) => (path.to_path_buf(), orig_name),
+        }
     }
 
     /// 1.4.1: removes the picture everyone sees for a channel or group DM.
@@ -834,8 +853,8 @@ impl Client {
     /// 1.4.1: a private picture for another user (`kind` "user") or a conversation (`kind` "conv"). Only this account sees it;
     /// it is stored on the server for this account and synced to its other devices.
     pub async fn set_avatar_override(&self, kind: &str, target: &str, path: &Path) -> Result<()> {
-        let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "avatar.png".into());
-        let up = self.upload_path(path, &name, Some("avatar_private"), None).await?;
+        let (path, name) = self.square_for_upload(path);
+        let up = self.upload_path(&path, &name, Some("avatar_private"), None).await?;
         let o: AvatarOverride = self.api()?.put_json(&format!("/me/avatar-overrides/{kind}/{target}"), &SetAvatarOverride { attachment: up.attachment.id }).await?;
         let mut all = self.inner.store.avatar_overrides();
         all.retain(|x| !(x.kind == kind && x.target == target));
@@ -863,8 +882,8 @@ impl Client {
 
     /// P-03: upload and set a profile photo. Pass pre-cropped image bytes' file path.
     pub async fn set_avatar(&self, path: &Path) -> Result<Me> {
-        let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "avatar.png".into());
-        let up = self.upload_path(path, &name, Some("avatar"), None).await?;
+        let (path, name) = self.square_for_upload(path);
+        let up = self.upload_path(&path, &name, Some("avatar"), None).await?;
         let me = self.update_profile(UpdateMeRequest { avatar: Some(up.attachment.id), ..Default::default() }).await?;
         let _ = self.inner.store.put_users(std::slice::from_ref(&me.user));
         self.inner.sync_avatars().await;

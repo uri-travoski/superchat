@@ -112,6 +112,9 @@ export component AppWindow inherits Window {
     in-out property <bool> can-record: false;
     in-out property <bool> close-tray: true;
     in-out property <string> share-text;
+    // 1.4.1: optional caption sent with what is shared, and every conversation (locked ones included, no lock glyph) to pick from.
+    in-out property <string> share-caption;
+    in-out property <[PersonItem]> share-list;
     in-out property <int> unread-tray: 0;
     in-out property <bool> can-curate: false;
     in-out property <int> scheduled-count: 0;
@@ -163,6 +166,14 @@ export component AppWindow inherits Window {
     in-out property <string> me-initials;
     in-out property <string> me-id;
     in-out property <string> current-user-id;
+    // 1.4.1 pictures: the key of the picture shown for this conversation (user id, or "conv:<id>"), whether one is shown, whether it
+    // is this account's private choice, whether a real channel/group picture exists, and whether this account may set it for everyone.
+    in-out property <string> current-avatar-key;
+    in-out property <bool> current-has-pic: false;
+    in-out property <bool> current-has-override: false;
+    in-out property <bool> current-has-public: false;
+    in-out property <bool> can-set-pic: false;
+    callback avatar-action(string);
     in-out property <color> me-color: #888888;
     in-out property <string> presence-pref: "auto";
     in-out property <string> edit-name;
@@ -1036,6 +1047,8 @@ export component AppWindow inherits Window {
                             if root.current-conv == "": EmptyState { vertical-stretch: 1; icon: "chat"; title: "Pick a conversation"; hint: "Choose a channel or direct message from the sidebar, or start a new message."; action: "New message"; act => { root.new-message(); } }
                             // Files / Pins / Bookmarks / Home tabs (desktop).
                             if root.wide && root.current-conv != "" && root.tab != 0: DetailsView {
+                                avatar-key: root.current-avatar-key; avatar-initials: root.current-initials; avatar-tint: root.current-color;
+                                avatar-tap => { root.menu-kind = "avatar-photo"; }
                                 vertical-stretch: 1;
                                 page: root.tab == 1 ? "files" : (root.tab == 2 ? "pins" : (root.tab == 4 ? "bookmarks" : "home"));
                                 files: root.files; pins: root.pins; bookmarks: root.bookmarks; home: root.home;
@@ -1813,7 +1826,8 @@ export component AppWindow inherits Window {
                                     Card {
                                         VerticalLayout {
                                             padding: 18px; spacing: 4px;
-                                            HorizontalLayout { alignment: center; Avatar { uid: root.current-user-id; initials: root.current-initials; tint: root.current-color; size: 64px * min(Theme.scale, 1.2); } }
+                                            HorizontalLayout { alignment: center; Rectangle { width: 72px * min(Theme.scale, 1.2); height: self.width; Avatar { uid: root.current-avatar-key; initials: root.current-initials; tint: root.current-color; size: parent.width; } TouchArea { clicked => { root.menu-kind = "avatar-photo"; } } } }
+                                            HorizontalLayout { alignment: center; TextButton { text: root.current-kind == "self" ? "Change profile photo" : "Photo"; clicked => { root.menu-kind = "avatar-photo"; } } }
                                             Text { text: (root.current-kind == "channel" ? "# " : "") + root.current-title; font-size: Theme.fs-large; font-weight: 700; color: Theme.text; horizontal-alignment: center; wrap: word-wrap; }
                                             Text { text: root.current-sub; font-size: Theme.fs; color: Theme.muted; horizontal-alignment: center; wrap: word-wrap; }
                                         }
@@ -1838,6 +1852,8 @@ export component AppWindow inherits Window {
                                 }
                             }
                             if root.info-page != "": DetailsView {
+                                avatar-key: root.current-avatar-key; avatar-initials: root.current-initials; avatar-tint: root.current-color;
+                                avatar-tap => { root.menu-kind = "avatar-photo"; }
                                 vertical-stretch: 1;
                                 phone: true;
                                 page: root.info-page;
@@ -1992,6 +2008,7 @@ export component AppWindow inherits Window {
                                     can-manage: root.can-manage; can-curate: root.can-curate; is-admin: root.is-admin;
                                     is-channel: root.current-kind == "channel" || root.current-kind == "group";
                                     muted: root.current-muted; notify-text: root.current-notify; lock-set: root.lock-set; locked: root.is-conv-locked(root.current-conv); favourite: root.current-fav;
+                                    avatar-key: root.current-avatar-key; avatar-initials: root.current-initials; avatar-tint: root.current-color;
                                     topic-edit <=> root.topic-edit;
                                 name-edit <=> root.name-edit;
                                 archived: !root.can-write;
@@ -2014,6 +2031,7 @@ export component AppWindow inherits Window {
                                     mark-unread => { root.mark-unread(root.current-conv); root.info-open = false; }
                                     home-action(k, id) => { root.home-action(k, id); }
                                     open-members-of(x) => { root.open-details("members"); }
+                                    avatar-tap => { root.menu-kind = "avatar-photo"; }
                                 }
                             }
                         }
@@ -2169,14 +2187,18 @@ export component AppWindow inherits Window {
                 if root.menu-kind == "forward" || root.menu-kind == "share": BottomSheet {
                     title: root.menu-kind == "forward" ? "Forward to" : "Share to"; wide: root.wide;
                     dismiss => { root.menu-kind = ""; }
-                    if root.menu-kind == "share" && root.share-text != "": Text { x: 20px; text: root.share-text; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; overflow: elide; }
-                    for c in root.conversations: Rectangle {
+                    if root.menu-kind == "share" && root.share-text != "": Text { x: 20px; width: parent.width - 40px; text: root.share-text; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; overflow: elide; }
+                    if root.menu-kind == "share": Rectangle {
+                        height: max(52px, 42px * Theme.scale);
+                        LineEdit { x: 16px; width: parent.width - 32px; text <=> root.share-caption; placeholder-text: "Add a message (optional)"; font-size: Theme.fs; }
+                    }
+                    for c in root.share-list: Rectangle {
                         height: 56px * Theme.scale;
                         background: fw.pressed ? Theme.bubble-other : (fw.has-hover ? Theme.row-hover : transparent);
                         HorizontalLayout {
                             padding-left: 20px; spacing: 14px;
                             Avatar { initials: c.initials; tint: c.color; size: 36px * Theme.scale; y: (parent.height - self.height) / 2; }
-                            Text { text: c.title; font-size: Theme.fs; vertical-alignment: center; overflow: elide; color: Theme.text; }
+                            Text { text: c.name; font-size: Theme.fs; vertical-alignment: center; overflow: elide; color: Theme.text; }
                         }
                         fw := TouchArea { clicked => { root.forward-to(root.menu-msg, c.id); root.menu-kind = ""; } }
                     }
@@ -2292,6 +2314,18 @@ export component AppWindow inherits Window {
                     SheetRow { icon: "bell-off"; text: "Do not disturb (pause notifications)"; checked: root.presence-pref == "dnd"; clicked => { root.set-presence("dnd"); root.menu-kind = ""; } }
                 }
                 // ---- App Lock: add a conversation to the locked list ----
+                // ---- picture of a person, group or channel (1.4.1) ----
+                if root.menu-kind == "avatar-photo": BottomSheet {
+                    title: "Photo"; wide: root.wide;
+                    dismiss => { root.menu-kind = ""; }
+                    if root.current-kind == "self": SheetRow { icon: "camera"; text: "Change my profile photo"; clicked => { root.menu-kind = ""; root.choose-avatar(); } }
+                    if root.current-has-pic: SheetRow { icon: "image"; text: "View photo"; clicked => { root.menu-kind = ""; root.avatar-action("view"); } }
+                    if root.current-kind != "self": SheetRow { icon: "camera"; text: "Set custom photo for me"; clicked => { root.menu-kind = ""; root.avatar-action("set-private"); } }
+                    if root.current-has-override: SheetRow { icon: "close"; text: "Remove custom photo"; clicked => { root.menu-kind = ""; root.avatar-action("clear-private"); } }
+                    if root.can-set-pic: SheetRow { icon: "users"; text: "Set channel photo for everyone"; clicked => { root.menu-kind = ""; root.avatar-action("set-public"); } }
+                    if root.can-set-pic && root.current-has-public: SheetRow { icon: "trash"; text: "Remove channel photo for everyone"; danger: true; clicked => { root.menu-kind = ""; root.avatar-action("clear-public"); } }
+                    Text { x: 20px; width: parent.width - 40px; text: "A custom photo is private: only you see it, on all your devices."; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
+                }
                 if root.menu-kind == "pick-lock-timeout": BottomSheet {
                     title: "Auto-lock"; wide: root.wide;
                     dismiss => { root.menu-kind = ""; }

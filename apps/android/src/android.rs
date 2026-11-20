@@ -254,6 +254,24 @@ fn android_main(app: slint::android::AndroidApp) {
             })
             .unwrap_or(false)
         })),
+        view_media: Some(Arc::new(|json, index| {
+            with_env(|env, c| {
+                let j = env.new_string(json).ok()?;
+                env.call_static_method(c, "viewMedia", "(Ljava/lang/String;I)Z", &[JValue::Object(&j), JValue::Int(index)]).ok()?.z().ok()
+            })
+            .unwrap_or(false)
+        })),
+        leave_app: Some(Arc::new(|| {
+            let _ = with_env(|env, c| env.call_static_method(c, "leaveToSharer", "()V", &[]).ok().map(|_| ()));
+        })),
+        play_video: Some(Arc::new(|path, title| {
+            with_env(|env, c| {
+                let p = env.new_string(path.to_string_lossy()).ok()?;
+                let t = env.new_string(title).ok()?;
+                env.call_static_method(c, "playVideo", "(Ljava/lang/String;Ljava/lang/String;)Z", &[JValue::Object(&p), JValue::Object(&t)]).ok()?.z().ok()
+            })
+            .unwrap_or(false)
+        })),
         version_code: Some(Box::new(|| match VERSION_CODE.load(std::sync::atomic::Ordering::Relaxed) {
             0 => None,
             c => Some(c),

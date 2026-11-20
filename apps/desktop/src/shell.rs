@@ -99,6 +99,21 @@ pub fn refresh_details(ui: &AppWindow, c: &Client, cs: &proto::types::Conversati
             })
             .collect(),
     ));
+    // Pictures (1.4.1).
+    let (key, ov_kind, ov_target) = match conv.kind {
+        ConversationKind::Dm => {
+            let other = conv.members.iter().map(|m| m.user_id.clone()).find(|u| u != me_id).unwrap_or_else(|| me_id.to_string());
+            (other.clone(), "user", other)
+        }
+        ConversationKind::SelfNote => (me_id.to_string(), "", String::new()),
+        _ => (format!("conv:{}", conv.id), "conv", conv.id.clone()),
+    };
+    let shown = if ov_kind == "conv" { c.conversation_avatar_path(&conv.id) } else { c.avatar_path(&key) };
+    ui.set_current_avatar_key(key.into());
+    ui.set_current_has_pic(shown.is_some());
+    ui.set_current_has_override(!ov_kind.is_empty() && c.has_avatar_override(ov_kind, &ov_target));
+    ui.set_current_has_public(conv.avatar.as_deref().map(|a| !a.is_empty()).unwrap_or(false));
+    ui.set_can_set_pic(matches!(conv.kind, ConversationKind::Channel | ConversationKind::GroupDm) && (ui.get_is_admin() || c.can_manage_members(&conv.id)));
     if !ui.get_info_open() {
         ui.set_topic_edit(conv.topic.clone().unwrap_or_default().into());
         ui.set_name_edit(c.conversation_title(cs).into());

@@ -40,6 +40,9 @@ pub enum EventData {
     /// Favourite / section / mute / notification level changed on another device.
     PrefUpdate { pref: ConvPref },
     SectionsUpdate { sections: Vec<Section> },
+    /// 1.4.1: a private picture for another user or a conversation was set (`attachment` = Some) or removed (None).
+    /// Sent only to the person who chose it.
+    AvatarOverrideUpdate { kind: String, target: String, attachment: Option<String> },
     DraftUpdate { draft: DraftItem },
     /// A scheduled message was created, sent, cancelled or failed (SV-10).
     ScheduledUpdate { item: ScheduledMessage },
@@ -74,6 +77,7 @@ impl EventData {
             EventData::GroupsUpdate { .. } => "groups_update",
             EventData::PrefUpdate { .. } => "pref_update",
             EventData::SectionsUpdate { .. } => "sections_update",
+            EventData::AvatarOverrideUpdate { .. } => "avatar_override_update",
             EventData::DraftUpdate { .. } => "draft_update",
             EventData::ScheduledUpdate { .. } => "scheduled_update",
             EventData::SavedUpdate { .. } => "saved_update",

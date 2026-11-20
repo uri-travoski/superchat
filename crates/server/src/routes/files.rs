@@ -60,9 +60,11 @@ pub async fn upload_stream(
     }
     let purpose = match q.purpose.as_deref() {
         Some("avatar") => "avatar",
+        Some("avatar_private") => "avatar_private",
         _ => "file",
     };
-    let max = if purpose == "avatar" { 8 * 1024 * 1024 } else { st.cfg.max_upload_bytes };
+    let is_avatar = purpose.starts_with("avatar");
+    let max = if is_avatar { 8 * 1024 * 1024 } else { st.cfg.max_upload_bytes };
     if let Some(len) = headers.get(header::CONTENT_LENGTH).and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok()) {
         if len > max {
             return Err(AppError::new(ErrorCode::FileTooLarge, format!("file exceeds the {} MB limit", max / 1024 / 1024)));
@@ -75,7 +77,7 @@ pub async fn upload_stream(
         .map(|s| s.split(';').next().unwrap_or("").trim().to_lowercase())
         .filter(|s| !s.is_empty() && s != "application/x-www-form-urlencoded" && s != "application/octet-stream")
         .unwrap_or_else(|| mime_guess::from_path(&name).first_or_octet_stream().to_string());
-    if purpose == "avatar" && !ct.starts_with("image/") {
+    if is_avatar && !ct.starts_with("image/") {
         return Err(AppError::validation("profile photos must be images"));
     }
     let tmp_dir = st.cfg.data_dir.join("tmp");
@@ -248,6 +250,10 @@ pub fn att_row(conn: &Connection, id: &str) -> AppResult<AttRow> {
 /// Members of a conversation with a visible message that references the file, the uploader
 /// (before attaching), anyone for avatars, and admins.
 pub fn can_access(conn: &Connection, id: &str, row: &AttRow, user_id: &str, admin: bool) -> AppResult<bool> {
+    // 1.4.1: a private picture (chosen by one person for another user or a chat) is readable only by the person who chose it.
+    if row.purpose == "avatar_private" {
+        return Ok(row.uploader == user_id);
+    }
     if admin || row.purpose == "avatar" {
         return Ok(true);
     }

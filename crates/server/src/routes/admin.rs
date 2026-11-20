@@ -461,6 +461,7 @@ pub async fn delete_conversation(State(st): State<St>, Admin(_a): Admin, Path(id
             for t in ["pins", "bookmarks", "thread_follows", "conv_prefs", "drafts", "scheduled", "saved_items", "webhooks_in", "webhooks_out"] {
                 tx.execute(&format!("DELETE FROM {t} WHERE conv_id=?1"), [&id])?;
             }
+            tx.execute("DELETE FROM avatar_overrides WHERE kind='conv' AND target=?1", [&id])?;
             tx.execute("DELETE FROM conversations WHERE id=?1", [&id])?;
             let mut em = Emitter::new();
             for m in members {

@@ -131,6 +131,9 @@ pub struct Conversation {
     pub last_seq: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_message_ts: Option<Ts>,
+    /// 1.4.1: the picture of a channel or group DM that everyone sees (an attachment id with purpose `avatar`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<String>,
 }
 
 /// A conversation plus the calling user's own state in it.
@@ -352,6 +355,9 @@ pub struct Bootstrap {
     /// Per-conversation favourites, sections, mute and notification level (NV-01..NV-07, N-03).
     #[serde(default)]
     pub prefs: Vec<ConvPref>,
+    /// 1.4.1: the caller's private pictures for other users and conversations.
+    #[serde(default)]
+    pub avatar_overrides: Vec<AvatarOverride>,
     #[serde(default)]
     pub sections: Vec<Section>,
     /// User groups (`@design-team`), M-18.
@@ -587,6 +593,29 @@ pub struct UpdateConversation {
     pub name: Option<String>,
     pub topic: Option<String>,
     pub archived: Option<bool>,
+}
+
+/// 1.4.1: `PUT /conversations/{id}/avatar`. Owners and admins set the picture everyone in the channel or group sees.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SetConvAvatar {
+    /// Attachment id of an uploaded image (`purpose=avatar`); an empty string removes the picture.
+    pub avatar: String,
+}
+
+/// 1.4.1: a private picture the caller chose for another user (`kind` = "user") or a conversation (`kind` = "conv").
+/// Only the caller ever receives it; it wins over the person's or channel's own picture on the caller's devices.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct AvatarOverride {
+    pub kind: String,
+    pub target: String,
+    /// Attachment id (purpose `avatar_private`).
+    pub attachment: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SetAvatarOverride {
+    /// Attachment id of an uploaded image (`purpose=avatar_private`).
+    pub attachment: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]

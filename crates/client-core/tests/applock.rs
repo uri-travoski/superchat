@@ -29,9 +29,9 @@ async fn locked_chats_vanish_from_lists_search_counts_threads_and_drafts() {
     let now = wall_ms();
     alice.applock().set_pin("482915", "482915", now).unwrap();
     alice.applock().set_conv_locked(&secret, true).unwrap();
-    // Unlocked right after setting up: still visible.
-    assert!(alice.conversations().iter().any(|c| c.conversation.id == secret));
-    assert!(alice.is_conv_locked(&secret) && !alice.is_hidden(&secret));
+    // 1.4.1: marking hides the chat at once, although the app is unlocked (it comes back at the next unlock).
+    assert!(alice.conversations().iter().all(|c| c.conversation.id != secret));
+    assert!(alice.is_conv_locked(&secret) && alice.is_hidden(&secret) && !alice.applock().is_engaged());
 
     alice.applock().lock();
     let ids: Vec<String> = alice.conversations().into_iter().map(|c| c.conversation.id).collect();

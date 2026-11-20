@@ -94,6 +94,8 @@ pub fn build_user_doc(conn: &Connection, user_id: &str) -> AppResult<Value> {
         "conversations": convs,
         "labels": crate::saved::load_labels(conn, user_id)?,
         "saved": saved_rows(conn, user_id)?,
+        // 1.4.1: the private pictures this person chose for other users and conversations (ids of their own uploads).
+        "avatar_overrides": crate::routes::avatars::load_overrides(conn, user_id)?,
         "messages": messages,
         "attachments": atts,
     }))
@@ -343,6 +345,7 @@ pub async fn delete_user(st: &St, user_id: &str) -> AppResult<ClearHistoryRespon
                 "DELETE FROM push_registrations WHERE user_id=?1",
                 "DELETE FROM drafts WHERE user_id=?1",
                 "DELETE FROM conv_prefs WHERE user_id=?1",
+                "DELETE FROM avatar_overrides WHERE viewer_id=?1 OR (kind='user' AND target=?1)",
                 "DELETE FROM sections WHERE user_id=?1",
                 "DELETE FROM thread_follows WHERE user_id=?1",
                 "DELETE FROM saved_items WHERE user_id=?1",

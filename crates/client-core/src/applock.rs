@@ -3,8 +3,11 @@
 //! * The PIN never leaves the device. Only a salted Argon2id hash is stored, inside the platform secret store
 //!   (libsecret / Credential Manager / Android Keystore) together with the ids of the locked conversations and the
 //!   wrong-attempt counter, so none of it appears in plain files.
-//! * Locked is the default state: with a PIN set the app starts locked, re-locks after five minutes without activity,
-//!   after five minutes in the background, and on request.
+//! * Locked is the default state: with a PIN set the app starts locked, re-locks after the chosen time without activity
+//!   (immediately on leaving the app, 1, 5 or 15 minutes; 5 by default), after the same time in the background, and on request.
+//! * 1.4.1: marking a conversation as locked hides it at once, even while the app is unlocked (it stays hidden until the next
+//!   unlock); unlocking, locking and marking all take effect immediately for every list, search and count because those are
+//!   computed from this state on every read, never cached.
 //! * Wrong PINs are rate limited: five in a row block entry for 30 s, every further wrong PIN doubles the wait (up to
 //!   one hour). The counter survives restarts.
 //! * Honest limit: this hides chats in the app, it does not encrypt the local cache. Someone with the unlocked device and
@@ -21,8 +24,12 @@ use std::sync::{Arc, Mutex};
 
 pub const SECRET_KEY: &str = "superchat.applock";
 pub const PIN_LEN: usize = 6;
-/// Idle time (and time in the background) after which the app locks again.
+/// Default idle time (and time in the background) after which the app locks again.
 pub const IDLE_TIMEOUT_MS: i64 = 5 * 60 * 1000;
+/// The choices of the auto-lock timer, in minutes (0 = lock as soon as the app is left).
+pub const TIMEOUT_CHOICES_MIN: [u32; 4] = [0, 1, 5, 15];
+/// While the app is open and untouched, "immediately" still locks after this long.
+const IMMEDIATE_IDLE_MS: i64 = 60 * 1000;
 /// Wrong PINs in a row before the first delay.
 pub const FREE_ATTEMPTS: u32 = 5;
 pub const FIRST_DELAY_SECS: u64 = 30;
@@ -75,12 +82,23 @@ struct Record {
     fails: u32,
     blocked_until_ms: i64,
     locked: BTreeSet<String>,
+    /// Auto-lock timer in minutes (0 = when the app is left). Missing in records written before 1.4.1: 5.
+    #[serde(default = "default_timeout_min")]
+    timeout_min: u32,
+}
+
+fn default_timeout_min() -> u32 {
+    5
 }
 
 #[derive(Default)]
 struct State {
     rec: Option<Record>,
     engaged: bool,
+    /// Conversations marked as locked while the app was unlocked: hidden until the next unlock.
+    hidden_now: BTreeSet<String>,
+    /// Bumped by every change that can alter what is visible; lets a view know it must read again.
+    generation: u64,
     last_activity_ms: i64,
     background_since_ms: Option<i64>,
 }
@@ -144,7 +162,7 @@ impl AppLock {
         let rec: Option<Record> = store.get(SECRET_KEY).ok().flatten().and_then(|s| serde_json::from_str(&s).ok());
         // Locked is the default: a PIN means the app starts locked.
         let engaged = rec.is_some();
-        AppLock { state: Mutex::new(State { rec, engaged, last_activity_ms: wall_ms(), background_since_ms: None }), store, cost }
+        AppLock { state: Mutex::new(State { rec, engaged, hidden_now: BTreeSet::new(), generation: 0, last_activity_ms: wall_ms(), background_since_ms: None }), store, cost }
     }
 
     fn lock_state(&self) -> std::sync::MutexGuard<'_, State> {
@@ -166,6 +184,11 @@ impl AppLock {
     pub fn is_engaged(&self) -> bool {
         let s = self.lock_state();
         s.rec.is_some() && s.engaged
+    }
+
+    /// Changes whenever the lock state or the set of locked conversations changes (a cheap "has anything changed" check).
+    pub fn generation(&self) -> u64 {
+        self.lock_state().generation
     }
 
     /// Seconds until PIN entry is allowed again (0 = now).
@@ -193,6 +216,7 @@ impl AppLock {
         }
         s.rec = Some(self.new_record(pin, BTreeSet::new()).map_err(|_| PinError::Invalid)?);
         s.engaged = false;
+        s.generation += 1;
         s.last_activity_ms = now_ms;
         self.save(&s).map_err(|_| PinError::Invalid)?;
         Ok(())
@@ -203,7 +227,7 @@ impl AppLock {
         let mut salt = [0u8; 16];
         rand::thread_rng().fill_bytes(&mut salt);
         let hash = derive(pin, &salt, self.cost.m_kib, self.cost.t)?;
-        Ok(Record { salt: hex::encode(salt), hash: hex::encode(hash), m_kib: self.cost.m_kib, t: self.cost.t, fails: 0, blocked_until_ms: 0, locked })
+        Ok(Record { salt: hex::encode(salt), hash: hex::encode(hash), m_kib: self.cost.m_kib, t: self.cost.t, fails: 0, blocked_until_ms: 0, locked, timeout_min: default_timeout_min() })
     }
 
     /// Checks `pin` against the stored hash with rate limiting. Counts failures and persists the counter.
@@ -237,6 +261,8 @@ impl AppLock {
         let r = self.check(&mut s, pin, now_ms);
         if r == Unlock::Ok {
             s.engaged = false;
+            s.hidden_now.clear();
+            s.generation += 1;
             s.last_activity_ms = now_ms;
             s.background_since_ms = None;
         }
@@ -258,8 +284,10 @@ impl AppLock {
             Unlock::Blocked(n) => return Err(PinError::Blocked(n)),
             Unlock::NotSet => return Err(PinError::NotSet),
         }
-        let locked = s.rec.as_ref().map(|r| r.locked.clone()).unwrap_or_default();
-        s.rec = Some(self.new_record(new, locked).map_err(|_| PinError::Invalid)?);
+        let (locked, timeout) = s.rec.as_ref().map(|r| (r.locked.clone(), r.timeout_min)).unwrap_or_default();
+        let mut rec = self.new_record(new, locked).map_err(|_| PinError::Invalid)?;
+        rec.timeout_min = timeout;
+        s.rec = Some(rec);
         self.save(&s).map_err(|_| PinError::Invalid)?;
         Ok(())
     }
@@ -275,6 +303,8 @@ impl AppLock {
         }
         s.rec = None;
         s.engaged = false;
+        s.hidden_now.clear();
+        s.generation += 1;
         self.save(&s).map_err(|_| PinError::Invalid)?;
         Ok(())
     }
@@ -284,6 +314,8 @@ impl AppLock {
         let mut s = self.lock_state();
         s.rec = None;
         s.engaged = false;
+        s.hidden_now.clear();
+        s.generation += 1;
         let _ = self.save(&s);
     }
 
@@ -292,9 +324,35 @@ impl AppLock {
     /// Locks now (the padlock was tapped).
     pub fn lock(&self) {
         let mut s = self.lock_state();
-        if s.rec.is_some() {
+        if s.rec.is_some() && !s.engaged {
             s.engaged = true;
+            s.hidden_now.clear();
+            s.generation += 1;
         }
+    }
+
+    /// The idle timeout in milliseconds for the chosen auto-lock timer.
+    fn timeout_ms(s: &State) -> i64 {
+        match s.rec.as_ref().map(|r| r.timeout_min).unwrap_or(5) {
+            0 => IMMEDIATE_IDLE_MS,
+            m => m as i64 * 60 * 1000,
+        }
+    }
+
+    /// The auto-lock timer in minutes (0 = as soon as the app is left).
+    pub fn timeout_min(&self) -> u32 {
+        self.lock_state().rec.as_ref().map(|r| r.timeout_min).unwrap_or(5)
+    }
+
+    /// Chooses the auto-lock timer: one of `TIMEOUT_CHOICES_MIN`.
+    pub fn set_timeout_min(&self, minutes: u32) -> std::result::Result<(), PinError> {
+        if !TIMEOUT_CHOICES_MIN.contains(&minutes) {
+            return Err(PinError::Invalid);
+        }
+        let mut s = self.lock_state();
+        let Some(rec) = s.rec.as_mut() else { return Err(PinError::NotSet) };
+        rec.timeout_min = minutes;
+        self.save(&s).map_err(|_| PinError::Invalid)
     }
 
     /// Any tap or key press while unlocked postpones the idle lock.
@@ -308,8 +366,10 @@ impl AppLock {
     /// Locks when nothing happened for the idle timeout. Returns true when this call locked the app.
     pub fn check_idle(&self, now_ms: i64) -> bool {
         let mut s = self.lock_state();
-        if s.rec.is_some() && !s.engaged && now_ms - s.last_activity_ms >= IDLE_TIMEOUT_MS {
+        if s.rec.is_some() && !s.engaged && now_ms - s.last_activity_ms >= Self::timeout_ms(&s) {
             s.engaged = true;
+            s.hidden_now.clear();
+            s.generation += 1;
             return true;
         }
         false
@@ -326,10 +386,16 @@ impl AppLock {
             return false;
         }
         let since = s.background_since_ms.take();
-        let away_long = since.map(|t| now_ms - t >= IDLE_TIMEOUT_MS).unwrap_or(false);
-        let idle_long = now_ms - s.last_activity_ms >= IDLE_TIMEOUT_MS;
+        let limit = match s.rec.as_ref().map(|r| r.timeout_min).unwrap_or(5) {
+            0 => 0,
+            m => m as i64 * 60 * 1000,
+        };
+        let away_long = since.map(|t| now_ms - t >= limit).unwrap_or(false);
+        let idle_long = now_ms - s.last_activity_ms >= Self::timeout_ms(&s);
         if s.rec.is_some() && !s.engaged && (away_long || idle_long) {
             s.engaged = true;
+            s.hidden_now.clear();
+            s.generation += 1;
             return true;
         }
         if !s.engaged {
@@ -343,12 +409,20 @@ impl AppLock {
     /// Marks or unmarks a conversation. Only possible while a PIN is set.
     pub fn set_conv_locked(&self, conv_id: &str, locked: bool) -> std::result::Result<(), PinError> {
         let mut s = self.lock_state();
+        let engaged = s.engaged;
         let Some(rec) = s.rec.as_mut() else { return Err(PinError::NotSet) };
         if locked {
             rec.locked.insert(conv_id.to_string());
         } else {
             rec.locked.remove(conv_id);
         }
+        // 1.4.1: a chat marked while the app is unlocked disappears at once and comes back at the next unlock.
+        if locked && !engaged {
+            s.hidden_now.insert(conv_id.to_string());
+        } else if !locked {
+            s.hidden_now.remove(conv_id);
+        }
+        s.generation += 1;
         self.save(&s).map_err(|_| PinError::Invalid)
     }
 
@@ -360,7 +434,13 @@ impl AppLock {
     /// Must be left out of every list, search and count right now.
     pub fn is_hidden(&self, conv_id: &str) -> bool {
         let s = self.lock_state();
-        s.engaged && s.rec.as_ref().map(|r| r.locked.contains(conv_id)).unwrap_or(false)
+        (s.engaged && s.rec.as_ref().map(|r| r.locked.contains(conv_id)).unwrap_or(false)) || s.hidden_now.contains(conv_id)
+    }
+
+    /// Marked as locked but visible right now (the app is unlocked): the lists show a small lock next to the name.
+    pub fn is_visible_locked(&self, conv_id: &str) -> bool {
+        let s = self.lock_state();
+        !s.engaged && !s.hidden_now.contains(conv_id) && s.rec.as_ref().map(|r| r.locked.contains(conv_id)).unwrap_or(false)
     }
 
     pub fn locked_ids(&self) -> Vec<String> {
@@ -415,7 +495,7 @@ mod tests {
         let (l, d) = lock();
         l.set_pin("111222", "111222", T0).unwrap();
         l.set_conv_locked("c1", true).unwrap();
-        assert!(!l.is_hidden("c1"), "unlocked right after setting the PIN");
+        assert!(l.is_hidden("c1"), "1.4.1: a chat marked as locked disappears at once");
         let l2 = reopen(&d);
         assert!(l2.is_engaged(), "the app starts locked");
         assert!(l2.is_hidden("c1") && !l2.is_hidden("other"));
@@ -503,6 +583,7 @@ mod tests {
         l.lock();
         assert!(l.is_hidden("c1"));
         assert_eq!(l.unlock("111111", T0), Unlock::Ok);
+        assert!(!l.is_hidden("c1") && l.is_visible_locked("c1"), "unlocking shows it again, marked as locked");
         l.set_conv_locked("c1", false).unwrap();
         l.lock();
         assert!(!l.is_hidden("c1"));
@@ -525,5 +606,66 @@ mod tests {
         l2.remove_pin("222222", T0).unwrap();
         assert!(!l2.is_set() && !l2.is_conv_locked("c1"), "removing the PIN frees every chat");
         assert!(!reopen(&d).is_set());
+    }
+
+    #[test]
+    fn marking_a_chat_while_unlocked_hides_it_until_the_next_unlock() {
+        let (l, _d) = lock();
+        l.set_pin("111111", "111111", T0).unwrap();
+        let g0 = l.generation();
+        l.set_conv_locked("c1", true).unwrap();
+        l.set_conv_locked("c2", true).unwrap();
+        assert!(l.generation() > g0, "the view is told to read again");
+        assert!(l.is_hidden("c1") && l.is_hidden("c2") && !l.is_engaged(), "hidden although the app is unlocked");
+        assert!(!l.is_visible_locked("c1"));
+        l.lock();
+        assert!(l.is_hidden("c1") && l.is_hidden("c2"));
+        assert_eq!(l.unlock("111111", T0), Unlock::Ok);
+        assert!(!l.is_hidden("c1") && !l.is_hidden("c2"), "both are back after the unlock");
+        assert!(l.is_visible_locked("c1") && l.is_visible_locked("c2"));
+        // Un-marking while hidden (undo) brings it back at once and forgets the mark.
+        l.set_conv_locked("c3", true).unwrap();
+        assert!(l.is_hidden("c3"));
+        l.set_conv_locked("c3", false).unwrap();
+        assert!(!l.is_hidden("c3") && !l.is_conv_locked("c3"));
+    }
+
+    #[test]
+    fn auto_lock_timer_choices_apply_and_survive_a_restart() {
+        let (l, d) = lock();
+        assert_eq!(l.set_timeout_min(5), Err(PinError::NotSet));
+        l.set_pin("111111", "111111", T0).unwrap();
+        assert_eq!(l.timeout_min(), 5);
+        assert_eq!(l.set_timeout_min(7), Err(PinError::Invalid));
+        l.set_timeout_min(1).unwrap();
+        assert!(!l.check_idle(T0 + 59_000));
+        assert!(l.check_idle(T0 + 61_000), "1 minute");
+        assert_eq!(reopen(&d).timeout_min(), 1, "kept across restarts");
+        assert_eq!(l.unlock("111111", T0 + 62_000), Unlock::Ok);
+        l.set_timeout_min(15).unwrap();
+        assert!(!l.check_idle(T0 + 62_000 + 14 * 60_000));
+        assert!(l.check_idle(T0 + 62_000 + 15 * 60_000 + 1));
+        assert_eq!(l.unlock("111111", T0 + 20 * 60_000), Unlock::Ok);
+        // "Immediately": leaving the app locks at once (the return is what is checked), and an open, untouched app locks after a minute.
+        l.set_timeout_min(0).unwrap();
+        assert!(!l.set_background(true, T0 + 20 * 60_000 + 1000));
+        assert!(l.set_background(false, T0 + 20 * 60_000 + 2000), "left and came back: locked");
+        assert_eq!(l.unlock("111111", T0 + 21 * 60_000), Unlock::Ok);
+        assert!(l.check_idle(T0 + 21 * 60_000 + 61_000));
+        // The timer survives a PIN change.
+        assert_eq!(l.unlock("111111", T0 + 22 * 60_000), Unlock::Ok);
+        l.change_pin("111111", "222222", "222222", T0 + 22 * 60_000).unwrap();
+        assert_eq!(l.timeout_min(), 0);
+    }
+
+    #[test]
+    fn records_from_before_1_4_1_default_to_five_minutes() {
+        let d = tempfile::tempdir().unwrap();
+        let store = Arc::new(FileSecretStore::new(d.path().join("s.json")));
+        let old = serde_json::json!({"salt": "00", "hash": "00", "m_kib": 8, "t": 1, "fails": 0, "blocked_until_ms": 0, "locked": ["x"]});
+        store.set(SECRET_KEY, &old.to_string()).unwrap();
+        let l = AppLock::open_with(store, Cost::tiny());
+        assert_eq!(l.timeout_min(), 5);
+        assert!(l.is_hidden("x") && l.is_engaged());
     }
 }

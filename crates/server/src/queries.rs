@@ -172,7 +172,7 @@ pub fn member_ids(conn: &Connection, conv_id: &str) -> AppResult<Vec<String>> {
 pub fn load_conversation(conn: &Connection, id: &str) -> AppResult<Conversation> {
     let mut c = conn
         .query_row(
-            "SELECT id,kind,name,topic,archived,created_ms,last_seq,last_ts FROM conversations WHERE id=?1",
+            "SELECT id,kind,name,topic,archived,created_ms,last_seq,last_ts,avatar_attachment FROM conversations WHERE id=?1",
             [id],
             |r| {
                 Ok(Conversation {
@@ -185,6 +185,7 @@ pub fn load_conversation(conn: &Connection, id: &str) -> AppResult<Conversation>
                     members: vec![],
                     last_seq: r.get(6)?,
                     last_message_ts: r.get(7)?,
+                    avatar: r.get(8)?,
                 })
             },
         )

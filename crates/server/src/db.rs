@@ -61,7 +61,8 @@ CREATE TABLE IF NOT EXISTS conversations(
   created_ms INTEGER NOT NULL,
   dm_key TEXT UNIQUE,
   last_seq INTEGER NOT NULL DEFAULT 0,
-  last_ts INTEGER
+  last_ts INTEGER,
+  avatar_attachment TEXT
 );
 CREATE TABLE IF NOT EXISTS members(
   conv_id TEXT NOT NULL,
@@ -208,6 +209,15 @@ CREATE TABLE IF NOT EXISTS conv_prefs(
   notify TEXT NOT NULL DEFAULT 'all',
   position INTEGER,
   PRIMARY KEY(user_id, conv_id)
+);
+-- 1.4.1: a private picture the viewer chose for another user (kind 'user') or a conversation (kind 'conv').
+CREATE TABLE IF NOT EXISTS avatar_overrides(
+  viewer_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  target TEXT NOT NULL,
+  attachment_id TEXT NOT NULL,
+  updated_ms INTEGER NOT NULL,
+  PRIMARY KEY(viewer_id, kind, target)
 );
 CREATE TABLE IF NOT EXISTS sections(
   id TEXT PRIMARY KEY,
@@ -452,6 +462,9 @@ fn migrate(conn: &Connection) -> anyhow::Result<()> {
     }
     if !has_column(conn, "conv_prefs", "position")? {
         conn.execute("ALTER TABLE conv_prefs ADD COLUMN position INTEGER", [])?;
+    }
+    if !has_column(conn, "conversations", "avatar_attachment")? {
+        conn.execute("ALTER TABLE conversations ADD COLUMN avatar_attachment TEXT", [])?;
     }
     if !has_column(conn, "attachments", "meta")? {
         conn.execute("ALTER TABLE attachments ADD COLUMN meta TEXT", [])?;

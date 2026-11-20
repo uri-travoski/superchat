@@ -389,6 +389,26 @@ pub fn apply_user_doc(conn: &mut Connection, hub: &Hub, doc: &Value, replace: bo
             }
         }
     }
+    // ---------------------------------------------------------------- private pictures (1.4.1)
+    if replace {
+        tx.execute("DELETE FROM avatar_overrides WHERE viewer_id=?1", [&uid])?;
+    }
+    for o in doc["avatar_overrides"].as_array().unwrap_or(&empty) {
+        let (Some(kind), Some(target), Some(att)) = (s(o, "kind"), s(o, "target"), s(o, "attachment")) else { continue };
+        // Only pictures that still exist and belong to this person, for people and chats that still exist.
+        let img: i64 = tx.query_row("SELECT COUNT(*) FROM attachments WHERE id=?1 AND uploader_id=?2 AND purpose='avatar_private' AND removed=0", params![att, uid], |r| r.get(0))?;
+        let target_ok: i64 = match kind.as_str() {
+            "user" => tx.query_row("SELECT COUNT(*) FROM users WHERE id=?1 AND deleted=0 AND id!=?2", params![target, uid], |r| r.get(0))?,
+            "conv" => tx.query_row("SELECT COUNT(*) FROM members WHERE conv_id=?1 AND user_id=?2", params![target, uid], |r| r.get(0))?,
+            _ => 0,
+        };
+        if img > 0 && target_ok > 0 {
+            tx.execute(
+                "INSERT OR REPLACE INTO avatar_overrides(viewer_id,kind,target,attachment_id,updated_ms) VALUES(?1,?2,?3,?4,?5)",
+                params![uid, kind, target, att, crate::db::now_ms()],
+            )?;
+        }
+    }
     // ---------------------------------------------------------------- announce
     for conv in &touched {
         crate::routes::chat::upsert_for_members(&tx, &mut em, conv)?;

@@ -76,6 +76,7 @@ pub async fn bootstrap(State(st): State<St>, auth: Auth) -> AppResult<Json<Boots
                     messages,
                     has_more,
                     prefs: o.prefs,
+                    avatar_overrides: crate::routes::avatars::load_overrides(c, &auth.user_id)?,
                     sections: o.sections,
                     groups: o.groups,
                     drafts: o.drafts,

@@ -117,6 +117,9 @@ pub enum ClientEvent {
     SignedOut { code: Option<ErrorCode>, message: String },
     UploadProgress { client_id: String, sent: u64, total: u64 },
     SendFailed { client_id: String, error: String },
+    /// 1.4.1: the App Lock state changed (locked, unlocked, a chat marked or unmarked, the PIN set or removed). Every list,
+    /// search and count is computed from the lock state on each read, so a view only has to read again.
+    LockChanged,
 }
 
 mod auto;
@@ -374,6 +377,73 @@ impl Client {
     /// The App Lock (PIN, locked conversations, idle timeout).
     pub fn applock(&self) -> &crate::applock::AppLock {
         &self.inner.applock
+    }
+
+    fn lock_changed(&self) {
+        self.inner.emit(ClientEvent::LockChanged);
+    }
+
+    /// Locks the app now: every locked conversation disappears from every list, search and count.
+    pub fn lock_app(&self) {
+        let was = self.inner.applock.generation();
+        self.inner.applock.lock();
+        if self.inner.applock.generation() != was {
+            self.lock_changed();
+        }
+    }
+
+    /// Checks the PIN; a correct one shows the locked conversations again at once.
+    pub fn unlock_app(&self, pin: &str, now_ms: i64) -> crate::applock::Unlock {
+        let r = self.inner.applock.unlock(pin, now_ms);
+        if r == crate::applock::Unlock::Ok {
+            self.lock_changed();
+        }
+        r
+    }
+
+    /// Marks (or unmarks) a conversation as locked. A newly locked conversation disappears at once.
+    pub fn set_conversation_locked(&self, conv_id: &str, locked: bool) -> std::result::Result<(), crate::applock::PinError> {
+        self.inner.applock.set_conv_locked(conv_id, locked)?;
+        self.lock_changed();
+        Ok(())
+    }
+
+    /// The idle and background timers; true when this call locked the app.
+    pub fn lock_timers(&self, background_changed: Option<bool>, now_ms: i64) -> bool {
+        let a = &self.inner.applock;
+        let mut locked = false;
+        if let Some(bg) = background_changed {
+            locked |= a.set_background(bg, now_ms);
+        }
+        locked |= a.check_idle(now_ms);
+        if locked {
+            self.lock_changed();
+        }
+        locked
+    }
+
+    /// 1.4.1: every conversation that can receive something shared from another app or forwarded, newest first. Locked
+    /// conversations are included on purpose (and the lock state is not looked at): the person picks a destination, nothing is
+    /// shown from inside it.
+    pub fn share_targets(&self) -> Vec<ConversationSummary> {
+        let mut v = self.inner.store.conversations().unwrap_or_default();
+        v.retain(|c| !c.conversation.archived);
+        v
+    }
+
+    /// 1.4.1: sends shared text and files into a conversation WITHOUT opening it and without touching the App Lock: a locked
+    /// conversation stays locked and hidden. (The caption is the text; files go in one message.)
+    pub fn share_to(&self, conv_id: &str, text: &str, files: &[PathBuf]) -> Result<()> {
+        let text = text.trim();
+        if text.is_empty() && files.is_empty() {
+            return Ok(());
+        }
+        if !files.is_empty() {
+            self.send_files(conv_id, text, files, SendOptions::default())?;
+        } else {
+            self.send_text(conv_id, text, SendOptions::default())?;
+        }
+        Ok(())
     }
 
     /// True while this conversation must not appear anywhere (lists, search, counts, threads, drafts).
@@ -702,14 +772,88 @@ impl Client {
         Ok(me)
     }
 
-    /// P-03: the cached profile photo of a user (an image file), when they have one and it has been downloaded.
-    pub fn avatar_path(&self, user_id: &str) -> Option<PathBuf> {
-        let att = self.inner.store.user(user_id).ok().flatten()?.avatar?;
+    /// The file of a downloaded picture (`avatars/<attachment id>`), when it is on disk.
+    fn avatar_file(&self, att: &str) -> Option<PathBuf> {
         if att.is_empty() || att.contains('/') || att.contains("..") {
             return None;
         }
         let p = self.inner.cfg.data_dir.join("avatars").join(att);
         p.is_file().then_some(p)
+    }
+
+    /// The private picture this account chose for a user (`kind` "user") or a conversation (`kind` "conv"), if any.
+    pub fn avatar_override(&self, kind: &str, target: &str) -> Option<String> {
+        self.inner.store.avatar_overrides().into_iter().find(|o| o.kind == kind && o.target == target).map(|o| o.attachment)
+    }
+
+    /// P-03 and 1.4.1: the picture shown for a user. Order: the picture this account chose for them, then their own profile
+    /// photo (when both are downloaded), else None (the app draws initials).
+    pub fn avatar_path(&self, user_id: &str) -> Option<PathBuf> {
+        if let Some(p) = self.avatar_override("user", user_id).and_then(|a| self.avatar_file(&a)) {
+            return Some(p);
+        }
+        let att = self.inner.store.user(user_id).ok().flatten()?.avatar?;
+        self.avatar_file(&att)
+    }
+
+    /// 1.4.1: the picture shown for a conversation. Order: the picture this account chose for it, then the channel's or
+    /// group's own picture. (A direct message uses `avatar_path` of the other person.)
+    pub fn conversation_avatar_path(&self, conv_id: &str) -> Option<PathBuf> {
+        if let Some(p) = self.avatar_override("conv", conv_id).and_then(|a| self.avatar_file(&a)) {
+            return Some(p);
+        }
+        let att = self.inner.store.conversation(conv_id).ok().flatten()?.conversation.avatar?;
+        self.avatar_file(&att)
+    }
+
+    /// 1.4.1: true when the picture shown for this user or conversation is one this account chose (the UI offers "Remove").
+    pub fn has_avatar_override(&self, kind: &str, target: &str) -> bool {
+        self.avatar_override(kind, target).is_some()
+    }
+
+    /// 1.4.1: sets the picture everyone sees for a channel or group DM (owners and admins). Pass a pre-cropped image file.
+    pub async fn set_conversation_avatar(&self, conv_id: &str, path: &Path) -> Result<ConversationSummary> {
+        let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "avatar.png".into());
+        let up = self.upload_path(path, &name, Some("avatar"), None).await?;
+        self.put_conv_avatar(conv_id, &up.attachment.id).await
+    }
+
+    /// 1.4.1: removes the picture everyone sees for a channel or group DM.
+    pub async fn clear_conversation_avatar(&self, conv_id: &str) -> Result<ConversationSummary> {
+        self.put_conv_avatar(conv_id, "").await
+    }
+
+    async fn put_conv_avatar(&self, conv_id: &str, att: &str) -> Result<ConversationSummary> {
+        let cs: ConversationSummary = self.api()?.put_json(&format!("/conversations/{conv_id}/avatar"), &SetConvAvatar { avatar: att.to_string() }).await?;
+        self.inner.store.put_conversation(&cs)?;
+        self.inner.sync_avatars().await;
+        self.inner.emit(ClientEvent::Changed { conv_ids: vec![conv_id.to_string()], users: true, me: false });
+        Ok(cs)
+    }
+
+    /// 1.4.1: a private picture for another user (`kind` "user") or a conversation (`kind` "conv"). Only this account sees it;
+    /// it is stored on the server for this account and synced to its other devices.
+    pub async fn set_avatar_override(&self, kind: &str, target: &str, path: &Path) -> Result<()> {
+        let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "avatar.png".into());
+        let up = self.upload_path(path, &name, Some("avatar_private"), None).await?;
+        let o: AvatarOverride = self.api()?.put_json(&format!("/me/avatar-overrides/{kind}/{target}"), &SetAvatarOverride { attachment: up.attachment.id }).await?;
+        let mut all = self.inner.store.avatar_overrides();
+        all.retain(|x| !(x.kind == kind && x.target == target));
+        all.push(o);
+        self.inner.store.put_avatar_overrides(&all)?;
+        self.inner.sync_avatars().await;
+        self.inner.emit(ClientEvent::Changed { conv_ids: if kind == "conv" { vec![target.to_string()] } else { vec![] }, users: true, me: false });
+        Ok(())
+    }
+
+    /// 1.4.1: removes the private picture; the person's or channel's own picture (or initials) shows again.
+    pub async fn clear_avatar_override(&self, kind: &str, target: &str) -> Result<()> {
+        let _: serde_json::Value = self.api()?.delete(&format!("/me/avatar-overrides/{kind}/{target}")).await?;
+        let mut all = self.inner.store.avatar_overrides();
+        all.retain(|x| !(x.kind == kind && x.target == target));
+        self.inner.store.put_avatar_overrides(&all)?;
+        self.inner.emit(ClientEvent::Changed { conv_ids: if kind == "conv" { vec![target.to_string()] } else { vec![] }, users: true, me: false });
+        Ok(())
     }
 
     /// P-03: downloads the photos still missing (the client does this by itself after sign-in and when people change).
@@ -961,10 +1105,12 @@ impl Inner {
     pub(crate) async fn sync_avatars(self: &Arc<Self>) {
         let dir = self.cfg.data_dir.join("avatars");
         let _ = std::fs::create_dir_all(&dir);
-        let users = self.store.users().unwrap_or_default();
+        // Everything shown as a picture: profile photos, channel and group pictures, and this account's private pictures.
+        let mut wanted: Vec<String> = self.store.users().unwrap_or_default().into_iter().filter_map(|u| u.avatar).collect();
+        wanted.extend(self.store.conversations().unwrap_or_default().into_iter().filter_map(|c| c.conversation.avatar));
+        wanted.extend(self.store.avatar_overrides().into_iter().map(|o| o.attachment));
         let mut changed = false;
-        for u in users {
-            let Some(att) = u.avatar.clone() else { continue };
+        for att in wanted {
             if att.is_empty() || att.contains('/') || att.contains("..") || dir.join(&att).exists() {
                 continue;
             }
@@ -1092,6 +1238,7 @@ impl Inner {
         self.abort_tasks();
         let _ = self.store.wipe();
         let _ = std::fs::remove_dir_all(self.cfg.data_dir.join("files"));
+        let _ = std::fs::remove_dir_all(self.cfg.data_dir.join("avatars"));
         let _ = self.secrets.delete(SESSION_SECRET);
         let _ = self.secrets.delete(crate::api::LEGACY_SESSION_SECRET);
         self.applock.clear();
@@ -1285,7 +1432,7 @@ impl Inner {
                         }
                     });
                 }
-                if applied.users_changed || applied.me_changed {
+                if applied.users_changed || applied.me_changed || applied.avatars_changed {
                     let me = self.clone();
                     self.handle.spawn(async move { me.sync_avatars().await });
                 }

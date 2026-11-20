@@ -116,6 +116,8 @@ pub struct Applied {
     pub resync: bool,
     /// A mention, reaction or thread reply arrived: the Activity feed should be fetched again.
     pub activity_dirty: bool,
+    /// A channel or group picture changed (or a conversation arrived): download the pictures that are missing.
+    pub avatars_changed: bool,
 }
 
 impl Applied {
@@ -137,6 +139,7 @@ impl Applied {
         self.org_changed |= o.org_changed;
         self.resync |= o.resync;
         self.activity_dirty |= o.activity_dirty;
+        self.avatars_changed |= o.avatars_changed;
     }
 }
 
@@ -353,11 +356,12 @@ impl Store {
         tx.execute("DELETE FROM convs", [])?;
         tx.execute("DELETE FROM messages", [])?;
         tx.execute("DELETE FROM threads", [])?;
-        for k in ["prefs", "sections", "groups", "saved", "labels", "activity_read_ms"] {
+        for k in ["prefs", "avatar_overrides", "sections", "groups", "saved", "labels", "activity_read_ms"] {
             tx.execute("DELETE FROM kv WHERE k=?1", [k])?;
         }
         tx.execute("DELETE FROM kv WHERE k LIKE 'pins:%' OR k LIKE 'bookmarks:%'", [])?;
         kv_put(&tx, "prefs", &serde_json::to_string(&b.prefs)?)?;
+        kv_put(&tx, "avatar_overrides", &serde_json::to_string(&b.avatar_overrides)?)?;
         kv_put(&tx, "sections", &serde_json::to_string(&b.sections)?)?;
         kv_put(&tx, "groups", &serde_json::to_string(&b.groups)?)?;
         kv_put(&tx, "saved", &serde_json::to_string(&b.saved)?)?;
@@ -501,6 +505,9 @@ impl Store {
                 out.touch(conv_id);
             }
             EventData::ConversationUpsert { conversation } => {
+                if get_conv(&tx, &conversation.conversation.id)?.map(|c| c.conversation.avatar) != Some(conversation.conversation.avatar.clone()) {
+                    out.avatars_changed = true;
+                }
                 put_conv(&tx, conversation)?;
                 out.touch(&conversation.conversation.id);
             }
@@ -574,6 +581,18 @@ impl Store {
                 all.push(pref.clone());
                 kv_put(&tx, "prefs", &serde_json::to_string(&all)?)?;
                 out.org_changed = true;
+            }
+            EventData::AvatarOverrideUpdate { kind, target, attachment } => {
+                let mut all: Vec<AvatarOverride> = kv_json(&tx, "avatar_overrides");
+                all.retain(|o| !(o.kind == *kind && o.target == *target));
+                if let Some(a) = attachment {
+                    all.push(AvatarOverride { kind: kind.clone(), target: target.clone(), attachment: a.clone() });
+                }
+                kv_put(&tx, "avatar_overrides", &serde_json::to_string(&all)?)?;
+                out.users_changed = true;
+                if kind == "conv" {
+                    out.touch(target);
+                }
             }
             EventData::SectionsUpdate { sections } => {
                 kv_put(&tx, "sections", &serde_json::to_string(sections)?)?;
@@ -799,6 +818,15 @@ impl Store {
 
     pub fn prefs(&self) -> Vec<ConvPref> {
         kv_json(&self.c(), "prefs")
+    }
+
+    /// 1.4.1: the private pictures this account chose for other users and conversations.
+    pub fn avatar_overrides(&self) -> Vec<AvatarOverride> {
+        kv_json(&self.c(), "avatar_overrides")
+    }
+
+    pub fn put_avatar_overrides(&self, v: &[AvatarOverride]) -> Result<()> {
+        kv_put(&self.c(), "avatar_overrides", &serde_json::to_string(v)?)
     }
 
     pub fn pref(&self, conv_id: &str) -> Option<ConvPref> {

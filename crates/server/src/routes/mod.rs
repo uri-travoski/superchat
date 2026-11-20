@@ -2,6 +2,7 @@ pub mod account;
 pub mod admin;
 pub mod adminview;
 pub mod auto;
+pub mod avatars;
 pub mod botadmin;
 pub mod botapi;
 pub mod chat;
@@ -82,6 +83,9 @@ pub fn api_router() -> Router<St> {
         // 1.2: membership, saved items, labels, activity
         .route("/conversations/{id}/members", post(social::add_members))
         .route("/conversations/{id}/members/{uid}", delete(social::remove_member))
+        .route("/me/avatar-overrides", get(avatars::list_overrides))
+        .route("/me/avatar-overrides/{kind}/{target}", put(avatars::set_override).delete(avatars::delete_override))
+        .route("/conversations/{id}/avatar", put(avatars::set_conv_avatar))
         .route("/saved", get(social::list_saved))
         .route("/saved/{id}", put(social::save_message).delete(social::unsave_message))
         .route("/saved/{id}/labels", put(social::set_saved_labels))

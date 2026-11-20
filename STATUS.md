@@ -1,4 +1,8 @@
-# Status: v1.4.0 (phone simplification, file icons, per-ABI Android APKs; calls are Phase 4, not built)
+# Status: v1.4.1 (Android feedback: top bar titles, photo viewer and video player, App Lock redesign, pictures, share into locked chats; calls are Phase 4, not built)
+
+## v1.4.1 summary
+
+Done: see CHANGELOG.md and docs/RELEASE-NOTES-v1.4.1.md; decisions in docs/DECISIONS.md (1.4.1). Tests: client-core `avatars141` and `lock141`, applock unit tests, the full workspace suite, e2e and Playwright (final run: `cargo test --workspace` 239 passed, 0 failed, 2 ignored; clippy 0 errors; `tests/e2e/run.sh` passes; Playwright admin-roles, admin-viewer, admin-dialogs, admin-automation, admin-mobile, admin-updates OK; emulator scenarios listed in the release notes). Open: nothing known; desktop has no in-app photo viewer (system opener).
 
 ## v1.4.0 summary
 

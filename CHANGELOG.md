@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.4.1
+
+Owner feedback on the Android app: calmer top bars, a real photo viewer and video player, a rebuilt App Lock, channel and private pictures, and sharing into locked chats. Server API: additive only (old apps keep working).
+
+* **Phone top bar**: the title IS the screen name ("Direct Messages", "Channels", "Search", "Menu"), same size and weight as before, with the 3-dots menu on the right on the two lists. The duplicate heading under the bar is gone. There is no padlock in the bar any more: the 3-dots menu has one row below "Later", "Lock" (open padlock) or "Unlock" (closed padlock), shown only when an App Lock PIN is set. Desktop has the same row in the server-name menu and the More menu.
+* **Photo viewer** (Android, Kotlin `ViewerActivity`): tapping a picture in a message, the Files tab, search results or a conversation photo opens it full screen on black: pinch zoom, double-tap zoom, pan, swipe left and right through the conversation's pictures, swipe down or Back to close, sender and date on top, Share and Save to the gallery (MediaStore, Pictures/SuperChat). Root cause of "nothing happens": the app opened files with `xdg-open`, which does not exist on Android, and ignored the error.
+* **Video player** (Android, `VideoActivity`): full screen, play/pause, seek bar with time, mute, Back closes. Desktop keeps the system player.
+* **Radio buttons rebuilt** (one `Radio` component, used by every single-choice row): a ring with border-radius = width / 2 and a dot placed at (ring - dot) / 2 on both axes, even sizes, so it is centred at every density.
+* **New message button 7 % bigger** (56 to 59.92 px, plus icon scaled), same margins and last-row clearance.
+* **Pictures**: owners and admins set a channel or group picture everyone sees (`PUT /conversations/{id}/avatar`); anyone can set a private picture for another user, a DM, a group or a channel (`/me/avatar-overrides`), stored on the server per viewer, synced to the viewer's devices, included in the per-user backup and restore, never visible to others. Resolution: your private picture, then the person's or channel's picture, then initials. Entry point: conversation details > photo. Pictures are cut to a centred square before upload.
+* **App Lock redesign**: a calm full-screen "App Lock" with six dots and a large numeric keypad (no system keyboard; gentle shake on a wrong PIN; short rate-limit messages); long-press "Lock chat" (one tap, the chat disappears at once, "Chat locked" with Undo; without a PIN it runs inline PIN setup and then locks the chat); locked chats show a small lock glyph while unlocked and offer "Unlock chat (keep visible)"; Settings > Privacy & security > App Lock: on/off, Change PIN, auto-lock (immediately, 1, 5, 15 minutes), the list of locked chats with remove.
+* **Lock and unlock are seamless**: root cause was that a chat marked as locked stayed in every list until the app itself was locked, and every lock change needed a manual refresh. Now every change emits one event and all lists, search, counts, threads and drafts re-read at once: no restart, scroll position and tab stay. If you are inside a chat when it re-locks you are taken back to the list.
+* **Share into SuperChat**: the picker lists every DM and channel including locked ones (no lock glyph); sending to a locked chat sends the content (with an optional caption), shows "Sent" and hands back to the sharing app, without opening the chat and without changing the lock state. Same for Forward on desktop.
+* The PIN check (Argon2id) no longer holds the lock state while it runs and runs off the UI thread.
+* Version 1.4.1 everywhere (workspace, admin panel, Android versionName 1.4.1 / versionCode 11, installer, compose default image `1.4.1`, image `superchat:1.4.1`).
+
 ## 1.4.0
 
 A simpler phone app, file-type icons, smaller Android downloads. The desktop layout is unchanged except for the file icons. Server API unchanged (pinning reuses the favourite and position state).

@@ -1,4 +1,4 @@
-; NSIS installer for SuperChat. Build:  makensis /DVERSION=1.4.0 packaging/windows/installer.nsi  (run from the repo root)
+; NSIS installer for SuperChat. Build:  makensis /DVERSION=1.4.1 packaging/windows/installer.nsi  (run from the repo root)
 !include "MUI2.nsh"
 Name "SuperChat"
 OutFile "..\..\dist\superchat-${VERSION}-x64-setup.exe"

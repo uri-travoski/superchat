@@ -182,6 +182,21 @@ async fn seed_and_serve() {
     carol.send_files(&design, "", &[wav], SendOptions::default()).unwrap();
     let mp4 = s.dir.path().join("walkthrough.mp4");
     std::fs::write(&mp4, b"not a real video, only a demo").unwrap();
+    // 1.4.1: real pictures and a real video for the photo viewer and video player (emulator checks).
+    if let Ok(dir) = std::env::var("SEED_MEDIA_DIR") {
+        let d = std::path::PathBuf::from(dir);
+        let pics: Vec<std::path::PathBuf> = ["photo-testsrc.jpg", "photo-portrait.jpg", "photo-fractal.png"].iter().map(|n| d.join(n)).filter(|p| p.exists()).collect();
+        if !pics.is_empty() {
+            bob.send_files(&design, "Three photos from the site visit", &pics, SendOptions::default()).unwrap();
+            wait_msg(&alice, &design, "Three photos from the site visit").await;
+        }
+        let clip = d.join("clip.mp4");
+        if clip.exists() {
+            let vm = proto::AttachmentMeta { duration_ms: Some(12_000), width: Some(640), height: Some(360), poster_b64: Some(poster_jpeg()), ..Default::default() };
+            bob.send_files_with(&design, "Short clip", &[(clip, Some(vm))], SendOptions::default()).unwrap();
+            wait_msg(&alice, &design, "Short clip").await;
+        }
+    }
     let vmeta = proto::AttachmentMeta { duration_ms: Some(48_000), width: Some(320), height: Some(180), poster_b64: Some(poster_jpeg()), ..Default::default() };
     bob.send_files_with(&design, "Walkthrough of the new flow", &[(mp4, Some(vmeta))], SendOptions::default()).unwrap();
     wait_msg(&alice, &design, "Brief for review").await;

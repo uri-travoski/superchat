@@ -19,7 +19,7 @@ services:
     # The published, public image. The default is pinned to the release this file belongs to, so an update is a conscious
     # step. To follow the newest release instead, put this in .env:
     #   SUPERCHAT_IMAGE=ghcr.io/uri-travoski/superchat-server:latest
-    image: ${SUPERCHAT_IMAGE:-ghcr.io/uri-travoski/superchat-server:1.4.0}
+    image: ${SUPERCHAT_IMAGE:-ghcr.io/uri-travoski/superchat-server:1.4.1}
     restart: unless-stopped
     environment:
       # All optional. The server reads the SUPERCHAT_* names (the old ATOMIC_* names also work there).

@@ -492,7 +492,7 @@ dependencies = [
 
 [[package]]
 name = "atomic-android"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "android_logger",
  "atomic-client-core",
@@ -507,7 +507,7 @@ dependencies = [
 
 [[package]]
 name = "atomic-cli"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "anyhow",
  "atomic-client-core",
@@ -520,7 +520,7 @@ dependencies = [
 
 [[package]]
 name = "atomic-client-core"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "argon2",
  "atomic-proto",
@@ -556,7 +556,7 @@ dependencies = [
 
 [[package]]
 name = "atomic-desktop"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "arboard",
  "atomic-client-core",
@@ -575,7 +575,7 @@ dependencies = [
 
 [[package]]
 name = "atomic-e2e"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "atomic-client-core",
  "atomic-proto",
@@ -593,7 +593,7 @@ dependencies = [
 
 [[package]]
 name = "atomic-proto"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "schemars",
  "serde",
@@ -603,7 +603,7 @@ dependencies = [
 
 [[package]]
 name = "atomic-server"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "age",
  "anyhow",

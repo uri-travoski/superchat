@@ -13,6 +13,7 @@ Android (one Slint UI shared by all three), plus a command-line client. Your dat
 * Bots and automation: Telegram-style bot API, webhooks, interactive forms, scheduled messages, optional AI search and recaps.
 * New in 1.3.2: the server is one standalone `docker-compose.yml` (published image, no Caddy, cloudflared, ntfy or MinIO inside) attached to every release together with `superchat.env.example`; see [docs/RELEASE-NOTES-v1.3.2.md](docs/RELEASE-NOTES-v1.3.2.md).
 * In 1.3.1: every app checks GitHub for a newer release (Settings > About > Check for updates, plus an automatic check you can switch off), shows its version clearly, and downloads and installs updates with a checksum check; the admin panel has an Updates card with the upgrade commands; the server image is pulled from ghcr.io; release APKs are always signed with one permanent key; see [docs/RELEASE-NOTES-v1.3.1.md](docs/RELEASE-NOTES-v1.3.1.md).
+* New in 1.4.1: screen names as phone top-bar titles, a full-screen photo viewer and video player on Android, channel pictures and private per-viewer pictures, a redesigned App Lock (own keypad, one-tap Lock chat with Undo, timer, immediate hide and reveal) and sharing into locked chats without opening them. See docs/RELEASE-NOTES-v1.4.1.md.
 * New in 1.4.0: a simpler phone app (four tabs DMs, Channels, Search, Menu; pin to top with drag reorder; 3-dots menu for Threads, Drafts, Later, Sort and Filter), file-type icons, separate arm64 and x86_64 Android APKs that are much smaller (R8 and a size-optimised build), no in-app video recording and no screen-reader support (both removed by owner request). See [docs/RELEASE-NOTES-v1.4.0.md](docs/RELEASE-NOTES-v1.4.0.md).
 * In 1.3.0: upload progress and cancel, voice waveform and speed, video recording, PDF previews, profile photos, delete channel, notification sounds, tray icon, drag-to-reorder sidebar, spell check, an encrypted local cache and verified ntfy push; see [docs/RELEASE-NOTES-v1.3.0.md](docs/RELEASE-NOTES-v1.3.0.md).
 * In 1.2.0: a Slack-style rebuild of the desktop and phone UI (rail or bottom tabs, sidebar sections, thread panel, Activity, Later with labels), add people to channels from the app, Save for later, a discoverable App Lock and a way back from every screen; see [docs/RELEASE-NOTES-v1.2.0.md](docs/RELEASE-NOTES-v1.2.0.md) and [docs/FEATURE-AUDIT.md](docs/FEATURE-AUDIT.md).
@@ -108,7 +109,7 @@ Packages (output in `dist/`):
 cargo install cargo-deb && cargo deb -p atomic-desktop --output dist/     # .deb
 packaging/linux/build-appimage.sh                                         # AppImage
 (cd apps/android && ./gradlew exportApks)                                 # dist/superchat-<v>-android-arm64.apk + ...-android-x86_64.apk
-docker build -f docker/Dockerfile -t superchat:1.4.0 .                    # server image (developers; installs pull the published one)
+docker build -f docker/Dockerfile -t superchat:1.4.1 .                    # server image (developers; installs pull the published one)
 ```
 
 Windows (`.exe` and NSIS installer) and the published images are built by `.github/workflows/release.yml` when a `v*` tag is pushed.

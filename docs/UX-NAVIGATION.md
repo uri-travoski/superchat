@@ -1,4 +1,6 @@
-# Navigation audit: every screen has a way back (1.4.0)
+# Navigation audit: every screen has a way back (1.4.1)
+
+1.4.1: the top bar of each tab shows the screen name; the padlock is gone from the bar (Lock / Unlock is a row of the 3-dots menu, below Later).
 
 Rule: every page, panel, tab, modal and menu has a **visible** close or back control and also answers Esc (desktop) and the Android system Back key.
 Messages is always one click or tap away. There is one Back stack, `apps/desktop/src/nav.rs`; Esc, Alt+Left, the on-screen arrows and Android Back all call it.
@@ -27,7 +29,7 @@ chat > details > Files > back > details > back > chat, picker over details, shee
 | DMs (default, last tab is remembered) | launch, DMs tab | none needed (root) | leaves the app |
 | Channels, Search, Menu tab | bottom bar | tap DMs in the bar | DMs |
 | Activity, Settings, You page | Menu tab rows; Menu > avatar card opens the You page | back arrow | the Menu tab |
-| 3-dots menu (Threads, Drafts & sent, Later, Sort, Filter) | top bar, far right | tap outside | the list |
+| 3-dots menu (Threads, Drafts & sent, Later, Lock / Unlock, Sort, Filter) | top bar, far right (DMs and Channels) | tap outside | the list |
 | Conversation | tap a row | top-bar back arrow | the tab list it was opened from |
 | Conversation details | tap the name, the info icon or the 3-dot menu | back arrow | the chat |
 | Details > About, Members, Files, Pins, Bookmarks, Manage (rename, archive, delete; admins), Notifications | rows on the Details page | back arrow | the Details list, then the chat |
@@ -41,8 +43,10 @@ chat > details > Files > back > details > back > chat, picker over details, shee
 | Later (Saved items) | You page > Saved items, 3-dots menu > Later | back arrow | You page or the list |
 | Settings and sub-pages | Menu tab > Settings | back arrow | the Menu tab (sub-page first) |
 | About (version, Check for updates) | Settings > About, the "Update available" banner on DMs, Menu tab > Settings > About | back arrow | Settings, then where you came from |
-| App Lock page | Settings > Privacy & Security > App Lock, or "Set up App Lock" anywhere | back arrow | Settings |
-| Unlock screen | padlock when locked | Cancel | DMs |
+| App Lock page | Settings > Privacy & Security > App Lock | back arrow | Settings |
+| App Lock screen (unlock, set or change PIN) | 3-dots menu > Unlock; Settings > App Lock; long-press a chat > Set up App Lock | Cancel (or Esc) | where you were |
+| Photo viewer, video player (Android) | tap a picture or video | back arrow, swipe down, Back | the chat or list it was opened from |
+| Photo sheet (set a custom or channel photo) | Details > photo | tap outside | Details |
 | Forms, schedule, bookmark dialogs | their buttons | Cancel, X | the chat |
 
 ## Desktop (wide window: rail, sidebar, conversation, thread panel)

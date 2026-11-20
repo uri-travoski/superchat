@@ -1,4 +1,4 @@
-# Feature audit against the original requirements (1.4.0)
+# Feature audit against the original requirements (1.4.1)
 
 One row per feature in `Client Apps.md` (sections X, M, C, NV, SR, F, WF, N, P, A, AD, E, SV). Status words:
 **works** (was there and checked again), **fixed now** (missing or hidden in 1.1.3, changed in 1.2.0), **partial** (works with the gap in Notes), **deferred** (not built, scheduled later).
@@ -220,3 +220,16 @@ Save for later and labels (per user, private, synced; Later view with label chip
 
 Rows: X 8, M 32, C 9, NV 9, SR 7, F 7, WF 1, CL 1, N 4, P 5, A 5, AD 10, E 8, SV 24 = 130.
 See the counts line in `STATUS.md` (works, fixed now, partial, deferred) and the partial and deferred lists above.
+
+
+## 1.4.1 additions
+
+| Item | Status | Where |
+|---|---|---|
+| Top bar title is the screen name; Lock / Unlock row in the 3-dots menu (below Later); no padlock in the bar | done | PhoneTopBar, overflow menu, emulator-checked |
+| Full-screen photo viewer (zoom, swipe, save, share) and video player (Android) | done | ViewerActivity, VideoActivity; desktop uses the system opener |
+| Radio component, FAB x 1.07 | done | components.slint |
+| Channel pictures by owners and admins, private per-viewer pictures (sync, backup and restore, isolation) | done | server avatars.rs, client-core avatars141 tests |
+| App Lock: own keypad screen, long-press Lock chat with Undo, lock glyph, settings page with timer and list | done | pinpad.slint, lock.rs |
+| Reactive lock and unlock; relock leaves a locked chat | done | client-core lock141 tests, emulator scenarios |
+| Share into locked chats without opening or unlocking | done | Client::share_targets / share_to, lock141 tests |

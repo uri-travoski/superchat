@@ -128,9 +128,9 @@ class ViewerActivity : Activity() {
         val it = items[index]
         try {
             val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", File(it.path))
-            val send = Intent(Intent.ACTION_SEND).setType(it.mime).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            val send = Intent(Intent.ACTION_SEND).setType(it.mime).putExtra(Intent.EXTRA_STREAM, uri).apply { clipData = android.content.ClipData.newRawUri("", uri) }.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             startActivity(Intent.createChooser(send, "Share").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
-        } catch (e: Exception) { Toast.makeText(this, "Could not share this picture", Toast.LENGTH_SHORT).show() }
+        } catch (e: Exception) { android.util.Log.w("viewer", "share failed", e); Toast.makeText(this, "Could not share this picture", Toast.LENGTH_SHORT).show() }
     }
 
     private fun save() {

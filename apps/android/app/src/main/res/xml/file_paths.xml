@@ -2,6 +2,7 @@
 <paths>
     <!-- Updates downloaded by the app (filesDir/updates), handed to the system installer. -->
     <files-path name="updates" path="updates/" />
-    <!-- Pictures downloaded from conversations (filesDir/files), shared from the photo viewer. -->
-    <files-path name="downloads" path="files/" />
+    <!-- Pictures downloaded from conversations (filesDir/client/files), shared from the photo viewer. -->
+    <files-path name="downloads" path="client/files/" />
+    <files-path name="avatars" path="client/avatars/" />
 </paths>

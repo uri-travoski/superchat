@@ -1796,6 +1796,7 @@ export component AppWindow inherits Window {
                     background: Theme.bg;
                     TouchArea { }
                     PinPad {
+                        x: 0px; y: 0px; width: parent.width; height: parent.height;
                         title: root.lock-title;
                         hint: root.lock-hint;
                         error: root.lock-error;

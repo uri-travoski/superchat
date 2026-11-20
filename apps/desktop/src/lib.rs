@@ -551,6 +551,13 @@ enum AvatarTarget {
     Private(String, String),
 }
 
+/// Avatar files are stored under their attachment id (no extension), which Slint's path loader cannot sniff, so decode by content.
+fn load_pic(p: &std::path::Path) -> Option<slint::Image> {
+    let img = image::load_from_memory(&std::fs::read(p).ok()?).ok()?.to_rgba8();
+    let buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(img.as_raw(), img.width(), img.height());
+    Some(slint::Image::from_rgba8(buf))
+}
+
 fn apply_avatar_target(ui: &AppWindow, c: &Client, t: AvatarTarget, p: PathBuf) {
     let (wk, c2) = (ui.as_weak(), c.clone());
     c.handle().spawn(async move {
@@ -835,7 +842,7 @@ fn refresh(ui: &AppWindow, c: &Client, sh: &Sh) {
         let mut key: Vec<(String, String)> = c.users().into_iter().filter_map(|u| c.avatar_path(&u.id).map(|p| (u.id, p.to_string_lossy().to_string()))).collect();
         key.extend(c.store().conversations().unwrap_or_default().into_iter().filter_map(|cs| c.conversation_avatar_path(&cs.conversation.id).map(|p| (format!("conv:{}", cs.conversation.id), p.to_string_lossy().to_string()))));
         if key != g.avatar_key {
-            let items: Vec<AvatarImg> = key.iter().filter_map(|(id, p)| slint::Image::load_from_path(std::path::Path::new(p)).ok().map(|img| AvatarImg { id: id.clone().into(), img })).collect();
+            let items: Vec<AvatarImg> = key.iter().filter_map(|(id, p)| load_pic(std::path::Path::new(p)).map(|img| AvatarImg { id: id.clone().into(), img })).collect();
             ui.global::<Avatars>().set_items(model(items));
             g.avatar_key = key;
         }

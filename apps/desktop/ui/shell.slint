@@ -194,7 +194,7 @@ export component SideItem {
             padding-right: 8px;
             spacing: root.wide ? 8px : 14px;
             if r.kind == 2: Icon { name: r.icon; size: (root.wide ? 18px : 22px) * Theme.scale; tint: Theme.icon; y: (parent.height - self.height) / 2; }
-            if r.kind == 1 && r.pic && (r.conv-kind == "channel" || r.conv-kind == "group"): Rectangle { width: (root.wide ? 22px : 32px) * Theme.scale; height: self.width; y: (parent.height - self.height) / 2; border-radius: 6px; clip: true; PicFill { key: "conv:" + r.id; } }
+            if r.kind == 1 && r.pic && (r.conv-kind == "channel" || r.conv-kind == "group"): Rectangle { width: (root.wide ? 22px : 32px) * Theme.scale; height: self.width; y: (parent.height - self.height) / 2; border-radius: 6px; clip: true; PicFill { x: 0px; y: 0px; width: parent.width; height: parent.height; key: "conv:" + r.id; } }
             if r.kind == 1 && !r.pic && (r.conv-kind == "channel"): Icon { name: "hash"; size: (root.wide ? 18px : 22px) * Theme.scale; tint: r.muted ? Theme.icon-soft.with-alpha(0.6) : Theme.icon; y: (parent.height - self.height) / 2; }
             if r.kind == 1 && !r.pic && r.conv-kind == "group": Icon { name: "users"; size: (root.wide ? 18px : 22px) * Theme.scale; tint: Theme.icon; y: (parent.height - self.height) / 2; }
             if r.kind == 1 && (r.conv-kind == "dm" || r.conv-kind == "self"): Avatar { uid: r.user-id; initials: r.initials; tint: r.color; size: (root.wide ? 22px : 32px) * Theme.scale; presence: r.presence; y: (parent.height - self.height) / 2; }
@@ -241,7 +241,7 @@ export component DmRow {
             padding-left: 14px;
             padding-right: 12px;
             spacing: 12px;
-            if r.conv-kind == "group": Rectangle { width: 40px * Theme.scale; height: self.width; y: (parent.height - self.height) / 2; border-radius: 10px; background: r.color; clip: true; Icon { name: "users"; size: 22px; tint: white; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; } if r.pic: PicFill { key: "conv:" + r.id; } }
+            if r.conv-kind == "group": Rectangle { width: 40px * Theme.scale; height: self.width; y: (parent.height - self.height) / 2; border-radius: 10px; background: r.color; clip: true; Icon { name: "users"; size: 22px; tint: white; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; } if r.pic: PicFill { x: 0px; y: 0px; width: parent.width; height: parent.height; key: "conv:" + r.id; } }
             if r.conv-kind != "group": Avatar { uid: r.user-id; initials: r.initials; tint: r.color; size: 40px * Theme.scale; presence: r.presence; y: (parent.height - self.height) / 2; }
             VerticalLayout {
                 alignment: center;
@@ -396,9 +396,9 @@ export component PhoneRow {
             if r.conv-kind == "channel": Rectangle {
                 width: 44px * min(Theme.scale, 1.3); height: self.width; y: (parent.height - self.height) / 2; border-radius: 12px; background: r.color.with-alpha(0.18); clip: true;
                 Icon { name: "hash"; size: 22px * min(Theme.scale, 1.3); tint: r.muted ? Theme.icon-soft : (Theme.dark ? r.color.brighter(0.4) : r.color.darker(0.2)); x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
-                if r.pic: PicFill { key: "conv:" + r.id; }
+                if r.pic: PicFill { x: 0px; y: 0px; width: parent.width; height: parent.height; key: "conv:" + r.id; }
             }
-            if r.conv-kind == "group": Rectangle { width: 44px * min(Theme.scale, 1.3); height: self.width; y: (parent.height - self.height) / 2; border-radius: 12px; background: r.color; clip: true; Icon { name: "users"; size: 22px; tint: white; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; } if r.pic: PicFill { key: "conv:" + r.id; } }
+            if r.conv-kind == "group": Rectangle { width: 44px * min(Theme.scale, 1.3); height: self.width; y: (parent.height - self.height) / 2; border-radius: 12px; background: r.color; clip: true; Icon { name: "users"; size: 22px; tint: white; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; } if r.pic: PicFill { x: 0px; y: 0px; width: parent.width; height: parent.height; key: "conv:" + r.id; } }
             if r.conv-kind == "dm" || r.conv-kind == "self": Avatar { uid: r.user-id; initials: r.initials; tint: r.color; size: 44px * min(Theme.scale, 1.3); presence: r.presence; y: (parent.height - self.height) / 2; }
             VerticalLayout {
                 alignment: center;

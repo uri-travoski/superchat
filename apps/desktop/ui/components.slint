@@ -6,10 +6,13 @@ export { Icon }
 // A cached picture (profile photo, or "conv:<id>" for a channel or group) drawn over whatever is under it.
 export component PicFill {
     in property <string> key;
-    Rectangle {
-        for a in Avatars.items: Rectangle {
-            if a.id == root.key: Image { source: a.img; width: parent.width; height: parent.height; image-fit: cover; }
-        }
+    // Callers give this the size of the box it fills (a component root has no size of its own).
+    for a in Avatars.items: Rectangle {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        if a.id == root.key: Image { x: 0px; y: 0px; source: a.img; width: parent.width; height: parent.height; image-fit: cover; }
     }
 }
 

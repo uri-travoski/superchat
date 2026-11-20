@@ -38,8 +38,8 @@ android {
         // -PatomicVersionCode / -PatomicVersionName only exist for the update tests (a fake newer build of the same app).
         // One versionCode for every ABI: the APKs are installed by hand or by the in-app updater (which picks the one for the
         // device), never uploaded together to one store listing, so Android does not need them to differ.
-        versionCode = (project.findProperty("atomicVersionCode") as String?)?.toInt() ?: 10
-        versionName = (project.findProperty("atomicVersionName") as String?) ?: "1.4.0"
+        versionCode = (project.findProperty("atomicVersionCode") as String?)?.toInt() ?: 11
+        versionName = (project.findProperty("atomicVersionName") as String?) ?: "1.4.1"
         resourceConfigurations += listOf("en")
     }
 
@@ -116,7 +116,7 @@ dependencies {
 // superchat-<version>-android-x86_64.apk (what the update check looks for; see docs/DEPLOY.md), each with a .sha256 file.
 val exportApks by tasks.registering(Copy::class) {
     dependsOn("assembleRelease")
-    val ver = (project.findProperty("atomicVersionName") as String?) ?: "1.4.0"
+    val ver = (project.findProperty("atomicVersionName") as String?) ?: "1.4.1"
     from(layout.buildDirectory.dir("outputs/apk/release")) { include("*.apk") }
     into(repoRoot.resolve("dist"))
     rename { n ->

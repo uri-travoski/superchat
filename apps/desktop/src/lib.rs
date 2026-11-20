@@ -778,9 +778,11 @@ fn refresh(ui: &AppWindow, c: &Client, sh: &Sh) {
     ui.set_conversations(model(model::conv_items(c, g.prefs.sort == "alpha", g.prefs.unread_only, g.prefs.hide_muted, &v)));
     ui.set_total_unread(c.unread_total() as i32);
     shell::refresh_shell(ui, c, &g);
-    // P-03: profile photos of everyone whose photo is on disk.
+    // P-03 and 1.4.1: pictures on disk. Profile photos by user id (the one this account chose for a person wins), channel and
+    // group pictures as "conv:<id>" (again the account's own choice first).
     {
-        let key: Vec<(String, String)> = c.users().into_iter().filter_map(|u| c.avatar_path(&u.id).map(|p| (u.id, p.to_string_lossy().to_string()))).collect();
+        let mut key: Vec<(String, String)> = c.users().into_iter().filter_map(|u| c.avatar_path(&u.id).map(|p| (u.id, p.to_string_lossy().to_string()))).collect();
+        key.extend(c.store().conversations().unwrap_or_default().into_iter().filter_map(|cs| c.conversation_avatar_path(&cs.conversation.id).map(|p| (format!("conv:{}", cs.conversation.id), p.to_string_lossy().to_string()))));
         if key != g.avatar_key {
             let items: Vec<AvatarImg> = key.iter().filter_map(|(id, p)| slint::Image::load_from_path(std::path::Path::new(p)).ok().map(|img| AvatarImg { id: id.clone().into(), img })).collect();
             ui.global::<Avatars>().set_items(model(items));
@@ -1775,6 +1777,16 @@ pub fn run_with(hooks: Hooks) -> Result<(), slint::PlatformError> {
                                 ui.set_conversations(model(vec![]));
                                 ui.set_current_conv("".into());
                                 ui.set_current_title("".into());
+                            }
+                        });
+                    }
+                    ClientEvent::LockChanged => {
+                        let (wk, c, sh) = (wk.clone(), c.clone(), sh.clone());
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(ui) = wk.upgrade() {
+                                if ui.get_signed_in() {
+                                    lock::changed(&ui, &c, &sh);
+                                }
                             }
                         });
                     }

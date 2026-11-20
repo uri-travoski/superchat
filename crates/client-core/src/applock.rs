@@ -66,7 +66,7 @@ impl std::fmt::Display for PinError {
             PinError::Invalid => write!(f, "The PIN must be exactly 6 digits."),
             PinError::Mismatch => write!(f, "The two PINs do not match."),
             PinError::Wrong => write!(f, "Incorrect PIN"),
-            PinError::Blocked(s) => write!(f, "Too many attempts. Try again in {s} seconds."),
+            PinError::Blocked(s) => write!(f, "Too many tries. Wait {s} s."),
             PinError::NotSet => write!(f, "No PIN is set."),
             PinError::AlreadySet => write!(f, "A PIN is already set."),
         }
@@ -210,11 +210,15 @@ impl AppLock {
         if pin != again {
             return Err(PinError::Mismatch);
         }
+        if self.is_set() {
+            return Err(PinError::AlreadySet);
+        }
+        let rec = self.new_record(pin, BTreeSet::new()).map_err(|_| PinError::Invalid)?;
         let mut s = self.lock_state();
         if s.rec.is_some() {
             return Err(PinError::AlreadySet);
         }
-        s.rec = Some(self.new_record(pin, BTreeSet::new()).map_err(|_| PinError::Invalid)?);
+        s.rec = Some(rec);
         s.engaged = false;
         s.generation += 1;
         s.last_activity_ms = now_ms;
@@ -230,19 +234,25 @@ impl AppLock {
         Ok(Record { salt: hex::encode(salt), hash: hex::encode(hash), m_kib: self.cost.m_kib, t: self.cost.t, fails: 0, blocked_until_ms: 0, locked, timeout_min: default_timeout_min() })
     }
 
-    /// Checks `pin` against the stored hash with rate limiting. Counts failures and persists the counter.
-    fn check(&self, s: &mut State, pin: &str, now_ms: i64) -> Unlock {
+    /// Checks `pin` against the stored hash with rate limiting. Counts failures and persists the counter. The (slow) Argon2id
+    /// derivation runs WITHOUT the state lock held, so the UI thread can keep reading the lock state while a PIN is checked.
+    fn check(&self, pin: &str, now_ms: i64) -> Unlock {
+        let (salt, hash, m_kib, t) = {
+            let s = self.lock_state();
+            let Some(rec) = s.rec.as_ref() else { return Unlock::NotSet };
+            if rec.blocked_until_ms > now_ms {
+                return Unlock::Blocked(((rec.blocked_until_ms - now_ms + 999) / 1000) as u64);
+            }
+            (rec.salt.clone(), rec.hash.clone(), rec.m_kib, rec.t)
+        };
+        let ok = valid_pin(pin) && hex::decode(&salt).ok().and_then(|salt| derive(pin, &salt, m_kib, t).ok()).map(|h| ct_eq(&h, &hex::decode(&hash).unwrap_or_default())).unwrap_or(false);
+        let mut s = self.lock_state();
         let Some(rec) = s.rec.as_mut() else { return Unlock::NotSet };
-        if rec.blocked_until_ms > now_ms {
-            return Unlock::Blocked(((rec.blocked_until_ms - now_ms + 999) / 1000) as u64);
-        }
-        let ok = valid_pin(pin)
-            && hex::decode(&rec.salt).ok().and_then(|salt| derive(pin, &salt, rec.m_kib, rec.t).ok()).map(|h| ct_eq(&h, &hex::decode(&rec.hash).unwrap_or_default())).unwrap_or(false);
         if ok {
             if rec.fails != 0 || rec.blocked_until_ms != 0 {
                 rec.fails = 0;
                 rec.blocked_until_ms = 0;
-                let _ = self.save(s);
+                let _ = self.save(&s);
             }
             return Unlock::Ok;
         }
@@ -251,15 +261,20 @@ impl AppLock {
         if d > 0 {
             rec.blocked_until_ms = now_ms + (d as i64) * 1000;
         }
-        let _ = self.save(s);
+        let _ = self.save(&s);
         Unlock::Wrong
+    }
+
+    /// Checks the PIN (counting a wrong one) without changing what is visible: used before changing or removing the PIN.
+    pub fn verify(&self, pin: &str, now_ms: i64) -> Unlock {
+        self.check(pin, now_ms)
     }
 
     /// Correct PIN: locked chats become visible until the idle timeout. Wrong PIN: counts toward the delay.
     pub fn unlock(&self, pin: &str, now_ms: i64) -> Unlock {
-        let mut s = self.lock_state();
-        let r = self.check(&mut s, pin, now_ms);
+        let r = self.check(pin, now_ms);
         if r == Unlock::Ok {
+            let mut s = self.lock_state();
             s.engaged = false;
             s.hidden_now.clear();
             s.generation += 1;
@@ -277,16 +292,16 @@ impl AppLock {
         if new != again {
             return Err(PinError::Mismatch);
         }
-        let mut s = self.lock_state();
-        match self.check(&mut s, current, now_ms) {
+        match self.check(current, now_ms) {
             Unlock::Ok => {}
             Unlock::Wrong => return Err(PinError::Wrong),
             Unlock::Blocked(n) => return Err(PinError::Blocked(n)),
             Unlock::NotSet => return Err(PinError::NotSet),
         }
-        let (locked, timeout) = s.rec.as_ref().map(|r| (r.locked.clone(), r.timeout_min)).unwrap_or_default();
+        let (locked, timeout) = self.lock_state().rec.as_ref().map(|r| (r.locked.clone(), r.timeout_min)).unwrap_or_default();
         let mut rec = self.new_record(new, locked).map_err(|_| PinError::Invalid)?;
         rec.timeout_min = timeout;
+        let mut s = self.lock_state();
         s.rec = Some(rec);
         self.save(&s).map_err(|_| PinError::Invalid)?;
         Ok(())
@@ -294,13 +309,13 @@ impl AppLock {
 
     /// Removes the PIN (needs it). Every locked chat becomes an ordinary chat again.
     pub fn remove_pin(&self, current: &str, now_ms: i64) -> std::result::Result<(), PinError> {
-        let mut s = self.lock_state();
-        match self.check(&mut s, current, now_ms) {
+        match self.check(current, now_ms) {
             Unlock::Ok => {}
             Unlock::Wrong => return Err(PinError::Wrong),
             Unlock::Blocked(n) => return Err(PinError::Blocked(n)),
             Unlock::NotSet => return Err(PinError::NotSet),
         }
+        let mut s = self.lock_state();
         s.rec = None;
         s.engaged = false;
         s.hidden_now.clear();

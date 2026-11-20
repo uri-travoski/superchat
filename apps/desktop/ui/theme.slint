@@ -165,6 +165,8 @@ export struct SideRow {
     conv-kind: string, // dm, self, group, channel
     presence: int,
     locked: bool,
+    // A picture is set for this channel or group (everyone's, or the one this account chose): shown instead of the icon.
+    pic: bool,
     draft: bool,
     plus: string, // header "+" action: channel, dm or empty
     preview: string,

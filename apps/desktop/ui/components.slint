@@ -3,6 +3,16 @@ import { Theme, Avatars } from "theme.slint";
 import { Icon } from "icons.slint";
 export { Icon }
 
+// A cached picture (profile photo, or "conv:<id>" for a channel or group) drawn over whatever is under it.
+export component PicFill {
+    in property <string> key;
+    Rectangle {
+        for a in Avatars.items: Rectangle {
+            if a.id == root.key: Image { source: a.img; width: parent.width; height: parent.height; image-fit: cover; }
+        }
+    }
+}
+
 export component Avatar {
     in property <string> initials;
     in property <color> tint;
@@ -234,20 +244,45 @@ export component IconButton {
 }
 
 // Round floating action button.
+// 1.4.1 radio button: one round ring and a centred dot. The ring is a single Rectangle with border-radius = width / 2; the dot
+// is a child placed at (ring - dot) / 2 on both axes, so it is centred whatever the screen density. Sizes are even numbers.
+export component Radio {
+    in property <bool> on: false;
+    width: 24px;
+    height: 24px;
+    ring := Rectangle {
+        width: 24px;
+        height: 24px;
+        border-radius: 12px;
+        border-width: 2px;
+        border-color: root.on ? Theme.accent : Theme.icon-soft;
+        background: root.on ? Theme.accent.with-alpha(0.10) : transparent;
+        if root.on: Rectangle {
+            width: 12px;
+            height: 12px;
+            x: (ring.width - self.width) / 2;
+            y: (ring.height - self.height) / 2;
+            border-radius: 6px;
+            background: Theme.accent;
+        }
+    }
+}
+
+// The new-message button: 59.92 px (1.4.1: 7 % bigger than the 56 px of 1.4.0), the plus scaled with it.
 export component Fab {
     in property <string> icon;
     in property <string> label;
     in property <brush> glyph: Theme.on-accent;
     callback clicked;
-    width: 56px;
-    height: 56px;
+    width: 59.92px;
+    height: 59.92px;
     Rectangle {
-        border-radius: 28px;
+        border-radius: 29.96px;
         background: ta.pressed ? Theme.accent.darker(0.15) : Theme.accent;
         drop-shadow-blur: 8px;
         drop-shadow-offset-y: 3px;
         drop-shadow-color: #00000066;
-        Icon { name: root.icon; size: 28px; tint: root.glyph; weight: 2.4px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+        Icon { name: root.icon; size: 29.96px; tint: root.glyph; weight: 2.4px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
         ta := TouchArea { clicked => { root.clicked(); } }
     }
 }
@@ -283,6 +318,8 @@ export component SheetRow {
     in property <string> detail;
     in property <bool> danger: false;
     in property <bool> checked: false;
+    /// 1.4.1: a single-choice row: a radio button (round ring, centred dot) instead of the check mark.
+    in property <bool> radio: false;
     in property <bool> chevron: false;
     in property <bool> enabled: true;
     callback clicked;
@@ -296,7 +333,8 @@ export component SheetRow {
             if root.icon != "": Icon { name: root.icon; size: Theme.wide ? 20px : 24px; tint: root.danger ? Theme.danger : Theme.icon; y: (parent.height - self.height) / 2; }
             Text { text: root.text; font-size: Theme.fs; color: !root.enabled ? Theme.muted : (root.danger ? Theme.danger : Theme.text); vertical-alignment: center; horizontal-stretch: 1; min-width: 40px; overflow: elide; }
             if root.detail != "": Text { text: root.detail; font-size: Theme.fs-small; color: Theme.muted; vertical-alignment: center; overflow: elide; max-width: 110px * Theme.scale; }
-            if root.checked: Icon { name: "check"; size: Theme.wide ? 18px : 24px; tint: Theme.accent-text; y: (parent.height - self.height) / 2; }
+            if root.checked && !root.radio: Icon { name: "check"; size: Theme.wide ? 18px : 24px; tint: Theme.accent-text; y: (parent.height - self.height) / 2; }
+            if root.radio: Radio { on: root.checked; y: (parent.height - self.height) / 2; }
             if root.chevron: Icon { name: "chevron-right"; tint: Theme.icon-soft; size: 20px; y: (parent.height - self.height) / 2; }
         }
         ta := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
@@ -343,11 +381,7 @@ export component ChoiceRow {
             spacing: Theme.wide ? 12px : 16px;
             if root.icon != "": Icon { name: root.icon; size: Theme.wide ? 20px : 24px; tint: Theme.icon; y: (parent.height - self.height) / 2; }
             Text { text: root.text; font-size: Theme.fs; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; min-width: 40px; overflow: elide; }
-            if root.radio: Rectangle {
-                width: 22px; height: 22px; y: (parent.height - self.height) / 2; border-radius: 11px;
-                border-width: 2px; border-color: root.on ? Theme.accent : Theme.icon-soft;
-                if root.on: Rectangle { x: 4px; y: 4px; width: 10px; height: 10px; border-radius: 5px; background: Theme.accent; }
-            }
+            if root.radio: Radio { on: root.on; y: (parent.height - self.height) / 2; }
             if !root.radio: Toggle { checked: root.on; y: (parent.height - self.height) / 2; }
         }
         ta := TouchArea { clicked => { root.clicked(); } }
@@ -383,6 +417,8 @@ export component SettingRow {
     in property <bool> danger: false;
     in-out property <bool> on: false;
     in property <bool> divider: true;
+    // A switch whose state the app decides (a tap only asks `clicked`, the switch follows `on`).
+    in property <bool> fixed-switch: false;
     callback clicked;
     callback toggled;
     height: max(60px, 46px * Theme.scale);
@@ -405,7 +441,7 @@ export component SettingRow {
             if root.has-switch: Toggle { checked: root.on; y: (parent.height - self.height) / 2; toggled => { root.on = self.checked; root.toggled(); } }
             if root.chevron && !root.has-switch: Icon { name: "chevron-right"; size: 20px; tint: Theme.icon-soft; y: (parent.height - self.height) / 2; }
         }
-        ta := TouchArea { clicked => { if root.has-switch { root.on = !root.on; root.toggled(); } else { root.clicked(); } } }
+        ta := TouchArea { clicked => { if root.has-switch && !root.fixed-switch { root.on = !root.on; root.toggled(); } else { root.clicked(); } } }
     }
     if root.divider: Rectangle { x: 66px; y: parent.height - 1px; height: 1px; width: parent.width - 66px; background: Theme.line; }
 }

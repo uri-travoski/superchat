@@ -8,6 +8,7 @@ import { LineEdit, ListView, ScrollView, Palette, TextEdit } from "std-widgets.s
 import { Theme, Avatars, AvatarImg, ConvItem, MsgItem, PersonItem, RowItem, BookmarkItem, BlockItem, FileItem, ReactItem, EmojiItem, FormFieldItem, FormOptionItem, FormButtonItem, SideRow, LabelItem, SavedRow, ActivityRow, Drag, SpellMark } from "theme.slint";
 import { Avatar, Icon, IconButton, Fab, AppBar, BottomSheet, ModalCard, AlertDialog, SheetRow, SettingRow, Card, TextButton, Toggle, Link, Pill, PrimaryButton, GhostButton, SectionHeader, ToolButton, LabelChip, EmptyState, TabBar, CountBadge, MenuRow, MenuDivider, ChoiceRow, MenuLabel } from "components.slint";
 import { MessageRow, Composer, PeoplePicker } from "chat.slint";
+import { PinPad } from "pinpad.slint";
 import { Rail, TopBar, SideItem, DmRow, ActivityItem, SavedCard, BottomNav, PhoneTopBar, PhoneList } from "shell.slint";
 import { DetailsView } from "details.slint";
 import { FileGlyph } from "filetype.slint";
@@ -236,18 +237,20 @@ export component AppWindow inherits Window {
     in-out property <bool> lock-engaged: false;
     in-out property <bool> lock-entry-open: false;
     in-out property <string> lock-error;
-    in-out property <string> lock-msg;
     in-out property <string> lock-pin;
-    in-out property <string> lock-cur;
-    in-out property <string> lock-new;
-    in-out property <string> lock-new2;
+    in-out property <string> lock-title: "App Lock";
+    in-out property <string> lock-hint: "Enter your PIN";
+    in-out property <int> lock-shake: 0;
+    // Auto-lock minutes (0 = as soon as the app is left / idle) and its label.
+    in-out property <int> lock-timeout: 5;
+    in-out property <string> lock-timeout-label: "5 minutes";
+    in-out property <bool> toast-undo: false;
     callback lock-tapped();
     callback lock-cancel();
-    callback pin-edited(string, string);
-    callback lock-enable();
-    callback lock-change();
-    callback lock-remove();
-    callback lock-now();
+    callback lock-key(string);
+    callback lock-start(string);
+    callback lock-timeout-pick(int);
+    callback toast-action();
     callback toggle-conv-lock(string);
     pure callback is-conv-locked(string) -> bool;
     callback paste-clip();
@@ -457,7 +460,6 @@ export component AppWindow inherits Window {
     callback search-filter(string, string);
     callback lock-add(string);
     callback lock-remove-conv(string);
-    callback open-lock-setup();
     callback up-edit();
     callback open-admin-panel();
     callback open-later();
@@ -705,13 +707,6 @@ export component AppWindow inherits Window {
                                             }
                                             TouchArea { clicked => { root.menu-up = false; root.menu-x = root.rail-w + 8px; root.menu-y = root.top-h + 48px * Theme.scale; root.menu-kind = "server"; } }
                                         }
-                                        if root.lock-set: IconButton {
-                                            icon: root.lock-engaged ? "lock" : "unlock";
-                                            tint: Theme.icon-soft;
-                                            label: root.lock-engaged ? "App Lock, locked. Tap to unlock" : "App Lock, unlocked. Tap to lock";
-                                            clicked => { root.lock-tapped(); }
-                                            y: (parent.height - self.height) / 2;
-                                        }
                                         ToolButton { icon: "edit"; label: "New message"; size: 34px * Theme.scale; y: (parent.height - self.height) / 2; clicked => { root.new-message(); } }
                                     }
                                     Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
@@ -725,17 +720,10 @@ export component AppWindow inherits Window {
                                     }
                                     Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
                                 }
-                                // ---- phone: top bar (app name, App Lock, 3-dot menu) and the page title of the DMs and Channels tabs ----
+                                // ---- phone: the top bar's title is the screen name (1.4.1) ----
                                 if !root.wide && (root.main-tab == "dms" || root.main-tab == "channels"): PhoneTopBar {
-                                    app-name: root.server-name;
-                                    lock-set: root.lock-set;
-                                    lock-engaged: root.lock-engaged;
-                                    lock => { root.lock-tapped(); }
+                                    title: root.main-tab == "dms" ? "Direct Messages" : "Channels";
                                     more => { root.menu-kind = "overflow"; }
-                                }
-                                if !root.wide && (root.main-tab == "dms" || root.main-tab == "channels"): Rectangle {
-                                    height: max(44px, 36px * Theme.scale);
-                                    Text { x: 16px; width: parent.width - 32px; text: root.main-tab == "dms" ? "Direct Messages" : "Channels"; font-size: Theme.fs-title; font-weight: 700; color: Theme.text; vertical-alignment: center; overflow: elide; }
                                 }
                                 if !root.wide && (root.main-tab == "dms" || root.main-tab == "channels") && root.upd-banner: UpdateBanner {
                                     text: root.upd-banner-text;
@@ -788,7 +776,10 @@ export component AppWindow inherits Window {
                                     }
                                     Rectangle { height: 1px; background: Theme.line; }
                                 }
-                                if !root.wide && root.main-tab == "menu": AppBar { title: "Menu"; show-back: false; }
+                                if !root.wide && root.main-tab == "menu": PhoneTopBar {
+                                    title: "Menu";
+                                    show-more: false;
+                                }
                                 if !root.wide && root.main-tab == "you": AppBar { title: "You"; back => { root.back-pressed(); } }
                                 if root.status != "" && root.status != "Connected" && root.status != "\u{0}done": Rectangle {
                                     height: stt.preferred-height + 10px;
@@ -1311,6 +1302,10 @@ export component AppWindow inherits Window {
                     background: Theme.bg; y: 0px; x: 0px;
                     TouchArea { }
                     VerticalLayout {
+                        if root.phone-search: PhoneTopBar {
+                            title: "Search";
+                            show-more: false;
+                        }
                         HorizontalLayout {
                             height: max(56px, 42px * Theme.scale);
                             padding-left: root.phone-search ? 12px : 4px; padding-right: 12px; spacing: 4px;
@@ -1665,26 +1660,17 @@ export component AppWindow inherits Window {
 
                                         // ---------- App Lock ----------
                                         if root.settings-page == "lock": Card {
-                                            VerticalLayout {
-                                                padding: 16px; spacing: 10px;
-                                                Text { text: "Locked conversations are hidden until you unlock with your PIN."; font-size: Theme.fs; font-weight: 700; color: Theme.text; wrap: word-wrap; }
-                                                Text { text: root.lock-set ? "Choose which conversations to lock below. The PIN stays on this device." : "Set a 6-digit PIN, then choose which conversations to lock. The PIN stays on this device and cannot be recovered; if you forget it, ask your admin to reset your account."; font-size: Theme.fs-small * 1.05; color: Theme.muted; wrap: word-wrap; }
-                                                if root.lock-set: LineEdit { text <=> root.lock-cur; input-type: password; placeholder-text: "Current PIN"; font-size: Theme.fs; edited(t) => { root.pin-edited("cur", t); } }
-                                                LineEdit { text <=> root.lock-new; input-type: password; placeholder-text: root.lock-set ? "New PIN (6 digits)" : "PIN (6 digits)"; font-size: Theme.fs; edited(t) => { root.pin-edited("new", t); } }
-                                                LineEdit { text <=> root.lock-new2; input-type: password; placeholder-text: "Repeat the PIN"; font-size: Theme.fs; edited(t) => { root.pin-edited("new2", t); } }
-                                                if root.lock-msg != "": Text { text: root.lock-msg; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
-                                                HorizontalLayout {
-                                                    spacing: 8px; alignment: start;
-                                                    if !root.lock-set: PrimaryButton { text: "Turn on App Lock"; clicked => { root.lock-enable(); } }
-                                                    if root.lock-set: PrimaryButton { text: "Change PIN"; clicked => { root.lock-change(); } }
-                                                }
-                                            }
+                                            SettingRow { icon: root.lock-set ? "lock" : "unlock"; badge: #16a34a; title: "App Lock"; has-switch: true; fixed-switch: true; on: root.lock-set; divider: root.lock-set; clicked => { root.lock-start(root.lock-set ? "remove" : "setup"); } }
+                                            if root.lock-set: SettingRow { icon: "key"; badge: #3b82f6; title: "Change PIN"; divider: true; clicked => { root.lock-start("change"); } }
+                                            if root.lock-set: SettingRow { icon: "clock"; badge: #0d9488; title: "Auto-lock"; summary: root.lock-timeout-label; divider: false; clicked => { root.menu-kind = "pick-lock-timeout"; } }
                                         }
+                                        if root.settings-page == "lock": Text { x: 4px; text: "Locked chats are hidden from every list and search until you unlock with your PIN. The PIN stays on this device."; font-size: Theme.fs-small * 1.05; color: Theme.muted; wrap: word-wrap; }
                                         if root.settings-page == "lock" && root.lock-set: Card {
                                             VerticalLayout {
                                                 padding: 16px; spacing: 6px;
-                                                Text { text: "Locked conversations"; font-size: Theme.fs; font-weight: 700; color: Theme.text; }
-                                                if root.locked-convs.length == 0: Text { text: "None yet. Add a conversation to hide it until you unlock with your PIN."; font-size: Theme.fs-small * 1.05; color: Theme.muted; wrap: word-wrap; }
+                                                Text { text: "Locked chats"; font-size: Theme.fs; font-weight: 700; color: Theme.text; }
+                                                if root.lock-engaged: Text { text: "Unlock to see the list."; font-size: Theme.fs-small * 1.05; color: Theme.muted; wrap: word-wrap; }
+                                                if !root.lock-engaged && root.locked-convs.length == 0: Text { text: "None yet. Press and hold a chat in a list and choose Lock chat."; font-size: Theme.fs-small * 1.05; color: Theme.muted; wrap: word-wrap; }
                                                 for c in root.locked-convs: Rectangle {
                                                     height: max(48px, 40px * Theme.scale);
                                                     HorizontalLayout {
@@ -1694,12 +1680,8 @@ export component AppWindow inherits Window {
                                                         ToolButton { icon: "close"; label: "Remove the lock from " + c.title; size: 44px; y: (parent.height - self.height) / 2; clicked => { root.lock-remove-conv(c.id); } }
                                                     }
                                                 }
-                                                HorizontalLayout { alignment: start; PrimaryButton { text: "Lock a conversation"; clicked => { root.menu-kind = "lock-pick"; } } }
+                                                if !root.lock-engaged: HorizontalLayout { alignment: start; GhostButton { text: "Lock a chat"; clicked => { root.menu-kind = "lock-pick"; } } }
                                             }
-                                        }
-                                        if root.settings-page == "lock" && root.lock-set: Card {
-                                            SettingRow { icon: "lock"; badge: #16a34a; title: "Lock now"; chevron: false; clicked => { root.lock-now(); } }
-                                            SettingRow { icon: "trash"; badge: Theme.danger; title: "Remove PIN"; danger: true; chevron: false; divider: false; clicked => { root.confirm = "remove-pin"; } }
                                         }
 
                                         // ---------- devices ----------
@@ -1796,26 +1778,18 @@ export component AppWindow inherits Window {
                     }
                 }
 
-                // ---- App Lock: PIN entry. Says nothing about what is hidden. ----
+                // ---- App Lock: the PIN screen (own keypad, six dots). Says nothing about what is hidden. ----
                 if root.signed-in && root.lock-entry-open: Rectangle {
                     background: Theme.bg;
                     TouchArea { }
-                    VerticalLayout {
-                        AppBar { title: ""; back-icon: "close"; back => { root.back-pressed(); } }
-                        VerticalLayout {
-                            vertical-stretch: 1;
-                            alignment: center;
-                            padding: 24px;
-                            spacing: 14px;
-                            HorizontalLayout { alignment: center; Icon { name: "lock"; size: 40px; tint: Theme.icon-soft; weight: 1.5px; } }
-                            Text { text: "App Lock"; font-size: Theme.fs-title; font-weight: 700; horizontal-alignment: center; color: Theme.text; }
-                            HorizontalLayout {
-                                alignment: center;
-                                LineEdit { width: min(260px, root.width - 48px); text <=> root.lock-pin; input-type: password; horizontal-alignment: center; placeholder-text: "6-digit PIN"; font-size: Theme.fs-title; edited(t) => { root.pin-edited("entry", t); } }
-                            }
-                            Text { text: root.lock-error; color: Theme.danger; font-size: Theme.fs; horizontal-alignment: center; wrap: word-wrap; }
-                            HorizontalLayout { alignment: center; TextButton { text: "Cancel"; clicked => { root.lock-cancel(); } } }
-                        }
+                    PinPad {
+                        title: root.lock-title;
+                        hint: root.lock-hint;
+                        error: root.lock-error;
+                        digits: root.lock-pin.character-count;
+                        shake <=> root.lock-shake;
+                        key(k) => { root.lock-key(k); }
+                        cancel => { root.lock-cancel(); }
                     }
                 }
 
@@ -1858,7 +1832,7 @@ export component AppWindow inherits Window {
                                         SettingRow { icon: "bell"; badge: #e8590c; title: "Notifications"; summary: root.current-notify; clicked => { root.menu-conv = root.current-conv; root.menu-kind = "notify"; } }
                                         SettingRow { icon: "bell-off"; badge: #dc2626; title: "Mute"; summary: root.current-muted ? "Muted" : "Off"; clicked => { root.menu-conv = root.current-conv; root.menu-kind = "mute"; } }
                                         SettingRow { icon: root.wide ? "star" : "pin"; badge: #f59e0b; title: root.wide ? "Favourite" : "Pin to top"; has-switch: true; on: root.current-fav; toggled => { root.toggle-fav(root.current-conv); } }
-                                        SettingRow { icon: "lock"; badge: #16a34a; title: root.lock-set ? (root.is-conv-locked(root.current-conv) ? "Unlock this conversation" : "Lock conversation") : "Set up App Lock to lock conversations"; chevron: !root.lock-set; clicked => { if root.lock-set { root.toggle-conv-lock(root.current-conv); } else { root.open-lock-setup(); } } divider: false; }
+                                        SettingRow { icon: "lock"; badge: #16a34a; title: root.lock-set ? (root.is-conv-locked(root.current-conv) ? "Unlock chat (keep visible)" : "Lock chat") : "Set up App Lock…"; chevron: !root.lock-set; clicked => { root.toggle-conv-lock(root.current-conv); } divider: false; }
                                     }
                                     Text { text: "Locked conversations are hidden until you unlock with your PIN."; font-size: Theme.fs-small; color: Theme.muted; wrap: word-wrap; }
                                 }
@@ -2034,7 +2008,7 @@ export component AppWindow inherits Window {
                                     add-bookmark => { root.bm-title = ""; root.bm-url = ""; root.bookmark-open = true; }
                                     mute => { root.menu-conv = root.current-conv; root.menu-kind = "mute"; }
                                     notify => { root.menu-conv = root.current-conv; root.menu-kind = "notify"; }
-                                    lock-toggle => { if root.lock-set { root.toggle-conv-lock(root.current-conv); } else { root.info-open = false; root.open-lock-setup(); } }
+                                    lock-toggle => { root.toggle-conv-lock(root.current-conv); }
                                     favourite-toggle => { root.toggle-fav(root.current-conv); }
                                     section => { root.menu-conv = root.current-conv; root.menu-kind = "section"; }
                                     mark-unread => { root.mark-unread(root.current-conv); root.info-open = false; }
@@ -2061,6 +2035,7 @@ export component AppWindow inherits Window {
                     SheetRow { icon: "mail"; text: "Unread only"; checked: root.unread-only; clicked => { root.unread-only = !root.unread-only; root.setting-changed("sort"); root.menu-kind = ""; } }
                     SheetRow { icon: "bell-off"; text: "Hide muted"; checked: root.hide-muted; clicked => { root.hide-muted = !root.hide-muted; root.setting-changed("sort"); root.menu-kind = ""; } }
                     SheetRow { icon: "sort"; text: "Reset the sidebar order"; clicked => { root.reset-order(); root.menu-kind = ""; } }
+                    if root.lock-set: SheetRow { icon: root.lock-engaged ? "lock" : "unlock"; text: root.lock-engaged ? "Unlock" : "Lock"; clicked => { root.menu-kind = ""; root.lock-tapped(); } }
                 }
                 // ---- phone: the 3-dot menu of the DMs and Channels tabs ----
                 if root.menu-kind == "overflow": BottomSheet {
@@ -2069,6 +2044,7 @@ export component AppWindow inherits Window {
                     SheetRow { icon: "thread"; text: "Threads"; clicked => { root.menu-kind = ""; root.open-threads(); } }
                     SheetRow { icon: "clock"; text: "Drafts & sent"; detail: root.scheduled-count > 0 ? root.scheduled-count + " scheduled" : ""; clicked => { root.menu-kind = ""; root.open-drafts(); } }
                     SheetRow { icon: "bookmark"; text: "Later"; detail: root.saved-rows.length > 0 ? "" + root.saved-rows.length : ""; clicked => { root.menu-kind = ""; root.go-home-tab("later"); } }
+                    if root.lock-set: SheetRow { icon: root.lock-engaged ? "lock" : "unlock"; text: root.lock-engaged ? "Unlock" : "Lock"; clicked => { root.menu-kind = ""; root.lock-tapped(); } }
                     MenuLabel { text: "Sort"; }
                     ChoiceRow { radio: true; text: "Recent"; on: !root.sort-alpha; clicked => { root.sort-alpha = false; root.setting-changed("sort"); } }
                     ChoiceRow { radio: true; text: "Name (A–Z)"; on: root.sort-alpha; clicked => { root.sort-alpha = true; root.setting-changed("sort"); } }
@@ -2079,16 +2055,16 @@ export component AppWindow inherits Window {
                 if root.menu-kind == "sort": BottomSheet {
                     title: "Sort conversations by"; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y;
                     dismiss => { root.menu-kind = ""; }
-                    SheetRow { icon: "clock"; text: "Latest activity"; checked: !root.sort-alpha; clicked => { root.sort-alpha = false; root.setting-changed("sort"); root.menu-kind = ""; } }
-                    SheetRow { icon: "sort"; text: "Name (A-Z)"; checked: root.sort-alpha; clicked => { root.sort-alpha = true; root.setting-changed("sort"); root.menu-kind = ""; } }
+                    SheetRow { radio: true; icon: "clock"; text: "Latest activity"; checked: !root.sort-alpha; clicked => { root.sort-alpha = false; root.setting-changed("sort"); root.menu-kind = ""; } }
+                    SheetRow { radio: true; icon: "sort"; text: "Name (A-Z)"; checked: root.sort-alpha; clicked => { root.sort-alpha = true; root.setting-changed("sort"); root.menu-kind = ""; } }
                 }
 
                 // ---- profile menu (your avatar at the bottom of the rail) ----
                 if root.menu-kind == "profile": BottomSheet {
                     title: root.me-name; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y; anchor-up: root.menu-up; menu-width: 300px;
                     dismiss => { root.menu-kind = ""; }
-                    SheetRow { icon: "check"; text: "Active"; checked: root.presence-pref == "auto"; clicked => { root.set-presence("auto"); root.menu-kind = ""; } }
-                    SheetRow { icon: "clock"; text: "Set yourself as away"; checked: root.presence-pref == "away"; clicked => { root.set-presence("away"); root.menu-kind = ""; } }
+                    SheetRow { radio: true; icon: "check"; text: "Active"; checked: root.presence-pref == "auto"; clicked => { root.set-presence("auto"); root.menu-kind = ""; } }
+                    SheetRow { radio: true; icon: "clock"; text: "Set yourself as away"; checked: root.presence-pref == "away"; clicked => { root.set-presence("away"); root.menu-kind = ""; } }
                     SheetRow { icon: "bell-off"; text: "Pause notifications"; detail: root.presence-pref == "dnd" ? "On" : ""; checked: root.presence-pref == "dnd"; clicked => { root.set-presence(root.presence-pref == "dnd" ? "auto" : "dnd"); root.menu-kind = ""; } }
                     SheetRow { icon: "person"; text: "Profile"; clicked => { root.menu-kind = ""; root.open-settings(); root.settings-page = "account"; } }
                     SheetRow { icon: "settings"; text: "Preferences"; clicked => { root.menu-kind = ""; root.open-settings(); } }
@@ -2104,6 +2080,7 @@ export component AppWindow inherits Window {
                     SheetRow { icon: "thread"; text: "Threads"; clicked => { root.menu-kind = ""; root.open-threads(); } }
                     SheetRow { icon: "clock"; text: "Drafts & sent"; detail: root.scheduled-count > 0 ? root.scheduled-count + " scheduled" : ""; clicked => { root.menu-kind = ""; root.open-drafts(); } }
                     SheetRow { icon: "bookmark"; text: "Saved items (Later)"; detail: root.saved-rows.length > 0 ? "" + root.saved-rows.length : ""; clicked => { root.menu-kind = ""; root.go-home-tab("later"); } }
+                    if root.lock-set: SheetRow { icon: root.lock-engaged ? "lock" : "unlock"; text: root.lock-engaged ? "Unlock" : "Lock"; clicked => { root.menu-kind = ""; root.lock-tapped(); } }
                     MenuDivider { }
                     SheetRow { icon: "users"; text: "People directory"; clicked => { root.menu-kind = ""; root.open-directory("directory"); } }
                     SheetRow { icon: "hash"; text: "Channel browser"; clicked => { root.menu-kind = ""; root.open-directory("channels"); } }
@@ -2130,7 +2107,7 @@ export component AppWindow inherits Window {
                     if root.wide: SheetRow { icon: "hash"; text: "Move to section"; chevron: true; clicked => { root.menu-kind = "section"; } }
                     if root.wide: SheetRow { icon: "arrow-up"; text: "Move up in the list"; clicked => { root.move-row(root.menu-conv, -1); root.menu-kind = ""; } }
                     if root.wide: SheetRow { icon: "arrow-down"; text: "Move down in the list"; clicked => { root.move-row(root.menu-conv, 1); root.menu-kind = ""; } }
-                    SheetRow { icon: "lock"; text: root.lock-set ? (root.is-conv-locked(root.menu-conv) ? "Remove lock from this conversation" : "Lock conversation") : "Set up App Lock to lock conversations"; clicked => { if root.lock-set { root.toggle-conv-lock(root.menu-conv); root.menu-kind = ""; } else { root.menu-kind = ""; root.open-lock-setup(); } } }
+                    SheetRow { icon: "lock"; text: root.lock-set ? (root.is-conv-locked(root.menu-conv) ? "Unlock chat (keep visible)" : "Lock chat") : "Set up App Lock…"; clicked => { root.menu-kind = ""; root.toggle-conv-lock(root.menu-conv); } }
                     SheetRow { icon: "info"; text: "View details"; clicked => { root.menu-kind = ""; root.select-conv(root.menu-conv); root.show-chat = true; root.open-details(root.wide ? "about" : ""); } }
                 }
                 if root.menu-kind == "mute": BottomSheet {
@@ -2160,20 +2137,20 @@ export component AppWindow inherits Window {
                 if root.menu-kind == "notify": BottomSheet {
                     title: "Notify me about"; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y;
                     dismiss => { root.menu-kind = ""; }
-                    SheetRow { icon: "bell"; text: "All messages"; clicked => { root.notify-level(root.menu-conv, "all"); root.menu-kind = ""; } }
-                    SheetRow { icon: "person"; text: "Mentions only"; clicked => { root.notify-level(root.menu-conv, "mentions"); root.menu-kind = ""; } }
-                    SheetRow { icon: "bell-off"; text: "Nothing"; clicked => { root.notify-level(root.menu-conv, "nothing"); root.menu-kind = ""; } }
+                    SheetRow { radio: true; checked: root.menu-conv == root.current-conv && root.current-notify == "All messages"; icon: "bell"; text: "All messages"; clicked => { root.notify-level(root.menu-conv, "all"); root.menu-kind = ""; } }
+                    SheetRow { radio: true; checked: root.menu-conv == root.current-conv && root.current-notify == "Mentions only"; icon: "person"; text: "Mentions only"; clicked => { root.notify-level(root.menu-conv, "mentions"); root.menu-kind = ""; } }
+                    SheetRow { radio: true; checked: root.menu-conv == root.current-conv && root.current-notify == "Nothing"; icon: "bell-off"; text: "Nothing"; clicked => { root.notify-level(root.menu-conv, "nothing"); root.menu-kind = ""; } }
                     SheetRow { icon: "speaker"; text: "Notification sound"; chevron: true; clicked => { root.menu-kind = "sound"; } }
                 }
                 if root.menu-kind == "sound": BottomSheet {
                     title: root.menu-conv == "" ? "Default sound" : "Notification sound"; wide: root.wide; menu: root.menu-conv != ""; anchor-x: root.menu-x; anchor-y: root.menu-y; menu-width: 260px;
                     dismiss => { root.menu-kind = ""; }
-                    SheetRow { icon: "speaker"; text: root.menu-conv == "" ? "System default" : "Use the default"; checked: root.sound-of(root.menu-conv) == "default"; clicked => { root.set-sound(root.menu-conv, "default"); } }
-                    SheetRow { icon: "bell"; text: "Chime"; checked: root.sound-of(root.menu-conv) == "chime"; clicked => { root.set-sound(root.menu-conv, "chime"); } }
-                    SheetRow { icon: "bell"; text: "Pop"; checked: root.sound-of(root.menu-conv) == "pop"; clicked => { root.set-sound(root.menu-conv, "pop"); } }
-                    SheetRow { icon: "bell"; text: "Knock"; checked: root.sound-of(root.menu-conv) == "knock"; clicked => { root.set-sound(root.menu-conv, "knock"); } }
-                    SheetRow { icon: "bell"; text: "Bell"; checked: root.sound-of(root.menu-conv) == "bell"; clicked => { root.set-sound(root.menu-conv, "bell"); } }
-                    SheetRow { icon: "bell-off"; text: "Silent"; checked: root.sound-of(root.menu-conv) == "none"; clicked => { root.set-sound(root.menu-conv, "none"); } }
+                    SheetRow { radio: true; icon: "speaker"; text: root.menu-conv == "" ? "System default" : "Use the default"; checked: root.sound-of(root.menu-conv) == "default"; clicked => { root.set-sound(root.menu-conv, "default"); } }
+                    SheetRow { radio: true; icon: "bell"; text: "Chime"; checked: root.sound-of(root.menu-conv) == "chime"; clicked => { root.set-sound(root.menu-conv, "chime"); } }
+                    SheetRow { radio: true; icon: "bell"; text: "Pop"; checked: root.sound-of(root.menu-conv) == "pop"; clicked => { root.set-sound(root.menu-conv, "pop"); } }
+                    SheetRow { radio: true; icon: "bell"; text: "Knock"; checked: root.sound-of(root.menu-conv) == "knock"; clicked => { root.set-sound(root.menu-conv, "knock"); } }
+                    SheetRow { radio: true; icon: "bell"; text: "Bell"; checked: root.sound-of(root.menu-conv) == "bell"; clicked => { root.set-sound(root.menu-conv, "bell"); } }
+                    SheetRow { radio: true; icon: "bell-off"; text: "Silent"; checked: root.sound-of(root.menu-conv) == "none"; clicked => { root.set-sound(root.menu-conv, "none"); } }
                 }
                 if root.menu-kind == "section": BottomSheet {
                     title: "Move to section"; wide: root.wide; menu: true; anchor-x: root.menu-x; anchor-y: root.menu-y;
@@ -2284,37 +2261,45 @@ export component AppWindow inherits Window {
                 if root.menu-kind == "pick-theme": BottomSheet {
                     title: "Theme"; wide: root.wide;
                     dismiss => { root.menu-kind = ""; }
-                    SheetRow { text: "System default"; checked: root.theme-mode == 0; clicked => { root.theme-mode = 0; root.setting-changed("theme"); root.menu-kind = ""; } }
-                    SheetRow { text: "Light"; checked: root.theme-mode == 1; clicked => { root.theme-mode = 1; root.setting-changed("theme"); root.menu-kind = ""; } }
-                    SheetRow { text: "Dark"; checked: root.theme-mode == 2; clicked => { root.theme-mode = 2; root.setting-changed("theme"); root.menu-kind = ""; } }
+                    SheetRow { radio: true; text: "System default"; checked: root.theme-mode == 0; clicked => { root.theme-mode = 0; root.setting-changed("theme"); root.menu-kind = ""; } }
+                    SheetRow { radio: true; text: "Light"; checked: root.theme-mode == 1; clicked => { root.theme-mode = 1; root.setting-changed("theme"); root.menu-kind = ""; } }
+                    SheetRow { radio: true; text: "Dark"; checked: root.theme-mode == 2; clicked => { root.theme-mode = 2; root.setting-changed("theme"); root.menu-kind = ""; } }
                 }
                 if root.menu-kind == "pick-text": BottomSheet {
                     title: "Text size"; wide: root.wide;
                     dismiss => { root.menu-kind = ""; }
-                    SheetRow { text: "Regular"; checked: root.font-step == 0; clicked => { root.font-step = 0; root.setting-changed("font"); root.menu-kind = ""; } }
-                    SheetRow { text: "Large"; checked: root.font-step == 1; clicked => { root.font-step = 1; root.setting-changed("font"); root.menu-kind = ""; } }
-                    SheetRow { text: "Extra large"; checked: root.font-step == 2; clicked => { root.font-step = 2; root.setting-changed("font"); root.menu-kind = ""; } }
+                    SheetRow { radio: true; text: "Regular"; checked: root.font-step == 0; clicked => { root.font-step = 0; root.setting-changed("font"); root.menu-kind = ""; } }
+                    SheetRow { radio: true; text: "Large"; checked: root.font-step == 1; clicked => { root.font-step = 1; root.setting-changed("font"); root.menu-kind = ""; } }
+                    SheetRow { radio: true; text: "Extra large"; checked: root.font-step == 2; clicked => { root.font-step = 2; root.setting-changed("font"); root.menu-kind = ""; } }
                 }
                 if root.menu-kind == "pick-spell": BottomSheet {
                     title: "Spelling language"; wide: root.wide;
                     dismiss => { root.menu-kind = ""; }
-                    for l[i] in root.spell-langs: SheetRow { text: l; checked: l == root.spell-lang-label; clicked => { root.spell-lang-pick(i); root.menu-kind = ""; } }
+                    for l[i] in root.spell-langs: SheetRow { radio: true; text: l; checked: l == root.spell-lang-label; clicked => { root.spell-lang-pick(i); root.menu-kind = ""; } }
                 }
                 if root.menu-kind == "pick-push": BottomSheet {
                     title: "Push method"; wide: root.wide;
                     dismiss => { root.menu-kind = ""; }
-                    SheetRow { text: "Off"; checked: root.push-choice == "none"; clicked => { root.push-choice = "none"; root.setting-changed("push"); root.menu-kind = ""; } }
-                    SheetRow { text: "ntfy"; checked: root.push-choice == "ntfy"; clicked => { root.push-choice = "ntfy"; root.setting-changed("push"); root.menu-kind = ""; } }
-                    SheetRow { text: "Google (FCM)"; checked: root.push-choice == "fcm"; clicked => { root.push-choice = "fcm"; root.setting-changed("push"); root.menu-kind = ""; } }
+                    SheetRow { radio: true; text: "Off"; checked: root.push-choice == "none"; clicked => { root.push-choice = "none"; root.setting-changed("push"); root.menu-kind = ""; } }
+                    SheetRow { radio: true; text: "ntfy"; checked: root.push-choice == "ntfy"; clicked => { root.push-choice = "ntfy"; root.setting-changed("push"); root.menu-kind = ""; } }
+                    SheetRow { radio: true; text: "Google (FCM)"; checked: root.push-choice == "fcm"; clicked => { root.push-choice = "fcm"; root.setting-changed("push"); root.menu-kind = ""; } }
                 }
                 if root.menu-kind == "pick-status": BottomSheet {
                     title: "Status"; wide: root.wide;
                     dismiss => { root.menu-kind = ""; }
-                    SheetRow { icon: "check"; text: "Active"; checked: root.presence-pref == "auto"; clicked => { root.set-presence("auto"); root.menu-kind = ""; } }
-                    SheetRow { icon: "clock"; text: "Away"; checked: root.presence-pref == "away"; clicked => { root.set-presence("away"); root.menu-kind = ""; } }
+                    SheetRow { radio: true; icon: "check"; text: "Active"; checked: root.presence-pref == "auto"; clicked => { root.set-presence("auto"); root.menu-kind = ""; } }
+                    SheetRow { radio: true; icon: "clock"; text: "Away"; checked: root.presence-pref == "away"; clicked => { root.set-presence("away"); root.menu-kind = ""; } }
                     SheetRow { icon: "bell-off"; text: "Do not disturb (pause notifications)"; checked: root.presence-pref == "dnd"; clicked => { root.set-presence("dnd"); root.menu-kind = ""; } }
                 }
                 // ---- App Lock: add a conversation to the locked list ----
+                if root.menu-kind == "pick-lock-timeout": BottomSheet {
+                    title: "Auto-lock"; wide: root.wide;
+                    dismiss => { root.menu-kind = ""; }
+                    SheetRow { radio: true; text: "Immediately"; checked: root.lock-timeout == 0; clicked => { root.lock-timeout-pick(0); root.menu-kind = ""; } }
+                    SheetRow { radio: true; text: "After 1 minute"; checked: root.lock-timeout == 1; clicked => { root.lock-timeout-pick(1); root.menu-kind = ""; } }
+                    SheetRow { radio: true; text: "After 5 minutes"; checked: root.lock-timeout == 5; clicked => { root.lock-timeout-pick(5); root.menu-kind = ""; } }
+                    SheetRow { radio: true; text: "After 15 minutes"; checked: root.lock-timeout == 15; clicked => { root.lock-timeout-pick(15); root.menu-kind = ""; } }
+                }
                 if root.menu-kind == "lock-pick": BottomSheet {
                     title: "Lock a conversation"; wide: root.wide;
                     dismiss => { root.menu-kind = ""; }
@@ -2361,7 +2346,6 @@ export component AppWindow inherits Window {
                         if root.confirm == "signout-all" { root.screen = ""; root.sign-out-all(); }
                         if root.confirm == "revoke-others" { root.revoke-others(); }
                         if root.confirm == "delete-msg" { root.delete-msg(root.menu-msg); }
-                        if root.confirm == "remove-pin" { root.lock-remove(); }
                         if root.confirm == "remove-member" { root.remove-member(root.remove-person); }
                         root.confirm = "";
                     }
@@ -2499,11 +2483,19 @@ export component AppWindow inherits Window {
                 if root.toast != "": Rectangle {
                     y: parent.height - 96px;
                     height: tt2.preferred-height + 20px;
-                    width: min(parent.width - 32px, tt2.preferred-width + 32px);
+                    width: min(parent.width - 32px, tt2.preferred-width + (root.toast-undo ? 118px : 32px));
                     x: (parent.width - self.width) / 2;
                     background: Theme.text;
                     border-radius: Theme.r-md;
-                    tt2 := Text { text: root.toast; color: Theme.bg; font-size: Theme.fs; wrap: word-wrap; }
+                    HorizontalLayout {
+                        padding-left: 16px; padding-right: root.toast-undo ? 6px : 16px; spacing: 8px;
+                        tt2 := Text { text: root.toast; color: Theme.bg; font-size: Theme.fs; wrap: word-wrap; vertical-alignment: center; horizontal-stretch: 1; }
+                        if root.toast-undo: Rectangle {
+                            width: 72px;
+                            Text { text: "Undo"; color: Theme.accent; font-size: Theme.fs; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                            TouchArea { clicked => { root.toast-action(); } }
+                        }
+                    }
                 }
             }
         }

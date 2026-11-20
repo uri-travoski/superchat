@@ -663,13 +663,5 @@ pub fn install(ui: &AppWindow, client: &Client, sh: &Sh) {
             let _ = c.applock().set_conv_locked(&id, false);
             crate::lock::changed(&ui, &c, &sh2);
         });
-        let wk = ui.as_weak();
-        ui.on_open_lock_setup(move || {
-            let Some(ui) = wk.upgrade() else { return };
-            ui.set_menu_kind("".into());
-            ui.set_info_open(false);
-            ui.invoke_open_settings();
-            ui.set_settings_page("lock".into());
-        });
     }
 }

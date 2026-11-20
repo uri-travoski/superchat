@@ -1,0 +1,104 @@
+// 1.4.1 App Lock screen: a calm full-screen PIN entry with six dots and a large numeric keypad of our own (no system keyboard).
+// Digits typed on a hardware keyboard work too. A wrong PIN shakes the dots gently and clears them.
+import { Theme } from "theme.slint";
+import { Icon } from "icons.slint";
+
+component Key inherits Rectangle {
+    in property <string> label;
+    in property <string> icon;
+    in property <length> d: 72px;
+    callback tapped;
+    width: d;
+    height: d;
+    border-radius: d / 2;
+    background: ta.pressed ? Theme.accent.with-alpha(0.22) : (label != "" || icon != "" ? Theme.surface-high : transparent);
+    if root.label != "": Text { text: root.label; font-size: root.d * 0.4; color: Theme.text; font-weight: 500; horizontal-alignment: center; vertical-alignment: center; }
+    if root.icon != "": Icon { name: root.icon; size: root.d * 0.36; tint: Theme.icon; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+    ta := TouchArea { enabled: root.label != "" || root.icon != ""; clicked => { root.tapped(); } }
+}
+
+export component PinPad {
+    in property <string> title: "App Lock";
+    in property <string> hint;
+    in property <string> error;
+    in property <int> digits: 0;
+    in-out property <int> shake: 0;
+    callback key(string);
+    callback cancel;
+    // Key size: as large as fits, between 56 and 84 px (the whole pad must fit a small phone in landscape-free portrait).
+    property <length> kd: max(52px, min(84px, (root.width - 96px) / 3, (root.height - 330px) / 4));
+    Timer {
+        interval: 28ms;
+        running: root.shake > 0;
+        triggered => { root.shake = root.shake >= 14 ? 0 : root.shake + 1; }
+    }
+    fs := FocusScope {
+        init => { self.focus(); }
+        key-pressed(e) => {
+            if e.text == Key.Escape { root.cancel(); return accept; }
+            if e.text == Key.Backspace || e.text == Key.Delete { root.key("del"); return accept; }
+            if e.text.character-count == 1 && e.text >= "0" && e.text <= "9" { root.key(e.text); return accept; }
+            reject
+        }
+    }
+    VerticalLayout {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        alignment: center;
+        spacing: 0px;
+        padding-left: 24px;
+        padding-right: 24px;
+        VerticalLayout {
+            spacing: 10px;
+            HorizontalLayout { alignment: center; Icon { name: "lock"; size: 34px; tint: Theme.icon-soft; weight: 1.5px; } }
+            Text { text: root.title; font-size: Theme.fs-title; font-weight: 700; horizontal-alignment: center; color: Theme.text; }
+            Text { text: root.error != "" ? root.error : root.hint; font-size: Theme.fs; horizontal-alignment: center; color: root.error != "" ? Theme.danger : Theme.muted; wrap: word-wrap; min-height: Theme.fs * 2.6; }
+        }
+        // The six dots; they shake sideways after a wrong PIN.
+        Rectangle {
+            height: 40px;
+            HorizontalLayout {
+                alignment: center;
+                spacing: 18px;
+                x: Theme.reduce-motion ? 0px : Math.sin(root.shake * 115deg) * (14 - root.shake) * 1.4px;
+                for i in 6: Rectangle {
+                    width: 14px;
+                    height: 14px;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: 7px;
+                    border-width: 1.5px;
+                    border-color: i < root.digits ? Theme.accent : Theme.icon-soft;
+                    background: i < root.digits ? Theme.accent : transparent;
+                }
+            }
+        }
+        VerticalLayout {
+            spacing: 14px;
+            padding-top: 8px;
+            for row in [["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"]]: HorizontalLayout {
+                alignment: center;
+                spacing: 24px;
+                for k in row: Key { d: root.kd; label: k; tapped => { root.key(k); } }
+            }
+            HorizontalLayout {
+                alignment: center;
+                spacing: 24px;
+                Key { d: root.kd; }
+                Key { d: root.kd; label: "0"; tapped => { root.key("0"); } }
+                Key { d: root.kd; icon: "backspace"; tapped => { root.key("del"); } }
+            }
+        }
+        HorizontalLayout {
+            alignment: center;
+            padding-top: 6px;
+            Rectangle {
+                width: 140px;
+                height: 52px;
+                Text { text: "Cancel"; font-size: Theme.fs; color: Theme.accent-text; horizontal-alignment: center; vertical-alignment: center; }
+                TouchArea { clicked => { root.cancel(); } }
+            }
+        }
+    }
+}

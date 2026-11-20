@@ -487,7 +487,8 @@ fn conv_row(c: &Client, cs: &ConversationSummary, me: &str, v: &View) -> SideRow
         }
         .into(),
         presence: presence_of(c, cs, me),
-        locked: false,
+        locked: c.applock().is_visible_locked(&cs.conversation.id),
+        pic: matches!(cs.conversation.kind, ConversationKind::Channel | ConversationKind::GroupDm) && c.conversation_avatar_path(&cs.conversation.id).is_some(),
         draft: !c.draft(&cs.conversation.id).trim().is_empty(),
         plus: SharedString::new(),
         preview: preview.into(),
@@ -517,6 +518,7 @@ fn blank_row(kind: i32, id: &str, title: &str) -> SideRow {
         conv_kind: SharedString::new(),
         presence: 0,
         locked: false,
+        pic: false,
         draft: false,
         plus: SharedString::new(),
         preview: SharedString::new(),
